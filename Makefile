@@ -60,7 +60,7 @@ build/logback.xml: dev/logback.xml
 	cp $< build/
 
 target/fluree-ledger.jar: pom.xml src/**/* resources/**/*
-	clojure -A:jar
+	clojure -M:jar
 
 jar: target/fluree-ledger.jar
 
@@ -68,10 +68,10 @@ pom.xml: deps.edn
 	clojure -Spom
 
 test:
-	clojure -A:test
+	clojure -M:test
 
 target/fluree-ledger.standalone.jar: pom.xml src/**/* resources/**/*
-	clojure -A:uberjar
+	clojure -M:uberjar
 
 uberjar: target/fluree-ledger.standalone.jar
 
