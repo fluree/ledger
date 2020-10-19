@@ -4,9 +4,8 @@ RUN mkdir -p /usr/src/fluree-ledger
 WORKDIR /usr/src/fluree-ledger
 
 COPY deps.edn ./
-RUN mkdir -p /root/.m2
 
-RUN clojure -A:test -Stree && rm /root/.m2/settings.xml
+RUN clojure -A:test -Stree
 
 COPY . ./
 

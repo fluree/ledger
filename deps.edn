@@ -37,9 +37,9 @@
 
   :jar
   {:extra-deps {seancorfield/depstar {:mvn/version "1.1.117"}}
-   :main-opts ["-m" "hf.depstar.jar" "-X" "fluree/db/.*\\.clj[cs]?$" "target/fluree-ledger.jar"]}
+   :main-opts ["-m" "hf.depstar.jar" "target/fluree-ledger.jar"]}
 
   :uberjar
   {:extra-deps {seancorfield/depstar {:mvn/version "1.1.117"}}
-   :main-opts ["-m" "hf.depstar.uberjar" "-X" "fluree/db/.*\\.clj[cs]?$" "target/fluree-ledger.standalone.jar"
+   :main-opts ["-m" "hf.depstar.uberjar" "target/fluree-ledger.standalone.jar"
                "-C" "-m" "fluree.db.server"]}}}

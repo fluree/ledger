@@ -85,13 +85,5 @@
       <id>clojars</id>
       <url>https://repo.clojars.org/</url>
     </repository>
-    <repository>
-      <id>deps.co-snapshots</id>
-      <url>https://repo.deps.co/fluree/snapshots</url>
-    </repository>
-    <repository>
-      <id>deps.co-releases</id>
-      <url>https://repo.deps.co/fluree/releases</url>
-    </repository>
   </repositories>
 </project>
