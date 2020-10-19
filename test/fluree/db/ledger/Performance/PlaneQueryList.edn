@@ -1,0 +1,42 @@
+{
+ ;; Basic Queries
+
+ 1051  [:basic-query
+        {:select ["*" {"plane/trips" ["*"]}], :from "plane"}]
+
+ 1052  [:basic-query
+        {:select ["*" {"plane/trips" ["*"]}], :from ["plane/id", 98]}]
+
+ 1053  [:basic-query
+        {:select ["*" {"airline/_planes" ["*"]} {"plane/trips" ["*"]}], :from "plane"}]
+
+ 1054  [:basic-query
+      {:select ["*" {"name" [{:_as "airName"}]}], :from "plane"}]
+
+ 1055  [:basic-query
+      {:select ["*" {"plane/sections" ["*"]} {"plane/trips" ["*"]}], :from "plane"}]
+
+ 1056  [:basic-query
+      {:select ["*"], :from 369435906932834}]
+
+ 1057  [:basic-query
+      {:select ["*" {"plane/_sections" ["*"]}], :from "section"}]
+
+ 1058  [:basic-query
+      {:select ["*" {"plane/section" ["*"]}], :from "plane", :limit 10}]
+
+
+ 1059 [:basic-query
+       {:select ["*" {"plane/section" ["*"]}], :from "plane", :block "PT5M"}]
+
+ ;; Analytical Queries
+
+ 1101 [:analytical-query
+      {:select "(sample 10 ?plane)", :where [["?plane" "plane/id" "?plane"]]}]
+ 1102 [:analytical-query
+             {:select "(count ?plane)", :where [["?plane" "plane/id" "?plane"]]}]
+ 1103 [:analytical-query
+       {:select "(count ?section)", :where [["?plane" "plane/id" "?plane"]
+                                          ["?plane" "plane/sections" "?section"]]}]
+
+ }

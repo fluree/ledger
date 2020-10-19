@@ -1,0 +1,41 @@
+[{:_id "_fn$ownWallet",
+  :name "ownWallet?",
+  :code "(contains? (get-all (query (str \"{\\\"select\\\": [{\\\"wallet/user\\\": [{\\\"_user/auth\\\": [\\\"_id\\\"]}]}], \\\"from\\\": \" (?sid) \" }\")) [\"wallet/user\" \"_user/auth\" \"_id\"]) (?auth_id))"}
+ {:_id "_rule$editOwnWalletName",
+  :id "editOwnWalletName",
+  :doc "A cryptoUser can only edit their own wallet/name",
+  :fns ["_fn$ownWallet"],
+  :ops ["transact"],
+  :collection "wallet",
+  :predicates ["wallet/name"]}
+ {:_id "_rule$editAnyCryptoBalance",
+  :id "editAnyCryptoBalance",
+  :doc "Any cryptoUser can edit any wallet/balance.",
+  :fns [["_fn/name" "true"]],
+  :ops ["all"],
+  :collection "wallet",
+  :predicates ["wallet/balance"]}
+ {:_id "_rule$cantEditWalletUser",
+  :id "cantEditWalletUser",
+  :doc "No one should ever be able to edit a wallet/user",
+  :ops ["transact"],
+  :collection "wallet",
+  :predicates ["wallet/user"],
+  :fns [["_fn/name" "false"]],
+  :errorMessage "You cannot change a wallet/user."}
+ {:_id "_role$cryptoUser",
+  :id "cryptoUser",
+  :doc "Standard crypto user",
+  :rules ["_rule$cantEditWalletUser" "_rule$editAnyCryptoBalance" "_rule$editOwnWalletName"]}
+ {:_id "_auth$cryptoWoman",
+  :id "Tf6mUADU4SDa3yFQCn6D896NSdnfgQfzTAP",
+  :descId "cryptoWoman",
+  :doc "cryptoWoman auth record",
+  :roles ["_role$cryptoUser"]}
+ {:_id "_auth$cryptoMan",
+  :id "TfDao2xAPN1ewfoZY6BJS16NfwZ2QYJ2cF2",
+  :descId "cryptoMan",
+  :doc "cryptoMan auth record",
+  :roles ["_role$cryptoUser"]}
+ {:_id ["_user/username" "cryptoMan"], :auth ["_auth$cryptoMan"]}
+ {:_id ["_user/username" "cryptoWoman"], :auth ["_auth$cryptoWoman"]}]

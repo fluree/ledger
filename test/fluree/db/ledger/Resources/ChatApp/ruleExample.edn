@@ -1,0 +1,50 @@
+[{:_id "_role$1",
+  :id "level1User",
+  :doc "A level 1 user. Can view all chats, edit own chats, and view other people's handles.",
+  :rules ["_rule$viewAllChats" "_rule$viewAllPeopleHandles" "_rule$editOwnChats"]}
+ {:_id "_rule$viewAllChats",
+  :id "viewAllChats",
+  :doc "Can view all chats.",
+  :collection "chat",
+  :collectionDefault true,
+  :fns [["_fn/name" "true"]],
+  :ops ["query"]}
+ {:_id "_rule$viewAllPeopleHandles",
+  :id "viewAllPeopleHandles",
+  :doc "Can view all people",
+  :collection "person",
+  :predicates ["person/handle"],
+  :fns [["_fn/name" "true"]],
+  :ops ["query"]}
+ {:_id "_rule$editOwnChats",
+  :id "editOwnChats",
+  :doc "Only allow users to edit their own chats",
+  :collection "chat",
+  :predicates ["chat/message" "chat/person"],
+  :fns ["_fn$ownChats"],
+  :ops ["transact"]}
+ {:_id "_fn$ownChats",
+  :name "ownChats",
+  :code "(contains? (get-all (query (str \"{\\\"select\\\": [{\\\"chat/person\\\":  [{\\\"person/auth\\\": [\\\"_id\\\"]}]}], \\\"from\\\": \" (?sid) \" } \")) [\"chat/person\" \"person/auth\" \"_id\"]) (?auth_id))"}
+ {:_id "_role$2",
+  :id "level2User",
+  :doc "A level 2 user. Can view all chats, edit own chats, view all comments, and view all people.",
+  :rules ["_rule$viewAllChats" "_rule$editOwnChats" "_rule$viewAllPeople" "_rule$viewAllComments"]}
+ {:_id "_rule$viewAllPeople",
+  :id "viewAllPeople",
+  :doc "Can view all people.",
+  :collection "person",
+  :collectionDefault true,
+  :fns [["_fn/name" "true"]],
+  :ops ["query"]}
+ {:_id "_rule$viewAllComments",
+  :id "viewAllComments",
+  :doc "Can view all comments.",
+  :collection "comment",
+  :collectionDefault true,
+  :fns [["_fn/name" "true"]],
+  :ops ["query"]}
+ {:_id ["person/handle" "jdoe"], :auth "_auth$jdoe"}
+ {:_id "_auth$jdoe", :id "TfKYG5F5iCsii1JvGGY2Pv6bPVVbZ2ERjmJ", :doc "Jdoe's auth record", :roles ["_role$1"]}
+ {:_id ["person/handle" "zsmith"], :auth "_auth$zsmith"}
+ {:_id "_auth$zsmith", :id "TfFzb1tZDkGMBqWr8xMmRVvYmNYFKH9aNpi", :doc "Zsmith's auth record", :roles ["_role$2"]}]

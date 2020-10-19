@@ -1,0 +1,16 @@
+
+{1051 {:sample 60, :mean 0.8508929226416667, :mean-time "850.892923 ms", :type :basic-query},
+ 1052 {:sample 60, :mean 0.04063938438269231, :mean-time "40.639384 ms", :type :basic-query},
+ 1053 {:sample 60, :mean 0.9857695662000001, :mean-time "985.769566 ms", :type :basic-query},
+ 1054 {:sample 60, :mean 0.30842937604583337, :mean-time "308.429376 ms", :type :basic-query},
+ 1055 {:sample 60, :mean 0.9128449353333334, :mean-time "912.844935 ms", :type :basic-query},
+ 1056 {:sample 60, :mean 0.008460501943502825, :mean-time "8.460502 ms", :type :basic-query},
+ 1057 {:sample 60, :mean 0.1747925152361111, :mean-time "174.792515 ms", :type :basic-query},
+ 1058 {:sample 60, :mean 0.05185167386833334, :mean-time "51.851674 ms", :type :basic-query},
+ 1059 {:sample 60, :mean 0.30944173509166667, :mean-time "309.441735 ms", :type :basic-query},
+
+ 1101 {:sample 60, :mean 5.266506232987911E-4, :mean-time "526.650623 µs", :type :analytical-query},
+ 1102 {:sample 60, :mean 7.283302311965812E-4, :mean-time "728.330231 µs", :type :analytical-query},
+ 1103 {:sample 60, :mean 0.021873725100362323, :mean-time "21.873725 ms", :type :analytical-query}
+
+ }

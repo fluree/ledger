@@ -1,0 +1,25 @@
+[{:_id "_collection", :name "vote"}
+ {:_id "_collection", :name "change"}
+ {:_id "_predicate", :name "vote/name", :type "string", :unique true}
+ {:_id "_predicate", :name "vote/noVotes", :type "ref", :multi true, :restrictCollection "_auth"}
+ {:_id "_predicate", :name "vote/yesVotes", :type "ref", :multi true, :restrictCollection "_auth"}
+ {:_id "_predicate", :name "change/name", :type "string", :index true, :unique true}
+ {:_id "_predicate",
+  :name "change/subject",
+  :type "ref",
+  :index true,
+  :doc "A reference to the subject for the proposed change"}
+ {:_id "_predicate",
+  :name "change/predicate",
+  :type "ref",
+  :index true,
+  :restrictCollection "_predicate",
+  :doc "A reference to the predicate where the change is being proposed"}
+ {:_id "_predicate", :name "change/doc", :doc "Description of the proposed change", :type "string"}
+ {:_id "_predicate", :name "change/vote", :type "ref", :unique true}
+ {:_id "_predicate",
+  :name "change/object",
+  :doc "The proposed new object for the change. Can only be a string",
+  :type "string",
+  :index true}
+ {:_id "_predicate", :name "_auth/descId", :type "string", :unique true}]

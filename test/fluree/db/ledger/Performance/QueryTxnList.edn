@@ -1,0 +1,134 @@
+{
+ ;; Transactions
+
+ 1   [:txn "collTxn"]
+ 2   [:txn "predTxn"]
+ 3   [:txn "dataTxn"]
+ 4   [:txn "addData"]
+ 5   [:txn "addUpdateData"]
+ 6   [:txn "addDeleteData"]
+
+ ;; Basic Queries
+
+ 51  [:basic-query
+      {:select ["handle" {"person/follows" ["handle"]}], :from "person"}]
+
+ 52  [:basic-query
+      {:select ["*"], :from ["person/handle" "jdoe"]}]
+
+ 53  [:basic-query
+      {:select ["handle" {"comment/_person" ["*" {:_as "comment", :_limit 1}]}], :from "person"}]
+
+ 54  [:basic-query
+      {:select ["handle" {"fullName" [{:_as "name"}]}], :from "person"}]
+
+ 55  [:basic-query
+      {:select ["handle" {"person/follows" ["handle" {:_recur 10}]}], :from "person"}]
+
+ 56  [:basic-query
+      {:select ["*"], :from 369435906932737}]
+
+ 57  [:basic-query
+      {:select ["*" {"chat/_person" ["*"]}], :from "person"}]
+ 58  [:basic-query
+      {:select ["*" {"chat/person" ["*"]}], :from "chat"}]
+ 59  [:basic-query
+      {:select ["*"], :from "chat", :limit 100}]
+ 60  [:basic-query
+      {:select ["*"], :from "chat", :block "PT5M"}]
+ 61  [:basic-query
+      {:select ["*"], :from "person/handle"}]
+ 62  [:basic-query
+      {:select ["*"], :from "_collection"}]
+ 63  [:basic-query
+      {:select ["chat/message" "chat/person"], :from "chat", :limit 100}]
+ 64  [:basic-query
+      {:select ["handle" "fullName"], :from "person"}]
+ 65  [:basic-query
+      {:select ["*"], :from "chat", :block 2}]
+ 66  [:basic-query
+      {:select ["*"], :from "chat", :offset 1}]
+ 67  [:basic-query
+      {:select ["*" {"chat/_person" ["*" {"chat/person" ["*"]}]}], :from "person"}]
+ 68  [:basic-query
+      {:select ["chat/message" "chat/instant"], :where "chat/instant > 1517437000000"}]
+ 69  [:basic-query
+      {:select ["*"], :from "chat", :limit 10, :offset 1}]
+ 70  [:basic-query
+      {:select ["*"], :from [369435906932737 ["person/handle" "jdoe"] 387028092977153 ["person/handle" "zsmith"]]}]
+
+ ;; Analytical Queries
+
+ 101 [:analytical-query
+      {:select "(sample 10 ?nums)", :where [[nil "person/favNums" "?nums"]]}]
+
+ 102 [:analytical-query
+      {:select ["?name" "?artist" "?artwork" "?artworkLabel"],
+       :where  [[["person/handle" "jdoe"] "person/favArtists" "?artist"]
+                ["?artist" "artist/name" "?name"]
+                ["$wd" "?artwork" "wdt:P170" "?creator"]
+                ["$wd" "?creator" "?label" "?name"]]}]
+ 103 [:analytical-query
+      {:select "(sum ?nums)", :where [[["person/handle" "zsmith"] "person/favNums" "?nums"]]}]
+ 104 [:analytical-query {:select "?nums",
+                         :where  [["$fdb" ["person/handle" "zsmith"] "person/favNums" "?nums"] ["$fdb" ["person/handle" "jdoe"] "person/favNums" "?nums"]]}]
+ 105 [:analytical-query {:select ["?handle" "?title" "?narrative_locationLabel"],
+                         :where  [["?user" "person/favMovies" "?movie"]
+                                  ["?movie" "movie/title" "?title"]
+                                  ["$wd" "?wdMovie" "?label" "?title"]
+                                  ["$wd" "?wdMovie" "wdt:P840" "?narrative_location"]
+                                  ["$wd" "?wdMovie" "wdt:P31" "wd:Q11424"]
+                                  ["?user" "person/handle" "?handle"]]}]
+ 106 [:analytical-query {:select ["?nums1" "?nums2"],
+                         :where  [["$fdb" ["person/handle" "zsmith"] "person/favNums" "?nums1"]
+                                  ["$fdb" ["person/handle" "jdoe"] "person/favNums" "?nums2"]]}]
+ 107 [:analytical-query {:select "?nums", :where [["$fdb" ["person/handle" "zsmith"] "person/favNums" "?nums"]]}]
+ 108 [:analytical-query {:select {"?artist" ["*" {"person/_favArtists" ["*"]}]}, :where [[nil "person/favArtists" "?artist"]]}]
+ 109 [:analytical-query
+      {:select "?nums", :where [["$fdb" nil "person/favNums" "?nums"]]}]
+ 110 [:analytical-query {:select ["?name", "?artist", "?artwork"],
+                         :where  [[["person/handle", "jdoe"], "person/favArtists", "?artist"],
+                                  ["?artist", "artist/name", "?name"],
+                                  ["$wd", "?artwork", "wdt:P170", "?creator", {:limit 5, :distinct false}],
+                                  ["$wd", "?creator", "?label", "?name"]]}]
+
+ ;; Block Queries
+
+ 151 [:block-query {:block "PT1M"}]
+ 152 [:block-query {:block [3 5]}]
+ 153 [:block-query {:block [3], :pretty-print true}]
+ 154 [:block-query {:block [3]}]
+ 155 [:block-query {:block 3}]
+
+ ;; History Queries
+
+ 201 [:history-query {:history 369435906932737 :block 4}]
+ 202 [:history-query {:history ["person/handle" "zsmith"] :block 4}]
+ 203 [:history-query {:history [["person/handle" "zsmith"] "person/follows"]}]
+ 204 [:history-query {:history [nil "person/handle" "jdoe"]}]
+ 205 [:history-query {:history [nil "person/handle" "jdoe"] :pretty-print true}]
+
+ ;; GraphQL Queries
+
+ 251 [:graphql-query {:query "{ graph {  chat { _id message } } }"}]
+ 252 [:graphql-query {:query "query { block (from: 3, to: 5) }"}]
+ 253 [:graphql-query {:query "{ graph { person { _id handle chat_Via_person (limit: 10) { instant message comments { message } } } } }"}]
+ 254 [:graphql-query {:query "query { block (from: 3) }"}]
+ 255 [:graphql-query {:query "query { (from: 3, to: 3) }"}]
+ 256 [:graphql-query {:query "{ graph { person { chat_Via_person { _id instant message } } } }"}]
+ 257 [:graphql-query {:query "{ graph { person { * } } }"}]
+ 258 [:graphql-query {:query "{ graph { chat { _id message person { _id handle } } } }"}]
+
+ ;; Multi Queries
+ 301 [:multi-query {:chatQuery {:select ["*"], :from "chat"}, :personQuery {:select ["*"], :from "person"}}]
+
+
+ ;; SPARQL Queries
+
+ 351 [:sparql-query "SELECT ?person ?fullName ?favNums WHERE { ?person fd:person/handle \"jdoe\"; fd:person/fullName ?fullName; fd:person/favNums ?favNums. }"]
+ 352 [:sparql-query "SELECT DISTINCT ?horse ?horseLabel ?mother { ?horse wdt:P31/wdt:P279* wd:Q726. OPTIONAL {?horse wdt:P25 ?mother. } }"]
+ 353 [:sparql-query "SELECT ?person WHERE { ?person fd:person/handle \"jdoe\", \"zsmith\". }"]
+ 354 [:sparql-query "SELECT ?person ?fullName ?favNums WHERE {?person fd:person/fullName ?fullName; fd:person/favNums ?favNums; fd:person/handle \"jdoe\", \"zsmith\". }"]
+ 355 [:sparql-query "SELECT ?person WHERE { ?person fd:person/handle \"jdoe\". ?person fd:person/fullName ?fullName. }"]
+
+ }

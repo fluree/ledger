@@ -1,0 +1,15 @@
+/tmp
+/.idea
+/target
+/build
+/classes
+*.jar
+*.class
+/.lein-*
+/.nrepl-port
+*.iml
+.DS_Store
+default-private-key.txt
+default_private_key.txt
+/.cpcache
+/data

@@ -1,0 +1,45 @@
+{:deps {org.clojure/clojure {:mvn/version "1.10.1"}
+        org.clojure/data.xml {:mvn/version "0.2.0-alpha6"}
+        com.fluree/db {:mvn/version "0.17.0-SNAPSHOT"}
+        com.fluree/raft {:mvn/version "0.12.0"}
+        com.fluree/crypto {:mvn/version "0.3.4"}
+
+        ;; network comm
+        net.async/async {:mvn/version "0.1.0"}
+
+        ;; Lucene
+        clucie/clucie {:mvn/version "0.4.2"}
+
+        ;; AWS S3 API
+        com.cognitect.aws/api {:mvn/version "0.8.474"}
+        com.cognitect.aws/endpoints {:mvn/version "1.1.11.842"}
+        com.cognitect.aws/s3 {:mvn/version "809.2.734.0"}
+
+        ;; web server
+        aleph-middleware/aleph-middleware {:mvn/version "0.2.0"}
+        ring/ring-core {:mvn/version "1.8.1"}
+        ring-cors/ring-cors {:mvn/version "0.1.13"}
+        compojure/compojure {:mvn/version "1.6.2"}}
+
+ :paths ["src" "resources"]
+ :aliases
+ {:dev
+  {:extra-paths ["dev"]
+   :extra-deps {org.clojure/tools.namespace {:mvn/version "1.0.0"}}
+   :main-opts ["-e" "(require,'user)"
+               "-e" "(in-ns,'user)"]}
+  :test
+  {:extra-paths ["test"]
+   :extra-deps {com.cognitect/test-runner
+                {:git/url "https://github.com/cognitect-labs/test-runner.git"
+                 :sha "f7ef16dc3b8332b0d77bc0274578ad5270fbfedd"}}
+   :main-opts ["-m" "cognitect.test-runner"]}
+
+  :jar
+  {:extra-deps {seancorfield/depstar {:mvn/version "1.1.117"}}
+   :main-opts ["-m" "hf.depstar.jar" "-X" "fluree/db/.*\\.clj[cs]?$" "target/fluree-ledger.jar"]}
+
+  :uberjar
+  {:extra-deps {seancorfield/depstar {:mvn/version "1.1.117"}}
+   :main-opts ["-m" "hf.depstar.uberjar" "-X" "fluree/db/.*\\.clj[cs]?$" "target/fluree-ledger.standalone.jar"
+               "-C" "-m" "fluree.db.server"]}}}

@@ -1,0 +1,504 @@
+[{:_id "_collection"
+    :name "person"
+    :doc "A collection/table to hold our people"
+    :version 1
+    }
+   {:_id "_collection"
+    :name "chat"
+    :doc "A collection/table to hold chat messages"
+    :version 1
+    }
+   {
+    :_id "_collection"
+    :name "comment"
+    :doc "A collection/table to hold comments to chat messages"
+    :version 1
+    }
+   {
+    :_id "_collection"
+    :name "nestedComponent"
+    :doc "A component nested in person > comment > nestedComponent"
+    :version 1
+    }
+   {
+    :_id    "_predicate"
+    :name "person/stringUnique"
+    :doc    "The person's unique handle"
+    :unique true
+    :type "string"
+    }
+   {
+      :_id    "_predicate"
+      :name "person/user"
+      :doc  "Reference to a database user"
+      :type "ref"
+      :restrictCollection "_user"
+    }
+   {
+    :_id   "_predicate"
+    :name "person/stringNotUnique"
+    :doc   "The person's first name."
+    :type "string"
+    :index true
+    :unique false
+    }
+   {
+    :_id   "_predicate"
+    :name "person/stringUniqueMulti"
+    :doc   "The person's aliases."
+    :type "string"
+    :index true
+    :unique true
+    :multi true
+    }
+   {
+    :_id   "_predicate"
+    :name "person/stringNotUniqueMulti"
+    :doc   "The person's favorite books."
+    :type "string"
+    :unique false
+    :multi true
+    :index true
+    }
+   {
+    :_id   "_predicate"
+    :name   "person/intUnique"
+    :doc    "The person's SSN"
+    :type   "int"
+    :unique true
+    :index  true
+    }
+   {
+    :_id   "_predicate"
+    :name "person/intNotUnique"
+    :doc   "The person's karma."
+    :type "int"
+    :unique false
+    :index true
+    }
+   {
+    :_id   "_predicate"
+    :name "person/intNotUniqueMulti"
+    :doc   "The person's favorite numbers."
+    :type   "int"
+    :unique false
+    :multi true
+    :index true
+    }
+   {
+    :_id   "_predicate"
+    :name "person/intUniqueMulti"
+    :doc   "The person's permanently reserved tables at the restaurant."
+    :type "int"
+    :index true
+    :multi true
+    }
+   {
+    :_id   "_predicate"
+    :name  "person/tagNotUnique"
+    :doc   "Their personality type"
+    :type "tag"
+    :unique false
+    :index true
+    }
+   {
+    :_id   "_predicate"
+    :name "person/tagUnique"
+    :doc   "The tagline they use for writing articles."
+    :type "tag"
+    :unique true
+    }
+   {
+    :_id   "_predicate"
+    :name "person/tagNotUniqueMulti"
+    :doc   "The personality types of everyone in their family"
+    :type   "tag"
+    :unique false
+    :multi  true
+    :index true
+    }
+   {
+    :_id   "_predicate"
+    :name "person/tagUniqueMulti"
+    :doc   "The tagline for everyone in their family who isn't in the db"
+    :type   "tag"
+    :unique true
+    :multi  true
+    }
+   {
+    :_id   "_predicate"
+    :name  "person/longNotUnique"
+    :doc   "longNotUnique"
+    :type "long"
+    :unique false
+    :index true
+    }
+   {
+    :_id   "_predicate"
+    :name "person/longUnique"
+    :doc   "longUnique"
+    :type "long"
+    :unique true
+    }
+   {
+    :_id   "_predicate"
+    :name "person/longNotUniqueMulti"
+    :doc   "longNotUniqueMulti"
+    :type   "long"
+    :unique false
+    :multi  true
+    :index true
+    }
+   {
+    :_id   "_predicate"
+    :name "person/longUniqueMulti"
+    :doc   "longUniqueMulti"
+    :type   "long"
+    :unique true
+    :multi  true
+    }
+   ;{
+   ; :_id   "_predicate"
+   ; :name  "person/bigintNotUnique"
+   ; :doc   "bigintNotUnique"
+   ; :type "bigint"
+   ; :unique false
+   ; :index true
+   ; }
+   ;{
+   ; :_id   "_predicate"
+   ; :name "person/bigintUnique"
+   ; :doc   "bigintUnique"
+   ; :type "bigint"
+   ; :unique true
+   ; }
+   {
+    :_id   "_predicate"
+    :name "person/bigintNotUniqueMulti"
+    :doc   "bigintNotUniqueMulti"
+    :type   "bigint"
+    :unique false
+    :multi  true
+    :index true
+    }
+   {
+    :_id   "_predicate"
+    :name "person/bigintUniqueMulti"
+    :doc   "bigintUniqueMulti"
+    :type   "bigint"
+    :unique true
+    :multi  true
+    }
+   {
+    :_id   "_predicate"
+    :name  "person/floatNotUnique"
+    :doc   "floatNotUnique"
+    :type "float"
+    :unique false
+    :index true
+    }
+   {
+    :_id   "_predicate"
+    :name "person/floatUnique"
+    :doc   "floatUnique"
+    :type "float"
+    :unique true
+    }
+   {
+    :_id   "_predicate"
+    :name "person/floatNotUniqueMulti"
+    :doc   "floatNotUniqueMulti"
+    :type   "float"
+    :unique false
+    :index true
+    :multi true
+    }
+   {
+    :_id   "_predicate"
+    :name "person/floatUniqueMulti"
+    :doc   "floatUniqueMulti"
+    :type   "float"
+    :unique true
+    :multi  true
+    }
+   {
+    :_id   "_predicate"
+    :name  "person/doubleNotUnique"
+    :doc   "doubleNotUnique"
+    :type "double"
+    :unique false
+    :index true
+    }
+   {
+    :_id   "_predicate"
+    :name "person/doubleUnique"
+    :doc   "doubleUnique"
+    :type "double"
+    :unique true
+    }
+   {
+    :_id   "_predicate"
+    :name "person/doubleNotUniqueMulti"
+    :doc   "doubleNotUniqueMulti"
+    :type   "double"
+    :unique false
+    :multi  true
+    :index true
+    }
+   {
+    :_id   "_predicate"
+    :name "person/doubleUniqueMulti"
+    :doc   "doubleUniqueMulti"
+    :type   "double"
+    :unique true
+    :multi  true
+    }
+   {
+    :_id   "_predicate"
+    :name  "person/bigdecNotUnique"
+    :doc   "bigdecNotUnique"
+    :type "bigdec"
+    :unique false
+    :index true
+    }
+   {
+    :_id   "_predicate"
+    :name "person/bigdecUnique"
+    :doc   "bigdecUnique"
+    :type "bigdec"
+    :unique true
+    }
+   {
+    :_id   "_predicate"
+    :name "person/bigdecNotUniqueMulti"
+    :doc   "bigdecNotUniqueMulti"
+    :type   "bigdec"
+    :unique false
+    :multi  true
+    :index true
+    }
+   {
+    :_id   "_predicate"
+    :name "person/bigdecUniqueMulti"
+    :doc   "bigdecUniqueMulti"
+    :type   "bigdec"
+    :unique true
+    :multi  true
+    }
+   {
+    :_id   "_predicate"
+    :name  "person/instantNotUnique"
+    :doc   "instantNotUnique"
+    :type "instant"
+    :unique false
+    :index true
+    }
+   {
+    :_id   "_predicate"
+    :name "person/instantUnique"
+    :doc   "instantUnique"
+    :type "instant"
+    :unique true
+    }
+   {
+    :_id   "_predicate"
+    :name "person/instantNotUniqueMulti"
+    :doc   "instantNotUniqueMulti"
+    :type   "instant"
+    :unique false
+    :multi  true
+    :index true
+    }
+   {
+    :_id   "_predicate"
+    :name "person/instantUniqueMulti"
+    :doc   "instantUniqueMulti"
+    :type   "instant"
+    :unique true
+    :multi  true
+    }
+
+   {
+    :_id   "_predicate"
+    :name "person/boolean"
+    :doc   "boolean"
+    :type   "boolean"
+    :index true
+    }
+   {
+    :_id   "_predicate"
+    :name "person/booleanMulti"
+    :doc   "booleanMulti"
+    :type   "boolean"
+    :multi  true
+    :index  true
+    }
+   {
+    :_id   "_predicate"
+    :name  "person/uriNotUnique"
+    :doc   "uriNotUnique"
+    :type "uri"
+    :unique false
+    :index true
+    }
+   {
+    :_id   "_predicate"
+    :name "person/uriUnique"
+    :doc   "uriUnique"
+    :type "uri"
+    :unique true
+    }
+   {
+    :_id   "_predicate"
+    :name "person/uriNotUniqueMulti"
+    :doc   "uriNotUniqueMulti"
+    :type   "uri"
+    :unique false
+    :multi  true
+    :index true
+    }
+   {
+    :_id   "_predicate"
+    :name "person/uriUniqueMulti"
+    :doc   "uriUniqueMulti"
+    :type   "uri"
+    :unique true
+    :multi  true
+    }
+   {
+    :_id   "_predicate"
+    :name "person/uuid"
+    :doc   "uuidUnique"
+    :type "uuid"
+    :unique true
+    }
+   {
+    :_id   "_predicate"
+    :name "person/uuidMulti"
+    :doc   "uuidMulti"
+    :type   "uuid"
+    :unique true
+    :multi  true
+    }
+   {
+    :_id   "_predicate"
+    :name  "person/bytesNotUnique"
+    :doc   "bytesNotUnique"
+    :type "bytes"
+    :unique false
+    :index true
+    }
+   {
+    :_id   "_predicate"
+    :name "person/bytesUnique"
+    :doc   "bytesUnique"
+    :type "bytes"
+    :unique true
+    }
+   {
+    :_id   "_predicate"
+    :name "person/bytesNotUniqueMulti"
+    :doc   "bytesNotUniqueMulti"
+    :type   "bytes"
+    :unique false
+    :multi  true
+    :index true
+    }
+   {
+    :_id   "_predicate"
+    :name "person/bytesUniqueMulti"
+    :doc   "bytesUniqueMulti"
+    :type   "bytes"
+    :unique true
+    :multi  true
+    }
+   {
+    :_id   "_predicate"
+    :name  "person/jsonNotUnique"
+    :doc   "jsonNotUnique"
+    :type "json"
+    :unique false
+    :index true
+    }
+   {
+    :_id   "_predicate"
+    :name "person/jsonUnique"
+    :doc   "jsonUnique"
+    :type "json"
+    :unique true
+    }
+   {
+    :_id   "_predicate"
+    :name "person/jsonNotUniqueMulti"
+    :doc   "jsonNotUniqueMulti"
+    :type   "json"
+    :unique false
+    :multi  true
+    :index true
+    }
+   {
+    :_id   "_predicate"
+    :name "person/jsonUniqueMulti"
+    :doc   "jsonUniqueMulti"
+    :type   "json"
+    :unique true
+    :multi  true
+    }
+   {
+    :_id  "_predicate"
+    :name "person/comments"
+    :doc  "A reference to the person's comments"
+    :type "ref"
+    :unique true
+    :multi true
+    :component true
+    :restrictCollection "comment"
+    }
+   {
+    :_id  "_predicate"
+    :name "chat/stringNotUnique"
+    :doc  "A chat message"
+    :type "string"
+    :unique false
+    }
+   {
+    :_id  "_predicate"
+    :name "chat/person"
+    :doc  "A reference to the person that created the message"
+    :type "ref"
+    :restrictCollection "person"
+    }
+   {
+    :_id   "_predicate"
+    :name "chat/instantUnique"
+    :doc   "The instant in time when this chat happened."
+    :type "instant"
+    :index true
+    }
+   {
+    :_id       "_predicate"
+    :name "chat/comments"
+    :doc       "A reference to comments about this message"
+    :type "ref"
+    :component true
+    :multi     true
+    :restrictCollection "comment"
+    }
+   {
+    :_id  "_predicate"
+    :name "comment/string"
+    :doc  "A comment message."
+    :type "string"
+    }
+   {:_id "_predicate"
+    :name "comment/nestedComponent"
+    :doc "Component nested in person > comment > nestedComponent"
+    :type "ref"
+    :component true
+    }
+   {:_id "_predicate"
+    :name "nestedComponent/stringNotUnique"
+    :doc "String for the component nested in person > comment > nestedComponent"
+    :type "string"
+    :unique false
+    }]

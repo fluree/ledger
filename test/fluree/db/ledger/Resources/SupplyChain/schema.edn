@@ -1,0 +1,63 @@
+[{:_id "_collection", :name "purchaseOrder"}
+ {:_id "_collection", :name "organization"}
+ {:_id "_collection", :name "shipment"}
+ {:_id "_collection", :name "product"}
+ {:_id "_collection",
+  :name "event",
+  :doc "Collection to store information about notable events in the supply chain, i.e. contamination, etc."}
+ {:_id "_predicate", :name "purchaseOrder/id", :type "string", :unique true}
+ {:_id "_predicate", :name "purchaseOrder/name", :type "string", :unique true}
+ {:_id "_predicate", :name "purchaseOrder/issueDate", :type "instant"}
+ {:_id "_predicate", :name "purchaseOrder/issuer", :type "ref", :restrictCollection "organization"}
+ {:_id "_predicate",
+  :name "purchaseOrder/shipments",
+  :type "ref",
+  :restrictCollection "shipment",
+  :unique true,
+  :multi true}
+ {:_id "_predicate", :name "purchaseOrder/product", :type "ref", :restrictCollection "product"}
+ {:_id "_predicate", :name "purchaseOrder/approved", :type "ref", :restrictCollection "organization", :multi true}
+ {:_id "_predicate", :name "purchaseOrder/harvestDate", :type "instant"}
+ {:_id "_predicate", :name "purchaseOrder/grower", :type "ref", :restrictCollection "organization"}
+ {:_id "_predicate", :name "purchaseOrder/roastDate", :type "instant"}
+ {:_id "_predicate", :name "purchaseOrder/roaster", :type "ref", :restrictCollection "organization"}
+ {:_id "_predicate", :name "purchaseOrder/events", :type "ref", :restrictCollection "event", :multi true}
+ {:_id "_predicate", :name "product/name", :type "string"}
+ {:_id "_predicate", :name "product/id", :type "string", :unique true}
+ {:_id "_predicate", :name "product/category", :type "tag"}
+ {:_id "_predicate", :name "product/strain", :type "tag"}
+ {:_id "_predicate", :name "product/description", :type "string"}
+ {:_id "_predicate", :name "product/quantity", :type "int"}
+ {:_id "_predicate", :name "product/unitOfMeasure", :type "tag"}
+ {:_id "_predicate", :name "purchaseOrder/closed", :type "ref", :restrictCollection "organization"}
+ {:_id "_predicate", :name "shipment/id", :type "string", :unique true}
+ {:_id "_predicate", :name "shipment/name", :type "string", :unique true}
+ {:_id "_predicate", :name "shipment/sentBy", :type "ref", :restrictCollection "organization"}
+ {:_id "_predicate", :name "shipment/sentDate", :type "instant"}
+ {:_id "_predicate", :name "shipment/sentLocation", :type "string"}
+ {:_id "_predicate", :name "shipment/intendedRecipient", :type "ref", :restrictCollection "organization"}
+ {:_id "_predicate", :name "shipment/receivedDate", :type "instant"}
+ {:_id "_predicate", :name "shipment/intendedReceiptLocation", :type "string"}
+ {:_id "_predicate", :name "shipment/GPSLocation", :type "string"}
+ {:_id "_predicate", :name "shipment/itemDescription", :type "string"}
+ {:_id "_predicate", :name "shipment/shipper", :type "ref", :restrictCollection "organization"}
+ {:_id "_predicate", :name "shipment/sentSignature", :type "ref", :restrictCollection "organization"}
+ {:_id "_predicate", :name "shipment/receivedSignature", :type "ref", :restrictCollection "organization"}
+ {:_id "_predicate", :name "organization/name", :type "string", :unique true}
+ {:_id "_predicate", :name "organization/type", :type "tag"}
+ {:_id "_predicate", :name "organization/auth", :type "ref", :restrictCollection "_auth"}
+ {:_id "_predicate", :name "event/id", :type "string", :unique true}
+ {:_id "_predicate", :name "event/category", :type "tag"}
+ {:_id "_predicate", :name "event/description", :type "string"}
+ {:_id "_predicate", :name "event/date", :type "instant"}
+ {:_id "_predicate",
+  :name "event/notify",
+  :type "ref",
+  :restrictCollection "organization",
+  :multi true,
+  :doc "End user app can use this to notify the relevant organizations of an event."}
+ {:_id "_fn$s",
+  :name "s",
+  :code "(query (str \"{\\\"select\\\": [\\\"*\\\"], \\\"from\\\":\" (?sid) \"}\"))",
+  :doc "Get * from subject id."}
+ {:_id "_predicate", :name "_auth/descId", :type "string", :unique true}]

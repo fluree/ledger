@@ -1,0 +1,42 @@
+{:_id                      "_id"  :person/user "user"
+ :person/stringUnique "stringUnique" :person/stringNotUnique "stringNotUnique"
+ :person/stringNotUniqueMulti "stringNotUniqueMulti" :person/stringUniqueMulti "stringUniqueMulti"
+
+ :person/intNotUnique "intNotUnique" :person/intUnique "intUnique"
+ :person/intNotUniqueMulti "intNotUniqueMulti" :person/intUniqueMulti "intUniqueMulti"
+
+ :person/longNotUnique "longNotUnique" :person/longUnique "longUnique"
+ :person/longNotUniqueMulti "longNotUniqueMulti" :person/longUniqueMulti "longUniqueMulti"
+
+ :person/bigintNotUnique "bigintNotUnique" :person/bigintUnique "bigintUnique"
+ :person/bigintNotUniqueMulti "bigintNotUniqueMulti" :person/bigintUniqueMulti "bigintUniqueMulti"
+
+ :person/floatNotUnique "floatNotUnique" :person/floatUnique "floatUnique"
+ :person/floatNotUniqueMulti "floatNotUniqueMulti" :person/floatUniqueMulti "floatUniqueMulti"
+
+ :person/doubleNotUnique "doubleNotUnique" :person/doubleUnique "doubleUnique"
+ :person/doubleNotUniqueMulti "doubleNotUniqueMulti" :person/doubleUniqueMulti "doubleUniqueMulti"
+
+ :person/bigdecNotUnique "bigdecNotUnique" :person/bigdecUnique "bigdecUnique"
+ :person/bigdecNotUniqueMulti "bigdecNotUniqueMulti" :person/bigdecUniqueMulti "bigdecUniqueMulti"
+
+ :person/instantNotUnique "instantNotUnique" :person/instantUnique "instantUnique"
+ :person/instantNotUniqueMulti "instantNotUniqueMulti" :person/instantUniqueMulti "instantUniqueMulti"
+
+ :person/tagNotUniqueMulti "tagNotUniqueMulti" :person/tagUniqueMulti "tagUniqueMulti"
+ :person/tagNotUnique "tagNotUnique" :person/tagUnique "tagUnique"
+
+ :person/uriNotUnique "uriNotUnique" :person/uriUnique "uriUnique"
+ :person/uriNotUniqueMulti "uriNotUniqueMulti" :person/uriUniqueMulti "uriUniqueMulti"
+
+ :person/bytesNotUnique "bytesNotUnique" :person/bytesUnique "bytesUnique"
+ :person/bytesNotUniqueMulti "bytesNotUniqueMulti" :person/bytesUniqueMulti "bytesUniqueMulti"
+
+ :person/jsonNotUnique "jsonNotUnique" :person/jsonUnique "jsonUnique"
+ :person/jsonNotUniqueMulti "jsonNotUniqueMulti" :person/jsonUniqueMulti "jsonUniqueMulti"
+
+ :person/uuid "uuid" :person/uuidMulti "uuidMulti"
+
+ :person/boolean "boolean" :person/booleanMulti "booleanMulti"
+
+ :person/comments "comments"}

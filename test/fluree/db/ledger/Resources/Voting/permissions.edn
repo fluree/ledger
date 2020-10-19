@@ -1,0 +1,35 @@
+[{:_id "_rule$editVotes",
+  :fns [["_fn/name" "true"]],
+  :id "editVotes",
+  :collection "vote",
+  :collectionDefault true,
+  :ops ["transact" "query"]}
+ {:_id "_rule$editChanges",
+  :fns [["_fn/name" "true"]],
+  :id "editChanges",
+  :collection "change",
+  :collectionDefault true,
+  :ops ["transact" "query"]}
+ {:_id "_rule$viewUsers",
+  :fns [["_fn/name" "true"]],
+  :id "viewUsers",
+  :collection "_user",
+  :collectionDefault true,
+  :ops ["query"]}
+ {:_id "_rule$viewAuth",
+  :fns [["_fn/name" "true"]],
+  :id "viewAuth",
+  :collection "_auth",
+  :collectionDefault true,
+  :ops ["query"]}
+ {:_id "_rule$editOwnUser",
+  :fns ["_fn$editOwnUser"],
+  :id "editOwnUser",
+  :collection "_user",
+  :collectionDefault true,
+  :ops ["transact"]}
+ {:_id "_fn$editOwnUser",
+  :name "editOwnUser",
+  :code "(contains? (get-all (query (str \"{\\\"select\\\": [{\\\"_user/_auth\\\": [\\\"_id\\\"]}], \\\"from\\\": \" (?auth_id) \"}\")) [\"_user/_auth\" \"_id\"]) (?sid))"}
+ {:_id ["_role/id" "voter"],
+  :rules ["_rule$editChanges" "_rule$editVotes" "_rule$editOwnUser" "_rule$viewUsers" "_rule$viewAuth"]}]

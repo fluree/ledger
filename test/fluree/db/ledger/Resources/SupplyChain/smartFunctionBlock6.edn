@@ -1,0 +1,35 @@
+[{:_id "_fn$authIsGrower?",
+  :name "authIsGrower?",
+  :code "(contains? (authOrgType) \"organization/type:grower\")",
+  :doc "Returns true if issuing auth record is connected to a organization of type grower."}
+ {:_id "_fn$authIsRoaster?",
+  :name "authIsRoaster?",
+  :code "(contains? (authOrgType) \"organization/type:roaster\")",
+  :doc "Returns true if issuing auth record is connected to a organization of type roaster"}
+ {:_id "_fn$authIsCafe?",
+  :name "authIsCafe?",
+  :code "(contains? (authOrgType) \"organization/type:cafe\")",
+  :doc "Returns true if issuing auth record is connected to a organization of type cafe."}
+ {:_id "_fn$authIsShipper?",
+  :name "authIsShipper?",
+  :code "(contains? (authOrgType) \"organization/type:shipper\")",
+  :doc "Returns true if issuing auth record is connected to a organization of type shipper."}
+ {:_id "_fn$isGrower?",
+  :name "isGrower?",
+  :code "(contains? (orgType) \"organization/type:grower\")",
+  :doc "Returns true if object is an organization of type grower."}
+ {:_id "_fn$isRoaster?",
+  :name "isRoaster?",
+  :code "(contains? (orgType) \"organization/type:roaster\")",
+  :doc "Returns true if object is an organization of type roaster"}
+ {:_id "_fn$isCafe?",
+  :name "isCafe",
+  :code "(contains? (orgType) \"organization/type:cafe\")",
+  :doc "Returns true if object is an organization of type cafe."}
+ {:_id "_fn$isShipper?",
+  :name "isShipper",
+  :code "(contains? (orgType) \"organization/type:shipper\")",
+  :doc "Returns true if object is an organization of type shipper."}
+ {:_id "_fn$orgAuthIsSelf?",
+  :name "orgAuthIsSelf?",
+  :code "(contains? (orgAuth) (?auth_id))"}]

@@ -1,0 +1,296 @@
+[{
+  :_id      "_user$zsmith"
+  :username "zsmith"
+  :roles    ["_role$chatUser"]
+  :auth     ["_auth$temp"]
+  }
+ {
+  :_id      "_user$jdoe"
+  :username "jdoe"
+  :auth   ["_auth$chatUser"]
+  }
+ {
+  :_id "person$1"
+  :stringUnique "jdoe"
+  :stringNotUnique "Jane"
+  :intNotUnique 12
+  :intNotUniqueMulti [1 67 30]
+  :instantNotUnique 1537551188061
+  :longNotUnique 1537551188061
+  :comments ["comment$1" "comment$2" "comment$3" "comment$4"]
+  :user "_user$jdoe"
+  }
+ {
+  :_id "person$2"
+  :stringUnique "zsmith"
+  :stringNotUnique "Zach"
+  :intNotUnique 12
+  :instantNotUnique 1537551188061
+  :longNotUnique 1537551188061
+  :intNotUniqueMulti [-9 0 5]
+  :comments ["comment$5"]
+  :user "_user$zsmith"
+  }
+ {
+  :_id "person$3"
+  :stringUnique "jmac"
+  :stringNotUnique "Jane"
+  :intNotUnique 89
+  :instantNotUnique 1537551188061
+  :longNotUnique 1537551188061
+  :intNotUniqueMulti [-10 11 29]
+  :comments ["comment$6" "comment$7" "comment$8" "comment$9" "comment$10" "comment$11" "comment$12"]
+  }
+ {
+  :_id "person"
+  :stringUnique "zaar"
+  :stringNotUnique "Zane"
+  :intNotUnique 50
+  :instantNotUnique 1537551188061
+  :longNotUnique 1537551188061
+  :intNotUniqueMulti [1 1 35 29]
+  }
+ {
+  :_id "comment$1"
+  :string "Bacon ipsum dolor amet leberkas ball tip flank ham hock turducken bacon t-bone spare ribs shank doner sirloin."
+  :nestedComponent "nestedComponent$1"
+  }
+ {
+  :_id "comment$2"
+  :string "Corned beef picanha boudin drumstick pork turkey ball tip biltong."
+  :nestedComponent "nestedComponent$2"
+  }
+ {
+  :_id "comment$3"
+  :string "Pancetta sirloin kielbasa spare ribs."
+  :nestedComponent "nestedComponent$3"
+  }
+ {
+  :_id "comment$4"
+  :string "Leberkas cupim pork shank tongue doner strip steak jowl pork chop."
+  :nestedComponent "nestedComponent$4"
+  }
+ {
+  :_id "comment$5"
+  :string "Salami andouille drumstick meatloaf swine biltong prosciutto tongue landjaeger chicken fatback pork chop. Shank pastrami tri-tip pork belly picanha strip steak meatloaf landjaeger biltong fatback tail chuck tenderloin ball tip. Andouille tail biltong capicola salami picanha tenderloin landjaeger pork belly corned beef buffalo swine burgdoggen."
+  :nestedComponent "nestedComponent$5"
+  }
+ {
+  :_id "comment$6"
+  :string "Leberkas pork porchetta swine capicola ground round andouille alcatra drumstick short loin strip steak cupim cow beef ribs tail."
+  :nestedComponent "nestedComponent$6"
+  }
+ {
+  :_id "comment$7"
+  :string "Chicken ham."
+  :nestedComponent "nestedComponent$7"
+  }
+ {
+  :_id "comment$8"
+  :string "Jowl prosciutto kielbasa bresaola venison brisket tri-tip tail rump tongue alcatra drumstick bacon."
+  :nestedComponent "nestedComponent$8"
+  }
+ {
+  :_id "comment$9"
+  :string "Rump short ribs doner."
+  :nestedComponent "nestedComponent$9"
+  }
+ {
+  :_id "comment$10"
+  :string "Burgdoggen cupim beef ribs pork chuck capicola alcatra cow salami tri-tip hamburger venison shankle."
+  :nestedComponent "nestedComponent$10"
+  }
+ {
+  :_id "comment$11"
+  :string "Ham turducken doner capicola."
+  :nestedComponent "nestedComponent$11"
+  }
+ {
+  :_id "comment$12"
+  :string "Ham pork turkey shankle sirloin picanha tail biltong ground round meatloaf rump."
+  :nestedComponent "nestedComponent$12"
+  }
+ {
+  :_id "nestedComponent$1"
+  :stringNotUnique "abc"
+  }
+ {
+  :_id "nestedComponent$2"
+  :stringNotUnique "def"
+  }
+ {
+  :_id "nestedComponent$3"
+  :stringNotUnique "ghi"
+  }
+ {
+  :_id "nestedComponent$4"
+  :stringNotUnique "jkl"
+  }
+ {
+  :_id "nestedComponent$5"
+  :stringNotUnique "mno"
+  }
+ {
+  :_id "nestedComponent$6"
+  :stringNotUnique "mno"
+  }
+ {
+  :_id "nestedComponent$7"
+  :stringNotUnique "abc"
+  }
+ {
+  :_id "nestedComponent$8"
+  :stringNotUnique "def"
+  }
+ {
+  :_id "nestedComponent$9"
+  :stringNotUnique "ghi"
+  }
+ {
+  :_id "nestedComponent$10"
+  :stringNotUnique "jkl"
+  }
+ {
+  :_id "nestedComponent$11"
+  :stringNotUnique "mno"
+  }
+ {
+  :_id "nestedComponent$12"
+  :stringNotUnique "mno"
+  }
+ {
+  :_id "chat$1"
+  :stringNotUnique "Tiramisu jelly danish bonbon macaroon."
+  :person "person$1"
+  :instantUnique "#(now)"
+  :comments ["comment$1" "comment$2"]
+  }
+ {
+  :_id "chat$2"
+  :stringNotUnique "Lemon drops gummies topping donut fruitcake jelly beans. Marzipan candy canes jelly tiramisu gummi bears."
+  :person "person$2"
+  :instantUnique "#(now)"
+  }
+ {
+  :_id "chat$3"
+  :stringNotUnique "Tiramisu jelly danish bonbon macaroon."
+  :person "person$3"
+  :instantUnique "#(now)"
+  :comments ["comment$3"]
+  }
+ {
+  :_id "chat$4"
+  :stringNotUnique "Caramels cupcake brownie donut."
+  :person "person$1"
+  :instantUnique "#(now)"
+  :comments ["comment$4" "comment$5"]
+  }
+ {
+  :_id "chat$5"
+  :stringNotUnique "Muffin topping cookie lemon drops ice cream halvah fruitcake powder."
+  :person "person$1"
+  :instantUnique "#(now)"
+  :comments ["comment$6" "comment$7" "comment$8"]
+  }
+ {
+  :_id "chat$6"
+  :stringNotUnique "Powder croissant macaroon cupcake cheesecake."
+  :person "person$3"
+  :instantUnique "#(now)"
+  :comments ["comment$9"]
+  }
+ {
+  :_id "chat$7"
+  :stringNotUnique "Gingerbread candy jelly-o gummi bears tiramisu dessert."
+  :person "person$2"
+  :instantUnique "#(now)"
+  }
+ {
+  :_id "chat$8"
+  :stringNotUnique "Muffin topping cookie lemon drops ice cream halvah fruitcake powder."
+  :person "person$2"
+  :instantUnique "#(now)"
+  :comments ["comment$10"]
+  }
+ {
+  :_id "chat$9"
+  :stringNotUnique "Tiramisu jelly danish bonbon macaroon."
+  :person "person$2"
+  :instantUnique "#(now)"
+  }
+ {
+  :_id "chat$10"
+  :stringNotUnique "Jujubes sweet roll carrot cake jelly cheesecake powder."
+  :person "person$2"
+  :instantUnique "#(now)"
+  :comments ["comment$11"]
+  }
+ {
+  :_id "chat$11"
+  :stringNotUnique "Macaroon dragée gummies wafer fruitcake jelly chocolate cake."
+  :person "person$3"
+  :instantUnique "#(now)"
+  }
+ {
+  :_id "chat$12"
+  :stringNotUnique "Ice cream cookie topping jujubes carrot cake donut wafer pie."
+  :person "person$1"
+  :instantUnique "#(now)"
+  }
+ {
+  :_id "chat$13"
+  :stringNotUnique "Topping chupa chups tart."
+  :person "person$1"
+  :instantUnique "#(now)"
+  :comments ["comment$12"]
+  }
+ {
+  :_id    "_auth$temp"
+  :id    "tempAuthRecord"
+  }
+ {
+  :_id    "_auth$chatUser"
+  :id    "chatUser"
+  :roles  ["_role$chatUser"]
+  }
+ {
+  :_id "_role$chatUser"
+  :id "chatUser"
+  :doc "A standard chat user role"
+  :rules ["_rule$viewAllChats" "_rule$viewAllPeople" "_rule$editOwnChats"]
+  }
+ {
+  :_id "_rule$viewAllChats"
+  :id "viewAllChats"
+  :doc "Can view all chats."
+  :collection "chat"
+  :collectionDefault true
+  :fns [["_fn/name" "true"]]
+  :ops ["query"]
+  }
+ {
+  :_id "_rule$viewAllPeople"
+  :id "viewAllPeople"
+  :doc "Can view all people"
+  :collection "person"
+  :collectionDefault true
+  :fns [["_fn/name" "true"]]
+  :ops ["query"]
+  }
+ {
+  :_id "_rule$editOwnChats"
+  :id "editOwnChats"
+  :doc "Only allow users to edit their own chats"
+  :collection "chat"
+  :predicates ["chat/stringNotUnique"]
+  :fns ["_fn$ownChats"]
+  :ops ["transact"]
+  }
+ {
+  :_id "_fn$ownChats"
+  :name "ownChats"
+  :code "(contains? (get-all (query (str \"{\\\"select\\\": \\\"[{\\\"chat/person\\\":  [{\\\"person/auth\\\": [\\\"_id\\\"]}]}], \\\"from\\\": \" (?sid) \" } \")) [\"chat/person\" \"person/auth\" \"_id\"]) (?auth_id))"
+  }
+ ]
+
+

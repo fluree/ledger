@@ -1,0 +1,33 @@
+[{:_id "_user$losDelRio", :username "losDelRio", :auth ["_auth$losDelRio"]}
+ {:_id "_user$softCell", :username "softCell", :auth ["_auth$softCell"]}
+ {:_id "_user$dexysMidnightRunners", :username "dexysMidnightRunners", :auth ["_auth$dexysMidnightRunners"]}
+ {:_id "_user$rightSaidFred", :username "rightSaidFred", :auth ["_auth$rightSaidFred"]}
+ {:_id "_user$toniBasil", :username "toniBasil", :auth ["_auth$toniBasil"]}
+ {:_id "_auth$losDelRio",
+  :id "TfFSDSb61p6oqJkKPXk9XPaQS7PdH7xvHup",
+  :descId "losDelRioAuth",
+  :doc "losDelRio's auth record",
+  :roles ["_role$voter"]}
+ {:_id "_auth$softCell",
+  :id "TfHzKHsTdXVhbjskqesPTi6ZqwXHghFb1yK",
+  :descId "softCellAuth",
+  :doc "softCell's auth record",
+  :roles ["_role$voter"]}
+ {:_id "_auth$dexysMidnightRunners",
+  :id "TfFoQ4yB3vFn3th7Vce36Cb45fDau255GdH",
+  :descId "dexysMidnightRunnersAuth",
+  :doc "dexysMidnightRunners' auth record",
+  :roles ["_role$voter"]}
+ {:_id "_auth$rightSaidFred",
+  :id "TfBvBxdxcXNrDQY8aNcYmoUuA2TC1CTiWAK",
+  :descId "rightSaidFredAuth",
+  :doc "rightSaidFred's auth record",
+  :roles ["_role$voter"]}
+ {:_id "_auth$toniBasil",
+  :id "Tf31KGiwsqnw1TWTWPspxi3AoHTCA1wJNaE",
+  :descId "toniBasilAuth",
+  :doc "toniBasil auth record",
+  :roles ["_role$voter"]}
+ {:_id "_role$voter",
+  :id "voter",
+  :doc "A voter can view and edit changes, votes, and users. They cannot edit, auth records."}]

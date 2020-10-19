@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html>
+
+<body>
+    <div id="jwt">JWT</div>
+
+    <script>
+        // < !--let d = new Date(); -->
+        //     < !--document.body.innerHTML = "<h1>Today's date is " + d + "</h1>"-- >
+
+        var test = new XMLHttpRequest();
+        test.open('POST', 'http://localhost:8090/fdb/bp/pw/pw/login', true)
+        test.send();
+
+
+        var request = new XMLHttpRequest();
+
+        // var URI = 'http://localhost:8090/fdb/pw-generate';
+        // var data = JSON.stringify({
+        //     ledger: "bp/pw",
+        //     password: "fluree",
+        //     user: "bplatz",
+        //     roles: null,
+        //     expire: 1234
+        // });
+
+
+        var URI = 'http://localhost:8090/fdb/pw-login';
+        var data = JSON.stringify({
+            ledger: "bp/pw",
+            password: "fluree",
+            user: "bplatz",
+            expire: 999999999
+        });
+
+
+        // Open a new connection, using the GET request on the URL endpoint
+        request.open('POST', URI, false)
+        request.setRequestHeader("Content-type", "application/json");
+        // Send request
+        request.send(data)
+
+        console.log("Sent: " + data)
+        // var response = request.responseText();
+
+        // console.log("Response: " + response)
+
+
+        // test JWT renewal
+        var jwt = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJicC9wdyIsInN1YiI6IlRmRjRxWmE5UGdoVUhUWExhQVR2NFV5bVdWMTQ5NDRkMllkIiwiZXhwIjoxNTc1MzQ0NzE0MTkzLCJpYXQiOjE1NzQzNDQ3MTQxOTQsInByaSI6IjdlZjIyM2VkNDgxZDMwMTk4MWVlNjFiMzE2YTJkYzMzN2U0NDg3YmE3Njc5MjljYjhiZmJkN2Q0ZmRkYzg1YTE0NjkwZDgzN2VlNmEyNDk5YWNlOTNiMWFmYTJjMTliZTkzZTU5M2ZjZWVkNWMzY2EwODUyNzk2Mzc5ZDlmZDY3NTI2MWQxNDc5M2ZjZWJlNWUwZGEyNjI4ZmRlMWVhM2EifQ.Y1CNge7PcZkoGfPiXDHrasBPFwODaCqs-BycqAdfk_c";
+
+        request.open('POST', "http://localhost:8090/fdb/pw-renew", false)
+        request.setRequestHeader("Content-type", "application/json");
+        request.setRequestHeader("Authorization", "Bearer " + jwt);
+        // Send request
+        request.send()
+
+        console.log("Sent renewal.")
+
+
+
+
+    </script>
+
+</body>
+
+</html>
