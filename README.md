@@ -19,9 +19,13 @@ class configured by applying the YAML files in the `k8s/` directory:
 
 ## Development
 
+### Contributing
+
+All contributors must complete a [Contributor License Agreement](https://gist.github.com/bplatz/18bdfab7221fc1b03eb3293c8fe56077).
+
 ### Prerequisites
 
-1. Install clojure tools-deps
+1. Install clojure tools-deps (version 1.10.1.697 or later).
     1. macOS: `brew install clojure/tools/clojure`
     1. Arch Linux: `pacman -S clojure`
 
