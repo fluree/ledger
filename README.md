@@ -21,7 +21,7 @@ class configured by applying the YAML files in the `k8s/` directory:
 
 ### Contributing
 
-All contributors must complete a [Contributor License Agreement](https://gist.github.com/bplatz/18bdfab7221fc1b03eb3293c8fe56077).
+All contributors must complete a [Contributor License Agreement](https://cla-assistant.io/fluree/).
 
 ### Prerequisites
 
