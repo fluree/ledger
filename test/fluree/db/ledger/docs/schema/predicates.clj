@@ -15,7 +15,7 @@
                                        (basic/get-conn)
                                        test/ledger-chat
                                        long-desc-txn
-                                       {:timeout 120000}))
+                                       {:timeout 240000}))
 
         add-long-desc-txn [{:_id             ["_predicate/name" "person/handle"],
                             :longDescription "I have a lot to say about this predicate, so this is a longer description about the person/handle predicate"}
@@ -28,7 +28,7 @@
                                        (basic/get-conn)
                                        test/ledger-chat
                                        add-long-desc-txn
-                                       {:timeout 120000}))]
+                                       {:timeout 240000}))]
 
     (is (= 200 (:status res)))
     (is (= 200 (:status add-long-desc-res)))
@@ -59,18 +59,18 @@
                                             (basic/get-conn)
                                             test/ledger-chat
                                             txn
-                                            {:timeout 120000})) test/safe-Throwable->map :cause)
+                                            {:timeout 240000})) test/safe-Throwable->map :cause)
         set-upsert         [{:_id ["_predicate/name" "_predicate/name"], :upsert true}]
         upsertRes          (async/<!! (fdb/transact-async
                                         (basic/get-conn)
                                         test/ledger-chat
                                         set-upsert
-                                        {:timeout 120000}))
+                                        {:timeout 240000}))
         attemptToUpsertRes (async/<!! (fdb/transact-async
                                         (basic/get-conn)
                                         test/ledger-chat
                                         txn
-                                        {:timeout 120000}))]
+                                        {:timeout 240000}))]
 
     (is (str/includes? res "Predicate _predicate/name does not allow upsert"))
     (is (str/includes? res "duplicates an existing _predicate/name (_user/username)"))
@@ -110,11 +110,11 @@
                                      (basic/get-conn)
                                      test/ledger-chat
                                      good-tx
-                                     {:timeout 120000}))
+                                     {:timeout 240000}))
         bad-resp        (async/<!! (basic/issue-consecutive-transactions
                                      test/ledger-chat
                                      bad-tx
-                                     {:timeout 120000}))
+                                     {:timeout 240000}))
         bad-resp-errs   (map #(-> % test/safe-Throwable->map :cause) bad-resp)]
 
     (is (= 9 (count bad-resp-errs)))
@@ -137,7 +137,7 @@
                                               (basic/get-conn)
                                               test/ledger-chat
                                               create-chat-comments-txn
-                                              {:timeout 120000}))
+                                              {:timeout 240000}))
         tempids                  (:tempids add-data-resp)
         chat$1                   (get tempids "chat$1")
         comment$1                (get tempids "comment$1")
@@ -147,7 +147,7 @@
                                               (basic/get-conn)
                                               test/ledger-chat
                                               delete-chat
-                                              {:timeout 120000}))
+                                              {:timeout 240000}))
         cmnt-flakes              (filter #(#{comment$1 comment$2} (first %))
                                          (:flakes delete-resp))]
 
@@ -168,7 +168,7 @@
                                            (basic/get-conn)
                                            test/ledger-chat
                                            add-person
-                                           {:timeout 120000}))
+                                           {:timeout 240000}))
                               test/safe-Throwable->map
                               :cause)]
 
