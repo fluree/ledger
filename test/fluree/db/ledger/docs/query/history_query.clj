@@ -5,7 +5,8 @@
             [fluree.db.api :as fdb]
             [clojure.core.async :as async]
             [fluree.db.flake :as flake]
-            [fluree.db.util.log :as log]))
+            [fluree.db.util.log :as log]
+            [fluree.db.util.core :as util]))
 
 (use-fixtures :once test/test-system)
 
@@ -14,7 +15,8 @@
   (let [history-query {:history 369435906932737
                        :block   4}
         db            (basic/get-db test/ledger-chat)
-        res           (async/<!! (fdb/history-query-async db history-query))
+        res           @(fdb/history-query db history-query)
+        _             (when (util/exception? res) (throw res))
         flakes        (-> res first :flakes)]
     (is (= 5 (count flakes)))
 
@@ -25,7 +27,8 @@
   (let [history-query {:history ["person/handle" "zsmith"]
                        :block   4}
         db            (basic/get-db test/ledger-chat)
-        res           (async/<!! (fdb/history-query-async db history-query))
+        res           @(fdb/history-query db history-query)
+        _             (when (util/exception? res) (throw res))
         flakes        (-> res first :flakes)]
     (is (= 12 (count flakes)))
 
@@ -35,7 +38,8 @@
   (testing "History Query With Flake Format")
   (let [history-query {:history [["person/handle" "zsmith"] "person/follows"]}
         db            (basic/get-db test/ledger-chat)
-        res           (async/<!! (fdb/history-query-async db history-query))
+        res           @(fdb/history-query db history-query)
+        _             (when (util/exception? res) (throw res))
         flakes        (-> res first :flakes)]
 
     (is (= 1 (count flakes)))
@@ -50,7 +54,8 @@
   (let [history-query {:history      [nil "person/handle" "jdoe"]
                        :prettyPrint true}
         db            (basic/get-db test/ledger-chat)
-        res           (async/<!! (fdb/history-query-async db history-query))]
+        res           @(fdb/history-query db history-query)]
+    (when (util/exception? res) (throw res))
     (is (= 1 (count res)))
 
     (is (= #{:block :retracted :asserted :t} (-> res first keys set)))))
