@@ -130,7 +130,7 @@
 
     (is (= 3 (count (:chatQuery res))))
 
-    (is (= #{351843720888321 351843720888322 351843720888324}
+    (is (= #{351843720888320 351843720888321 351843720888323}
            (-> (map #(get-in % ["chat/person" "_id"]) (:chatQuery res)) set)))
 
     (is (= 6 (count (:personQuery res))))

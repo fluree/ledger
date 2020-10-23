@@ -96,7 +96,7 @@
 
  151 [:block-query {:block "PT1M"}]
  152 [:block-query {:block [3 5]}]
- 153 [:block-query {:block [3], :pretty-print true}]
+ 153 [:block-query {:block [3], :prettyPrint true}]
  154 [:block-query {:block [3]}]
  155 [:block-query {:block 3}]
 
@@ -106,7 +106,7 @@
  202 [:history-query {:history ["person/handle" "zsmith"] :block 4}]
  203 [:history-query {:history [["person/handle" "zsmith"] "person/follows"]}]
  204 [:history-query {:history [nil "person/handle" "jdoe"]}]
- 205 [:history-query {:history [nil "person/handle" "jdoe"] :pretty-print true}]
+ 205 [:history-query {:history [nil "person/handle" "jdoe"] :prettyPrint true}]
 
  ;; GraphQL Queries
 

@@ -236,7 +236,7 @@
                                :cause)]
 
 
-    (is (= addGrowerToPOResp "Only the grower, themselves, can add or edit purchaseOrder/grower. Value: 369435906932739"))
+    (is (= addGrowerToPOResp "Only the grower, themselves, can add or edit purchaseOrder/grower. Value: 369435906932738"))
 
     (is (= createShipmentResp "Transaction does not adhere to the collection spec: Required shipment predicates: id, name, sentBy, sentDate, sentLocation, itemDescription, intendedRecipient, intendedRecipientLocation. Can't create a shipment, unless it's connected to a purchaseOrder. Can't add shipper, or GPSLocation, unless you have sentSignature, shipper, and GPSLocation."))))
 

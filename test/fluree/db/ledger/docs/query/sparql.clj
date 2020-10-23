@@ -13,7 +13,7 @@
         db  (basic/get-db test/ledger-chat)
         res  (first (async/<!! (fdb/sparql-async db sparql-query)))]
 
-    (is (= (first res) 351843720888321))
+    (is (= (first res) 351843720888320))
     (is (= (last res) "Jane Doe"))))
 
 (deftest sparql-max-function-in-select
@@ -32,7 +32,7 @@
         res (async/<!! (fdb/sparql-async db sparql-query))]
 
     (is (every? #(= (count %) 3) res))
-    (is (every? #(and (= 351843720888321 (first %)) (= "Jane Doe" (get % 1)) (number? (last %))) res))))
+    (is (every? #(and (= 351843720888320 (first %)) (= "Jane Doe" (second %)) (number? (last %))) res))))
 
 
 (deftest sparql-clause-with-comma
@@ -48,7 +48,7 @@
 (deftest sparql-test
   (basic-sparql)
   (sparql-max-function-in-select)
-  ;(sparql-multi-clause-with-semicolon)
+  (sparql-multi-clause-with-semicolon)
   (sparql-clause-with-comma))
 
 (deftest tests-independent
