@@ -11,7 +11,10 @@
 (deftest add-collection-long-desc
   (testing "Add long description to collections.")
   (let [long-desc-txn [{:_id "_predicate", :name "_collection/longDescription", :type "string"}]
-        res  (async/<!! (fdb/transact-async (basic/get-conn) test/ledger-chat long-desc-txn))
+        res  (async/<!! (fdb/transact-async (basic/get-conn)
+                                            test/ledger-chat
+                                            long-desc-txn
+                                            {:timeout 120000}))
 
         add-long-desc-txn [{:_id ["_collection/name" "person"],
                             :longDescription "I have a lot to say about this collection, so this is a longer description about the person collection"}
@@ -19,7 +22,10 @@
                             :name "animal",
                             :longDescription "I have a lot to say about this collection, so this is a longer description about the animal collection"}]
 
-        add-long-desc-res (async/<!! (fdb/transact-async (basic/get-conn) test/ledger-chat add-long-desc-txn))]
+        add-long-desc-res (async/<!! (fdb/transact-async (basic/get-conn)
+                                                         test/ledger-chat
+                                                         add-long-desc-txn
+                                                         {:timeout 120000}))]
 
     (is (= 200 (:status res)))
     (is (= 200 (:status add-long-desc-res)))
@@ -45,9 +51,17 @@
 (deftest collection-upsert
   (testing "Attempt to upsert _collection/name, then set upsert")
   (let [txn [{:_id "_collection", :name "_user", :doc "The user's collection"}]
-        res (-> (async/<!! (fdb/transact-async (basic/get-conn) test/ledger-chat txn)) test/safe-Throwable->map :cause)
+        res (-> (async/<!! (fdb/transact-async (basic/get-conn)
+                                               test/ledger-chat
+                                               txn
+                                               {:timeout 120000}))
+                test/safe-Throwable->map
+                :cause)
         set-upsert [{:_id ["_predicate/name" "_collection/name"], :upsert true}]
-        upsertRes  (async/<!! (fdb/transact-async (basic/get-conn) test/ledger-chat set-upsert))
+        upsertRes  (async/<!! (fdb/transact-async (basic/get-conn)
+                                                  test/ledger-chat
+                                                  set-upsert
+                                                  {:timeout 120000}))
         attemptToUpsertRes  (async/<!! (fdb/transact-async (basic/get-conn) test/ledger-chat txn))]
 
     (is (str/includes? res "Predicate _collection/name does not allow upsert"))
