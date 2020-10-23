@@ -48,7 +48,7 @@
 (deftest sparql-test
   (basic-sparql)
   (sparql-max-function-in-select)
-  ;(sparql-multi-clause-with-semicolon)
+  (sparql-multi-clause-with-semicolon)
   (sparql-clause-with-comma))
 
 (deftest tests-independent
