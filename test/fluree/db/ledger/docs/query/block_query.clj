@@ -63,7 +63,7 @@
 (deftest query-block-range-pretty-print
   (testing "Pretty prints a block range")
   (let [query {:block [3]
-               :pretty-print true}
+               :prettyPrint true}
         res    (async/<!! (fdb/block-query-async (basic/get-conn) test/ledger-chat query))
         flakeKeys3 (-> res second :flakes keys set)]
 

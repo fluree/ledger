@@ -48,7 +48,7 @@
 (deftest history-with-flake-format-pretty-print
   (testing "History Query With Flake Format")
   (let [history-query {:history      [nil "person/handle" "jdoe"]
-                       :pretty-print true}
+                       :prettyPrint true}
         db            (basic/get-db test/ledger-chat)
         res           (async/<!! (fdb/history-query-async db history-query))]
     (is (= 1 (count res)))
