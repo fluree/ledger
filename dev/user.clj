@@ -152,7 +152,8 @@
           :fdb-api-port               8090})
 
   ;; Standalone - In Memory
-  (start {:fdb-group-servers     "DEF@localhost:11001"
+  (start {:fdb-mode              "dev"
+          :fdb-group-servers     "DEF@localhost:11001"
           :fdb-group-this-server "DEF"
           :fdb-storage-type      "memory"
           :fdb-api-port          8091

@@ -415,8 +415,9 @@
 (defn- build-group-settings
   "Generates groups settings.
   Raft servers should be a map, with server-ids as keys and values as a map with :host and :port keys."
-  [settings group-servers]
-  (let [this-server    (:fdb-group-this-server settings)
+  [settings]
+  (let [group-servers  (build-group-server-configs settings)
+        this-server    (:fdb-group-this-server settings)
         timeout-ms     (env-milliseconds (:fdb-group-timeout settings))
         heartbeat-ms   (if-let [fdb-group-heartbeat (:fdb-group-heartbeat settings)]
                          (env-milliseconds fdb-group-heartbeat)
@@ -474,8 +475,7 @@
         debug-mode?    (-> settings :fdb-debug-mode env-boolean)
         ;fdb-version         (util/get-version "fluree" "db")
         consensus-type (-> settings :fdb-consensus-type str/lower-case keyword)
-        hostname       (-> settings :hostname)
-        group-servers  (build-group-server-configs settings)]
+        hostname       (-> settings :hostname)]
 
     {:transactor? is-ledger?
      :join?       fdb-join
@@ -497,7 +497,8 @@
                    :meta        {:hostname hostname}}
      ;:version  fdb-version
 
-     :group       (build-group-settings settings group-servers)
+     :group       (when is-ledger?                          ;; ledger settings require some settings which are optional for query edge server
+                    (build-group-settings settings))
      :consensus   {:type    consensus-type
                    :options (case consensus-type
                               :raft (raft-transactor-settings settings)
