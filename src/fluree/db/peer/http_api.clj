@@ -682,24 +682,36 @@
 
 (defn add-server
   [system {:keys [headers body params remote-addr] :as request}]
-  (let [{:keys [server]} (decode-body body :json)
-        add-server (<?? (txproto/-add-server-async (:group system) server))]
-    {:status  200
+  (if (is-ledger? system)
+    (let [{:keys [server]} (decode-body body :json)
+          add-server (<?? (txproto/-add-server-async (:group system) server))]
+      {:status  200
+       :headers {"Content-Type" "application/json; charset=utf-8"}
+       :body    (json/stringify-UTF8 add-server)})
+    {:status  400
      :headers {"Content-Type" "application/json; charset=utf-8"}
-     :body    (json/stringify-UTF8 add-server)}))
+     :body    (json/stringify-UTF8 {:message "add-server is only available when connected to a ledger server"
+                                    :error   "db/invalid-request"})}))
 
 (defn remove-server
   [system {:keys [headers body params remote-addr] :as request}]
-  (let [{:keys [server]} (decode-body body :json)
-        remove-server (<?? (txproto/-remove-server-async (:group system) server))]
-    {:status  200
+  (if (is-ledger? system)
+    (let [{:keys [server]} (decode-body body :json)
+          remove-server (<?? (txproto/-remove-server-async (:group system) server))]
+      {:status  200
+       :headers {"Content-Type" "application/json; charset=utf-8"}
+       :body    (json/stringify-UTF8 remove-server)})
+    {:status  400
      :headers {"Content-Type" "application/json; charset=utf-8"}
-     :body    (json/stringify-UTF8 remove-server)}))
+     :body    (json/stringify-UTF8 {:message "remove-server is only available when connected to a ledger server"
+                                    :error   "db/invalid-request"})}))
 
 (defn health-handler
   [system request]
-  (let [state (-> (txproto/-state (:group system))
-                  :status)]
+  (let [state (if (is-ledger? system)
+                (-> (txproto/-state (:group system))
+                    :status)
+                {})]
     {:status  200
      :headers {"Content-Type" "application/json; charset=utf-8"}
      :body    (json/stringify-UTF8 {:ready       true
