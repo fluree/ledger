@@ -135,26 +135,6 @@
   (get-in req [:headers "signature"]))
 
 
-(defn delete-ledger
-  "Deletes ledger and snapshots, without creating an S3 bucket. "
-  [{:keys [conn] :as system} params auth-sid]
-  ;(let [{:keys [dbname]} params
-  ;      master-conn    (db/master-connection backend)
-  ;      conn           (db/connect backend dbname)
-  ;      delete-db-resp @(db/delete-db conn)]
-  ;  (if (= 200 (:status delete-db-resp))
-  ;    ;; db is deleting, remove master DB record of DB
-  ;    (let [res @(db/transact master-conn {:tx (json/write [{:_id     ["db/name" dbname]
-  ;                                                           :deleted true}])})]
-  ;      (if (= 200 (:status res))
-  ;        {:status  200
-  ;         :message (str "Success. Deleting " dbname ".")}
-  ;        res))
-  ;    delete-db-resp))
-
-  nil)
-
-
 (defn verify-auth
   [db auth authority]
   (go-try (if (or (not auth) (= auth authority))
@@ -776,7 +756,6 @@
           (d/error! deferred e)))) deferred))
 
 
-
 (defn- promise-chan->deferred
   "Takes a channel and delivers the first result available into a manifold deferred"
   [chan]
@@ -805,7 +784,6 @@
 
     (str/ends-with? key "-l-his")
     (serdeproto/-deserialize-leaf serializer data)))
-
 
 
 ;; TODO - check for content in the cache might be quicker? cache is already deserialized though.
@@ -886,10 +864,8 @@
     deferred))
 
 
-
 (defn subscription-handler
   [system request])
-
 
 
 ; From https://gist.github.com/dannypurcell/8215411
@@ -978,28 +954,5 @@
                                  (netty/wait-for-close server-proc)))]
       (map->WebServer {:close close-fn}))))
 
-
-
-(comment
-  (def opts {:enabled true :system user/system :port 8080})
-
-  (webserver-factory opts)
-
-
-  (defn handler [req]
-    {:status  200
-     :headers {"content-type" "text/plain"}
-     :body    "hello!"})
-
-  (def server5 (http/start-server handler {:port 8080}))
-
-  (type server)
-
-  (do
-    ;(.close server4)
-    (aleph.netty/wait-for-close server5))
-
-
-  (.close server5))
 
 
