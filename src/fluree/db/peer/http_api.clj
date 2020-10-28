@@ -639,39 +639,13 @@
         raft      (-> system :group :state-atom deref (dissoc :private-key))
         {:keys [cmd-queue new-db-queue networks leases]} raft
         instant   (System/currentTimeMillis)
-        cmd-q     (loop [[cq & r] cmd-queue
-                         acc []]
-                    (if cq
-                      (let [[k v] cq
-                            acc* (into acc [{(keyword k) (count v)}])]
-                        (recur r acc*))
-                      acc))
-        new-db-q  (loop [[nq & r] new-db-queue
-                         acc []]
-                    (if nq
-                      (let [[k v] nq
-                            acc* (into acc [{(keyword k) (count v)}])]
-                        (recur r acc*))
-                      acc))
-        nw-data   (loop [[nw & r] networks
-                         acc []]
-                    (if nw
-                      (let [[k v] nw
-                            acc* (into acc [{(keyword k) (dissoc v :private-key)}])]
-                        (recur r acc*))
-                      acc))
-        svr-state (when-let [servers (into [] (:servers leases))]
-                    (loop [[server & r] servers
-                           acc []]
-                      (if-let [item (second server)]
-                        (recur r (into acc [{:id      (:id item)
-                                             :active? (> (:expire item) instant)}]))
-                        acc)))
-        raft'     (-> raft
-                      (dissoc :cmd-queue :new-db-queue :networks)
-                      (assoc :cmd-queue cmd-q
-                             :new-db-queue new-db-q
-                             :networks nw-data))
+        cmd-q     (reduce-kv #(conj %1 {(keyword %2) (count %3)}) [] cmd-queue)
+        new-db-q  (reduce-kv #(conj %1 {(keyword %2) (count %3)}) [] new-db-queue)
+        nw-data   (reduce-kv #(conj %1 {(keyword %2) (dissoc %3 :private-key)}) [] networks)
+        svr-state (reduce-kv #(conj %1 {:id (:id %3) :active? (> (:expire %3) instant)}) [] (:servers leases))
+        raft'     (assoc raft :cmd-queue cmd-q
+                              :new-db-queue new-db-q
+                              :networks nw-data)
         state     (-> (txproto/-state (:group system))
                       (select-keys [:snapshot-term
                                     :latest-index
