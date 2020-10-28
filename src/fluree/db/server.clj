@@ -115,7 +115,8 @@
          group          (let [group-opts (:group config)]
                           (if transactor?
                             ;; TODO - currently if query-peer, we use a dummy group obj. Change this?
-                            (txgroup/start group-opts consensus-type join?) group-opts))
+                            (txgroup/start group-opts consensus-type join?)
+                            group-opts))
 
          remote-writer  (fn [k data]
                           (txproto/storage-write-async group k data))
