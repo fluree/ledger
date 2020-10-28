@@ -640,40 +640,45 @@
 
 (defn nw-state
   [system request]
-  (let [open-api? (open-api? system)
-        raft      (-> system :group :state-atom deref (dissoc :private-key))
-        {:keys [cmd-queue new-db-queue networks leases]} raft
-        instant   (System/currentTimeMillis)
-        cmd-q     (reduce-kv #(conj %1 {(keyword %2) (count %3)}) [] cmd-queue)
-        new-db-q  (reduce-kv #(conj %1 {(keyword %2) (count %3)}) [] new-db-queue)
-        nw-data   (reduce-kv #(conj %1 {(keyword %2) (dissoc %3 :private-key)}) [] networks)
-        svr-state (reduce-kv #(conj %1 {:id (:id %3) :active? (> (:expire %3) instant)}) [] (:servers leases))
-        raft'     (assoc raft :cmd-queue cmd-q
-                              :new-db-queue new-db-q
-                              :networks nw-data)
-        state     (-> (txproto/-state (:group system))
-                      (select-keys [:snapshot-term
-                                    :latest-index
-                                    :snapshot-index
-                                    :other-servers
-                                    :index
-                                    :snapshot-pending
-                                    :term
-                                    :leader
-                                    :timeout-at
-                                    :this-server
-                                    :status
-                                    :id
-                                    :commit
-                                    :servers
-                                    :voted-for
-                                    :timeout-ms])
-                      (assoc :open-api open-api?)
-                      (assoc :raft raft')
-                      (assoc :svr-state svr-state))]
+  (if (not (is-ledger? system))
     {:status  200
      :headers {"Content-Type" "application/json; charset=utf-8"}
-     :body    (json/stringify-UTF8 state)}))
+     :body    (json/stringify-UTF8 {:isLedger false})}
+    (let [open-api? (open-api? system)
+          raft      (-> system :group :state-atom deref (dissoc :private-key))
+          {:keys [cmd-queue new-db-queue networks leases]} raft
+          instant   (System/currentTimeMillis)
+          cmd-q     (reduce-kv #(conj %1 {(keyword %2) (count %3)}) [] cmd-queue)
+          new-db-q  (reduce-kv #(conj %1 {(keyword %2) (count %3)}) [] new-db-queue)
+          nw-data   (reduce-kv #(conj %1 {(keyword %2) (dissoc %3 :private-key)}) [] networks)
+          svr-state (reduce-kv #(conj %1 {:id (:id %3) :active? (> (:expire %3) instant)}) [] (:servers leases))
+          raft'     (assoc raft :cmd-queue cmd-q
+                                :new-db-queue new-db-q
+                                :networks nw-data)
+          state     (-> (txproto/-state (:group system))
+                        (select-keys [:snapshot-term
+                                      :latest-index
+                                      :snapshot-index
+                                      :other-servers
+                                      :index
+                                      :snapshot-pending
+                                      :term
+                                      :leader
+                                      :timeout-at
+                                      :this-server
+                                      :status
+                                      :id
+                                      :commit
+                                      :servers
+                                      :voted-for
+                                      :timeout-ms])
+                        (assoc :open-api open-api?
+                               :raft raft'
+                               :svr-state svr-state
+                               :isLedger true))]
+      {:status  200
+       :headers {"Content-Type" "application/json; charset=utf-8"}
+       :body    (json/stringify-UTF8 state)})))
 
 (defn add-server
   [system {:keys [headers body params remote-addr] :as request}]
