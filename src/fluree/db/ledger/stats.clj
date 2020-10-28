@@ -63,16 +63,16 @@
                     (assoc acc k v))
                   acc)) {} input) walk/keywordize-keys))
 
-(defn- transactor?
+(defn- is-ledger?
   "Checks if the system is a transaction server or not"
   [system]
-  (-> system :config :transactor?))
+  (-> system :config :is-ledger?))
 
 
 (defn report-stats
   [system]
   (log/info "Memory: " (memory-stats))
-  (when (transactor? system)
+  (when (is-ledger? system)
     (let [group-state  (txproto/-local-state (:group system))
           state-report (-> group-state
                            (select-keys [:version :leases :_work :networks]))]

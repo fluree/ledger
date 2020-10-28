@@ -319,7 +319,7 @@
   [settings]
   (let [encryption-key    (encryption-secret->key settings)
         dev?              (= "dev" (some-> settings :fdb-mode str/lower-case))
-        is-transactor?    (boolean (#{"dev" "ledger"} (some-> settings :fdb-mode str/lower-case)))
+        is-ledger?        (boolean (#{"dev" "ledger"} (some-> settings :fdb-mode str/lower-case)))
         typ               (storage-type settings)
         storage-directory (storage-directory settings)
         s3-conn           (some-> settings :fdb-storage-s3-bucket s3store/connect)
@@ -355,7 +355,8 @@
 
     {:storage-type typ
      :servers      (:fdb-conn-servers settings)
-     :options      {:transactor?    is-transactor?
+     :options      {:transactor?    is-ledger?              ;; deprecate
+                    :is-ledger?     is-ledger?
                     :storage-read   storage-read
                     :storage-exists storage-exists
                     ;; Storage write is overwritten in the default transactor to use the RAFT group as part of the write process
@@ -477,7 +478,8 @@
         consensus-type (-> settings :fdb-consensus-type str/lower-case keyword)
         hostname       (-> settings :hostname)]
 
-    {:transactor? is-ledger?
+    {:transactor? is-ledger?                                ;; deprecate
+     :is-ledger?  is-ledger?
      :join?       fdb-join
      :dev?        (= "dev" fdb-mode)
      :mode        fdb-mode

@@ -37,7 +37,7 @@
                             :tx-stats     {}                ;; stats on other (external) tx participants
                             }}
 
- ;; Leases allow other transactors in group to claim leadership over an activity, leases must be renewed before expiration
+ ;; Leases allow other ledger servers in group to claim leadership over an activity, leases must be renewed before expiration
  ;; server-lease, registers server on network as available to take work. Servers need to renew leases frequently (depends on expiration ms used)
  ;; The leader will review server leases, and based on that distributed work (divided by network today) to each of the servers.
  :leases       {:servers {:server-id {:id     :ABC

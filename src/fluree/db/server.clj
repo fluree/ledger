@@ -108,12 +108,12 @@
    (log/info "JVM arguments: " (str (stats/jvm-arguments)))
    (log/info "Memory Info: " (stats/memory-stats))
    (let [config         (settings/build-settings settings)
-         {:keys [transactor? mode consensus conn join?]} config
+         {:keys [is-ledger? mode consensus conn join?]} config
          consensus-type (:type consensus)
          storage-type   (:storage-type conn)
          memory?        (= :memory storage-type)
          group          (let [group-opts (:group config)]
-                          (if transactor?
+                          (if is-ledger?
                             ;; TODO - currently if query-peer, we use a dummy group obj. Change this?
                             (txgroup/start group-opts consensus-type join?)
                             group-opts))
@@ -127,7 +127,7 @@
                                                  :memory memorystore/connection-storage-write)
                               producer-chan    (async/chan (async/sliding-buffer 100))
                               publish-fn       (local-message-process {:config config :group group} producer-chan)
-                              conn-impl        (if transactor?
+                              conn-impl        (if is-ledger?
                                                  (connection/connect nil (assoc conn-opts :storage-write storage-write-fn :publish publish-fn :memory? memory?))
                                                  (connection/connect (:fdb-group-servers-ports settings) (assoc conn-opts :memory? memory?)))]
                           ;; launch message consumer, handles messages back from ledger
@@ -140,7 +140,7 @@
                          :group     group}
 
          ;; add a leader-watch function to upgrade data if required
-         _              (when (and (= :raft consensus-type) transactor?)
+         _              (when (and (= :raft consensus-type) is-ledger?)
                           (fraft/add-leader-watch (:raft group) ::upgrade (check-version-upgrade-fn conn system) :become-leader))
 
          webserver      (let [webserver-opts (-> (:webserver config)
@@ -149,14 +149,14 @@
          stats          (stats/initiate-stats-reporting system (-> config :stats :interval))
          system*        (assoc system :webserver webserver
                                       :stats stats)]
-     (when (and transactor? (or memory? (= consensus-type :in-memory))
+     (when (and is-ledger? (or memory? (= consensus-type :in-memory))
                 (not (and memory? (= consensus-type :in-memory))))
        (do (log/warn "Error during start-up. Currently if storage-type is 'memory', then consensus-type has to be 'in-memory' and vice versa.")
            (shutdown system*)
            (System/exit 1)))
 
      ;; wait for initialization, and kick off some startup activities
-     (when transactor?
+     (when is-ledger?
        (txproto/-start-up-activities group conn system* shutdown join?)) system*)))
 
 (defn- execute-command

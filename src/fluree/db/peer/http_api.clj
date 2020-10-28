@@ -188,6 +188,11 @@
   [system]
   (-> system :group :open-api))
 
+(defn- is-ledger?
+  "Checks if running as a transaction server (true) or a query edge server (false)"
+  [system]
+  (-> system :config :is-ledger?))
+
 (defn authenticated?
   "Returns truthy if either open-api is enable or user is authenticated"
   [system auth-map]
@@ -716,11 +721,10 @@
 (defn new-ledger
   [{:keys [conn] :as system} {:keys [body] :as request}]
   (let [body         (decode-body body :json)
-        transactor?  (-> system :config :transactor?)
         ledger-ident (:db/id body)
         opts         (dissoc body :db/id)
         result       @(fdb/new-ledger conn ledger-ident opts)
-        _            (when transactor? (session/session conn ledger-ident))
+        _            (when (is-ledger? system) (session/session conn ledger-ident))
         _            (if (= clojure.lang.ExceptionInfo (type result))
                        (throw result))]
     ;; create session so tx-monitors will work
