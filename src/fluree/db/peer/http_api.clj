@@ -233,7 +233,7 @@
           auth-id     (:auth auth-map)
           result      (<? (fdb/transact-async conn ledger param {:auth        auth-id
                                                                  :private-key private-key
-                                                                 :wait        true
+                                                                 :txid-only   false
                                                                  :timeout     timeout}))]
       [{:status (or (:status result) 200)
         :fuel   (or (:fuel result) 0)}
@@ -295,7 +295,7 @@
                        :else
                        (let [cmd  (-> param :cmd json/parse)
                              opts (-> (dissoc cmd :tx)
-                                      (assoc :txid-only true))
+                                      (assoc :txid-only false))
                              {:keys [tx db]} cmd]
                          (<? (fdb/transact-async conn db tx opts))))]
       [{:status (or (:status result) 200)
