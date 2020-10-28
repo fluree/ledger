@@ -148,12 +148,12 @@
                           (http-api/webserver-factory webserver-opts))
          stats          (stats/initiate-stats-reporting system (-> config :stats :interval))
          system*        (assoc system :webserver webserver
-                                      :stats stats)
-         _              (when (and (or memory? (= consensus-type :in-memory))
-                                   (not (and memory? (= consensus-type :in-memory))))
-                          (do (log/warn "Error during start-up. Currently if storage-type is 'memory', then consensus-type has to be 'in-memory' and vice versa.")
-                              (shutdown system*)
-                              (System/exit 1)))]
+                                      :stats stats)]
+     (when (and transactor? (or memory? (= consensus-type :in-memory))
+                (not (and memory? (= consensus-type :in-memory))))
+       (do (log/warn "Error during start-up. Currently if storage-type is 'memory', then consensus-type has to be 'in-memory' and vice versa.")
+           (shutdown system*)
+           (System/exit 1)))
 
      ;; wait for initialization, and kick off some startup activities
      (when transactor?
