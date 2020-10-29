@@ -9,7 +9,6 @@
             [manifold.deferred :as d]
             [ring.middleware.params :as params]
             [aleph.middleware.cors :as cors]
-
             [fluree.db.util.core :as util]
             [fluree.db.util.json :as json]
             [fluree.crypto :as crypto]
@@ -20,11 +19,9 @@
             [fluree.db.session :as session]
             [fluree.db.graphdb :as graphdb]
             [fluree.db.ledger.transact :as transact]
-            [fluree.db.ledger.snapshot :as snapshot]
             [fluree.db.ledger.export :as export]
             [fluree.db.query.http-signatures :as http-signatures]
             [fluree.db.token-auth :as token-auth]
-
             [fluree.db.peer.websocket :as websocket]
             [ring.util.response :as resp]
             [clojure.string :as str]
@@ -37,12 +34,11 @@
             [fluree.db.ledger.mutable :as mutable]
             [fluree.db.auth :as auth]
             [fluree.db.ledger.delete :as delete])
-
-
   (:import (java.io Closeable)
            (java.time Instant)
            (java.net BindException)
-           (fluree.db.flake Flake)))
+           (fluree.db.flake Flake)
+           (clojure.lang ExceptionInfo)))
 
 (defn s
   [^Flake f]
@@ -111,6 +107,7 @@
    :headers {"Content-Type" "text/plain"}
    :body    "Not found"})
 
+
 (defn- json-response
   [status body & [headers]]
   {:status  status
@@ -123,6 +120,7 @@
   (case type
     :json (json/parse body)))
 
+
 (defn- return-token
   [req]
   (some->>
@@ -130,29 +128,10 @@
     (re-find #"^Bearer (.+)$")
     (second)))
 
+
 (defn- return-signature
   [req]
   (get-in req [:headers "signature"]))
-
-
-(defn delete-ledger
-  "Deletes ledger and snapshots, without creating an S3 bucket. "
-  [{:keys [conn] :as system} params auth-sid]
-  ;(let [{:keys [dbname]} params
-  ;      master-conn    (db/master-connection backend)
-  ;      conn           (db/connect backend dbname)
-  ;      delete-db-resp @(db/delete-db conn)]
-  ;  (if (= 200 (:status delete-db-resp))
-  ;    ;; db is deleting, remove master DB record of DB
-  ;    (let [res @(db/transact master-conn {:tx (json/write [{:_id     ["db/name" dbname]
-  ;                                                           :deleted true}])})]
-  ;      (if (= 200 (:status res))
-  ;        {:status  200
-  ;         :message (str "Success. Deleting " dbname ".")}
-  ;        res))
-  ;    delete-db-resp))
-
-  nil)
 
 
 (defn verify-auth
@@ -184,15 +163,18 @@
             (assoc :ledger ledger)))
       (pw-auth/fluree-auth-map (:conn system) ledger jwt))))
 
+
 (defn open-api?
   [system]
   (-> system :group :open-api))
+
 
 (defn authenticated?
   "Returns truthy if either open-api is enable or user is authenticated"
   [system auth-map]
   (or (open-api? system)
       (:auth auth-map)))
+
 
 (defn- require-authentication
   "Will throw if request if not authenticated"
@@ -201,6 +183,7 @@
     (throw (ex-info (str "Request requires authentication.")
                     {:status 401
                      :error  :db/invalid-auth}))))
+
 
 (defn- strict-authentication
   "Will throw if request if not authenticated, and if the auth-id isn't
@@ -219,6 +202,7 @@
 
 
 (defmulti action-handler (fn [action _ _ _ _ _] action))
+
 
 (defmethod action-handler :transact
   [_ system param auth-map ledger timeout]
@@ -239,6 +223,7 @@
         :fuel   (or (:fuel result) 0)}
        result])))
 
+
 (defmethod action-handler :hide
   [_ system param _ ledger _]
   (go-try
@@ -257,6 +242,7 @@
       [{:status (or (:status result) 500)
         :fuel   (or (:fuel result) 0)}
        (:result result)])))
+
 
 (defmethod action-handler :purge
   [_ system param _ ledger _]
@@ -301,6 +287,7 @@
       [{:status (or (:status result) 200)
         :fuel   (or (:fuel result) 0)}
        result])))
+
 
 (defmethod action-handler :test-transact-with
   [_ system param auth-map ledger _]
@@ -388,28 +375,6 @@
       [{:status 200} {:status 200 :data (merge db-info db-stat)}])))
 
 
-(defmethod action-handler :snapshot
-  [_ system param auth-map ledger _]
-  (go-try
-    (<? (strict-authentication system auth-map))
-    (let [conn (:conn system)
-          {:keys [no-history]} param
-          [network dbid] (graphdb/validate-ledger-ident ledger)]
-      (if no-history
-        [{:status 200} (<? (snapshot/create-snapshot-no-history conn network dbid))]
-        [{:status 200} (<? (snapshot/create-snapshot conn network dbid))]))))
-
-(defmethod action-handler :list-snapshots
-  [_ system _ auth-map ledger _]
-  (go-try
-    (<? (strict-authentication system auth-map))
-    (let [conn      (:conn system)
-          [network dbid] (graphdb/validate-ledger-ident ledger)
-          snapshots (snapshot/list-snapshots conn network dbid)]
-      [{:status 200} snapshots])))
-
-
-
 (defmethod action-handler :reindex
   [_ system _ _ ledger _]
   ;; For now, does not require authentication
@@ -420,6 +385,7 @@
       [{:status 200} {:block (:block reindexed)
                       :t     (:t reindexed)
                       :stats (:stats reindexed)}])))
+
 
 (defmethod action-handler :export
   [_ system param auth-map ledger _]
@@ -632,6 +598,7 @@
       :login (password-login system ledger request)
       :generate (password-generate system ledger request))))
 
+
 (defn nw-state
   [system request]
   (let [open-api? (open-api? system)
@@ -695,6 +662,7 @@
      :headers {"Content-Type" "application/json; charset=utf-8"}
      :body    (json/stringify-UTF8 state)}))
 
+
 (defn add-server
   [system {:keys [headers body params remote-addr] :as request}]
   (let [{:keys [server]} (decode-body body :json)
@@ -703,6 +671,7 @@
      :headers {"Content-Type" "application/json; charset=utf-8"}
      :body    (json/stringify-UTF8 add-server)}))
 
+
 (defn remove-server
   [system {:keys [headers body params remote-addr] :as request}]
   (let [{:keys [server]} (decode-body body :json)
@@ -710,6 +679,7 @@
     {:status  200
      :headers {"Content-Type" "application/json; charset=utf-8"}
      :body    (json/stringify-UTF8 remove-server)}))
+
 
 (defn health-handler
   [system request]
@@ -721,6 +691,7 @@
                                     :status      state
                                     :utilization 0.5})}))
 
+
 (defn keys-handler
   [system request]
   (let [{:keys [public private]} (crypto/generate-key-pair)
@@ -731,6 +702,7 @@
                                     :public     public
                                     :account-id account-id})}))
 
+
 (defn get-ledgers
   [system request]
   (let [ledgers @(fdb/ledger-list (:conn system))]
@@ -738,20 +710,22 @@
      :headers {"Content-Type" "application/json; charset=utf-8"}
      :body    (json/stringify-UTF8 ledgers)}))
 
+
 (defn new-ledger
   [{:keys [conn] :as system} {:keys [body] :as request}]
   (let [body         (decode-body body :json)
         transactor?  (-> system :config :transactor?)
         ledger-ident (:db/id body)
         opts         (dissoc body :db/id)
-        result       @(fdb/new-ledger conn ledger-ident opts)
-        _            (when transactor? (session/session conn ledger-ident))
-        _            (if (= clojure.lang.ExceptionInfo (type result))
-                       (throw result))]
+        result       @(fdb/new-ledger conn ledger-ident opts)]
     ;; create session so tx-monitors will work
+    (when transactor? (session/session conn ledger-ident))
+    (if (= ExceptionInfo (type result))
+      (throw result))
     {:status  200
      :headers {"Content-Type" "application/json; charset=utf-8"}
      :body    (json/stringify-UTF8 result)}))
+
 
 (defn delete-ledger
   [{:keys [conn] :as system} {:keys [headers body params remote-addr] :as request}]
@@ -778,7 +752,6 @@
           (d/success! deferred resp))
         (catch Exception e
           (d/error! deferred e)))) deferred))
-
 
 
 (defn- promise-chan->deferred

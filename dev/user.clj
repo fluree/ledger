@@ -113,16 +113,16 @@
   @(fdb/query (fdb/db (:conn system) "bp/pw")
               {:selectOne "?salt"
                :where     [["?id" "_auth/id" "TfKh7PBLUHkCXEtbNd5Crrq9fhAcVHGVBsd"]
-                           ["?id" "_auth/salt" "?salt"]]}
-              )
+                           ["?id" "_auth/salt" "?salt"]]})
+
 
   @(fdb/query (fdb/db (:conn system) "bp/pw")
               {:select ["?auth-ids" "?salt"]
                :where  [["?id" "_user/username" "bplatz"]
                         ["?id" "_user/auth" "?auth"]
                         ["?auth" "_auth/id" "?auth-ids"]
-                        ["?auth" "_auth/salt" "?salt"]]}
-              )
+                        ["?auth" "_auth/salt" "?salt"]]})
+
 
   @(fdb/new-ledger (:conn system) "bp/pw")
 
@@ -134,22 +134,23 @@
               (:conn system)
               "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJicC9wdyIsInN1YiI6IlRmRHoyU1lIOHNxRnRncTk1NnIzSDNndlZjUVh5SmlQZEdiIiwiZXhwIjoxNTczODQ4ODAxMzU2LCJpYXQiOjE1NzM4NDg1MDEzNTYsInByaSI6ImQ3MmNmOTJkZGUyNjIzMDg3YWFkMmU3YjE5ZDYxN2ZhNGY5NmQ4ZTE0YTI0YTNkMTUxNTkzMDUwOGU1YzZiYTYzMDVjZDU1ZGRlNDllNzgzNzA2NWE1MzNjMjFjY2ZlMDIwZGE2MTAxM2NhNmU1MTkzNzc4NDdiNmY1MzRmZGQ1YmRhYWU0ZTAzZjViMjI2MmY2ZWEyNjljYjRhYmU4ZDgifQ.WRnnGKki2lEC3D-EeTs-5boyoAkaDdC3eDBFyTPhk1k"))
 
-  (async/poll! vres)
+  (async/poll! vres))
 
-  )
+
 
 
 (comment
 
   ;; Standalone - On Disk
-  (start {:fdb-mode                   "dev"
-          :fdb-group-servers          "myserver@localhost:9790"
-          :fdb-group-this-server      "myserver"
-          :fdb-group-log-directory    "data/group/"
-          :fdb-storage-file-directory "data/ledger/"
-          :fdb-consensus-type         "raft"
-          :fdb-api-open               true
-          :fdb-api-port               8090})
+  (start {:fdb-mode                "dev"
+          :fdb-group-servers       "myserver@localhost:9790"
+          :fdb-group-this-server   "myserver"
+          :fdb-group-log-directory "./data/group/"
+          :fdb-group-snapshot-path "data/group/snapshots"
+          :fdb-storage-ledger-path "data/ledger/"
+          :fdb-consensus-type      "raft"
+          :fdb-api-open            true
+          :fdb-api-port            8090})
 
   ;; Standalone - In Memory
   (start {:fdb-group-servers     "DEF@localhost:11001"
@@ -170,50 +171,50 @@
 
 
   ;; Three servers
-  (start {:fdb-group-servers          "ABC@localhost:9790,DEF@localhost:9791,GHI@localhost:9792"
-          :fdb-group-this-server      "ABC"
-          :fdb-group-log-directory    "data/ABC/raft/"
-          :fdb-storage-file-directory "data/ABC/fdb/"
-          :fdb-api-port               8090})
-  (start {:fdb-group-servers          "ABC@localhost:9790,DEF@localhost:9791,GHI@localhost:9792"
-          :fdb-group-this-server      "DEF"
-          :fdb-group-log-directory    "data/DEF/raft/"
-          :fdb-storage-file-directory "data/DEF/fdb/"
-          :fdb-api-port               8091})
+  (start {:fdb-group-servers       "ABC@localhost:9790,DEF@localhost:9791,GHI@localhost:9792"
+          :fdb-group-this-server   "ABC"
+          :fdb-group-log-directory "./data/ABC/raft/"
+          :fdb-storage-file-root   "./data/ABC/"
+          :fdb-api-port            8090})
+  (start {:fdb-group-servers       "ABC@localhost:9790,DEF@localhost:9791,GHI@localhost:9792"
+          :fdb-group-this-server   "DEF"
+          :fdb-group-log-directory "./data/DEF/raft/"
+          :fdb-storage-file-root   "./data/DEF/"
+          :fdb-api-port            8091})
 
-  (start {:fdb-group-servers          "ABC@localhost:9790,DEF@localhost:9791,GHI@localhost:9792"
-          :fdb-group-this-server      "GHI"
-          :fdb-group-log-directory    "data/GHI/raft/"
-          :fdb-storage-file-directory "data/GHI/fdb/"
-          :fdb-api-port               8092})
+  (start {:fdb-group-servers       "ABC@localhost:9790,DEF@localhost:9791,GHI@localhost:9792"
+          :fdb-group-this-server   "GHI"
+          :fdb-group-log-directory "./data/GHI/raft/"
+          :fdb-storage-file-root   "./data/GHI/"
+          :fdb-api-port            8092})
 
   ;; Three servers dynamic changes
 
 
   ;; Start first
-  (start {:fdb-group-servers          "ABC@localhost:9790"
-          :fdb-group-this-server      "ABC"
-          :fdb-group-log-directory    "data/ABC/raft/"
-          :fdb-storage-file-directory "data/ABC/fdb/"
-          :fdb-api-port               8090
-          :fdb-join?                  false})
+  (start {:fdb-group-servers       "ABC@localhost:9790"
+          :fdb-group-this-server   "ABC"
+          :fdb-group-log-directory "./data/ABC/raft/"
+          :fdb-storage-file-root   "./data/ABC/"
+          :fdb-api-port            8090
+          :fdb-join?               false})
 
-  (start {:fdb-group-servers          "ABC@localhost:9790,DEF@localhost:9791"
-          :fdb-group-this-server      "DEF"
-          :fdb-group-log-directory    "data/DEF/raft/"
-          :fdb-storage-file-directory "data/DEF/fdb/"
-          :fdb-api-port               8091
-          :fdb-join?                  true})
+  (start {:fdb-group-servers       "ABC@localhost:9790,DEF@localhost:9791"
+          :fdb-group-this-server   "DEF"
+          :fdb-group-log-directory "./data/DEF/raft/"
+          :fdb-storage-file-root   "./data/DEF/"
+          :fdb-api-port            8091
+          :fdb-join?               true})
 
   ;; Add server two
   (txproto/-add-server-async (:group system) "DEF")
 
-  (start {:fdb-group-servers          "ABC@localhost:9790,DEF@localhost:9791,GHI@localhost:9792"
-          :fdb-group-this-server      "GHI"
-          :fdb-group-log-directory    "data/GHI/raft/"
-          :fdb-storage-file-directory "data/GHI/fdb/"
-          :fdb-api-port               8092
-          :fdb-join?                  true})
+  (start {:fdb-group-servers       "ABC@localhost:9790,DEF@localhost:9791,GHI@localhost:9792"
+          :fdb-group-this-server   "GHI"
+          :fdb-group-log-directory "./data/GHI/raft/"
+          :fdb-storage-file-root   "./data/GHI/"
+          :fdb-api-port            8092
+          :fdb-join?               true})
 
   ;; Add/ remove server three
   (txproto/-add-server-async (:group system) "GHI")
@@ -271,8 +272,8 @@
       :state-atom
       deref
       :networks
-      (get "bptest01")
-      )
+      (get "bptest01"))
+
 
 
   (def async-resp (-> system
@@ -314,9 +315,9 @@
 
   (fork/find-closest-index conn "dev" "$network" 7)
 
-  (session/blank-db conn "dev/_there")
+  (session/blank-db conn "dev/_there"))
 
-  )
+
 
 
 (comment
@@ -334,9 +335,7 @@
 
 
   @(fdb/transact (:conn system) "dev/1" [{:_id  "account"
-                                          :name "temp5"}])
-
-  )
+                                          :name "temp5"}]))
 
 
 
@@ -345,21 +344,23 @@
 
 
 
-(comment
 
-  ;; db-identfiers
-  ;; https://network.flur.ee/fdb/db/network/dbid-or-name
-  ;; https://network.flur.ee/fdb/db/network/dbid-or-name/time
 
-  ;; explore data
-  ;; https://network.flur.ee/fdb/db/network/dbid-or-name/entity-subject
+(comment)
 
-  ;; storage
-  ;; https://network.flur.ee/fdb/storage/network/dbid-or-name/root
-  ;; https://network.flur.ee/fdb/storage/network/dbid-or-name/root/time
-  ;; https://network.flur.ee/fdb/storage/network/dbid-or-name/garbage/time
-  ;; https://network.flur.ee/fdb/storage/network/dbid-or-name/block/time
-  ;; https://network.flur.ee/fdb/storage/network/dbid-or-name/block/time-start/time-end
-  ;; https://network.flur.ee/fdb/storage/network/dbid-or-name/idx-type/id
+;; db-identfiers
+;; https://network.flur.ee/fdb/db/network/dbid-or-name
+;; https://network.flur.ee/fdb/db/network/dbid-or-name/time
 
-  )
+;; explore data
+;; https://network.flur.ee/fdb/db/network/dbid-or-name/entity-subject
+
+;; storage
+;; https://network.flur.ee/fdb/storage/network/dbid-or-name/root
+;; https://network.flur.ee/fdb/storage/network/dbid-or-name/root/time
+;; https://network.flur.ee/fdb/storage/network/dbid-or-name/garbage/time
+;; https://network.flur.ee/fdb/storage/network/dbid-or-name/block/time
+;; https://network.flur.ee/fdb/storage/network/dbid-or-name/block/time-start/time-end
+;; https://network.flur.ee/fdb/storage/network/dbid-or-name/idx-type/id
+
+

@@ -13,8 +13,10 @@
             [fluree.db.ledger.stats :as stats]
             [fluree.crypto :as crypto]
             [fluree.crypto.util :refer [hash-string-key]])
-  (:import (java.util Hashtable$Entry)
-           (java.lang.management ManagementFactory)))
+  (:import (java.util Hashtable$Entry Properties)
+           (java.lang.management ManagementFactory)
+           (java.io Reader)))
+
 
 ;; note every environment variable must be placed in this default map for it to be picked up.
 ;; THIS IS THE MASTER LIST!  nil as a value means there is no default
@@ -34,13 +36,20 @@
    :fdb-group-timeout            2000                       ;; start new election if nothing from leader in this number of milliseconds
    :fdb-group-heartbeat          nil                        ;; defaults to 1/3 of tx-group-timeout-ms
    :fdb-group-catch-up-rounds    10                         ;; defaults to 1/3 of tx-group-timeout-ms
-   :fdb-group-log-directory      "data/group"               ;; where to store raft logs and snapshots for the group
+   :fdb-group-log-directory      "./data/group"             ;; where to store raft logs for the group
+   :fdb-group-snapshot-path      "data/group/snapshots"     ;; where in configured storage to store raft snapshots
    :fdb-group-snapshot-threshold 200                        ;; how many new index entries before creating a new snapshot
    :fdb-group-log-history        5                          ;; number of historical log files to keep around
 
    :fdb-storage-type             "file"                     ;; file, memory, s3
-   :fdb-storage-file-directory   "data/ledger"
+   :fdb-storage-file-root        "./data/"
+   :fdb-storage-file-group-path  "group/"
+   :fdb-storage-file-ledger-path "ledger/"
+
    :fdb-storage-s3-bucket        nil
+   :fdb-storage-s3-group-prefix  "group/"
+   :fdb-storage-s3-ledger-prefix "ledger/"
+
    :fdb-memory-cache             "200mb"
    :fdb-memory-reindex           "1mb"
    :fdb-memory-reindex-max       "2mb"
@@ -63,13 +72,45 @@
    :fdb-pw-auth-jwt-max-renewal  "1y"})
 
 
+;; FDB_SETTINGS: dev
+(def env-dev-defaults
+  {:fdb-mode                   "dev"
+   :fdb-storage-type           "file"
+
+   :fdb-logs-type              "memory"
+   :fdb-memory-cache           ".5gb"
+   :fdb-memory-reindex         "100kb"
+   :fdb-memory-reindex-max     "1mb"
+   :fdb-stats-report-frequency "10m"
+   ;:fdb-debug-mode             false
+   ;; group settings
+   :fdb-group-servers          "ABC@localhost:12300,DEF@localhost:12301"
+   :fdb-group-this-server      "DEF"
+
+   ;; api settings
+   :fdb-api-open               true})
+
+
+;; FDB_SETTINGS: dbaas
+(def env-dbaas-settings
+  {:fdb-storage-type           "file"
+   :fdb-memory-cache           "2gb"
+   :fdb-memory-reindex         "1mb"
+   :fdb-memory-reindex-max     "5mb"
+   :fdb-stats-report-frequency "1m"
+   :fdb-debug-mode             false
+
+   ;; api options
+   :fdb-api-port               8090})
+
+
 (defn- read-properties-file
   "Reads properties file at file-name, if it doesn't exist returns nil."
   [file-name]
   (let [file (io/file file-name)]
     (when (.exists file)
-      (with-open [^java.io.Reader reader (io/reader file)]
-        (let [props (java.util.Properties.)]
+      (with-open [^Reader reader (io/reader file)]
+        (let [props (Properties.)]
           (.load props reader)
           (->> (for [prop props]
                  (let [k (.getKey ^Hashtable$Entry prop)
@@ -90,8 +131,9 @@
                           (read-properties-file prop-file))
         java-prop-flags (-> (stats/jvm-arguments) :input stats/jvm-args->map)
         _               (if properties
-                          (log/info (format "Properties file %s successfully loaded." (:fdb-properties-file environment)))
-                          (log/info (format "Properties file does not exist, skipping.")))
+                          (log/info (format "Properties file %s successfully loaded."
+                                            (:fdb-properties-file environment)))
+                          (log/info "Properties file does not exist, skipping."))
         propEnvFlag     (merge properties java-prop-flags environment)
         propEnvFlagDef  (reduce
                           (fn [acc [k v]] (assoc acc k (or (get propEnvFlag k) v)))
@@ -139,7 +181,10 @@
                 (str/lower-case unit))]
     (when (or (nil? n)
               (and unit* (not (#{"ms" "s" "m" "h" "d" "y"} unit*))))
-      (throw (Exception. (str "Invalid time unit provided in environment. Allow a number optionally followed by units of ms, s, m, h, d or y. Provided: " s))))
+      (throw (Exception. ^String
+                         (str "Invalid time unit provided in environment. "
+                              "Should be a number optionally followed by units of ms (default), s, m, h, d or y. "
+                              "Provided: " s))))
     [(Double/parseDouble n) unit*]))
 
 
@@ -151,11 +196,10 @@
                      (pos-int? x) [x "ms"]
                      (string? x) (parse-time-string x)
                      :else
-                     (throw (Exception. (str "Invalid time unit provided in environment. "
-                                             "Allow a number optionally followed by units of ms, s, m, h, d or y. "
-                                             "Provided: "
-                                             x))))]
-
+                     (throw (Exception. ^String
+                                        (str "Invalid time unit provided in environment. "
+                                             "Should be a number optionally followed by units of ms (default), s, m, h, d or y. "
+                                             "Provided: " x))))]
       (-> (case unit
             "ms" n
             "s" (* n 1000)
@@ -185,7 +229,10 @@
                 (str/lower-case unit))]
     (when (or (nil? n)
               (and unit* (not (#{"b" "k" "kb" "m" "mb" "g" "gb"} unit*))))
-      (throw (Exception. (str "Invalid size unit provided in environment. Allow a number optionally followed by units of b, k/kb, m/mb, or g/gb. Provided: " s))))
+      (throw (Exception. ^String
+                         (str "Invalid size unit provided in environment. "
+                              "Should be a number optionally followed by units of b (default), k/kb, m/mb, or g/gb. "
+                              "Provided: " s))))
     [(Double/parseDouble n) unit*]))
 
 
@@ -207,9 +254,10 @@
                    (parse-size-string x)
 
                    :else
-                   (throw (Exception. (str "Invalid time unit provided in environment. "
-                                           "Allow a number optionally followed by units "
-                                           "of b, k, kb, m, mb, g, or gb. Provided: " x))))]
+                   (throw (Exception. ^String
+                                      (str "Invalid time unit provided in environment. "
+                                           "Should be a number optionally followed by units "
+                                           "of b (default), k, kb, m, mb, g, or gb. Provided: " x))))]
     (-> (case unit
           "b" n
           "k" (* n 1000)
@@ -232,15 +280,6 @@
   [env]
   (-> env :fdb-storage-type str/lower-case keyword))
 
-(defn- storage-directory
-  [env]
-  (-> env :fdb-storage-file-directory))
-
-
-(defn storage-options-file
-  [env]
-  {:base-path (storage-directory env)})
-
 
 (defn- get-or-generate-tx-private-key
   [env]
@@ -255,6 +294,7 @@
           (let [key-pair (some #(when (= 64 (count (:private %))) %) (repeatedly crypto/generate-key-pair))]
             (spit priv-key-file (:private key-pair))
             (:private key-pair))))))
+
 
 (defn- get-cache-size
   [env]
@@ -315,45 +355,67 @@
   [settings]
   (some-> settings :fdb-encryption-secret (hash-string-key 32) byte-array))
 
+(defn file-storage-path
+  [type env]
+  (when (= :file (storage-type env))
+    (let [type-kw (keyword (str "fdb-storage-file-" (name type) "-path"))
+          append-slash #(str % "/")]
+      (->> (type-kw env)
+           (io/file (:fdb-storage-file-root env))
+           .toString
+           append-slash))))
+
+
 (defn generate-conn-settings
   [settings]
-  (let [encryption-key    (encryption-secret->key settings)
-        dev?              (= "dev" (some-> settings :fdb-mode str/lower-case))
-        is-transactor?    (boolean (#{"dev" "ledger"} (some-> settings :fdb-mode str/lower-case)))
-        typ               (storage-type settings)
-        storage-directory (storage-directory settings)
-        s3-conn           (some-> settings :fdb-storage-s3-bucket s3store/connect)
-        storage-read      (case typ
-                            :file (filestore/connection-storage-read storage-directory encryption-key)
-                            :s3 (fn [k]
-                                  (async/thread (s3store/read s3-conn k)))
-                            :memory memorystore/connection-storage-read)
-
-        storage-exists    (case typ
-                            :file (filestore/connection-storage-exists storage-directory)
-                            :s3 (fn [k]
-                                  (async/thread (s3store/exists? s3-conn k)))
-                            :memory memorystore/connection-storage-read)
-
-        storage-write     (case typ
-                            :file (filestore/connection-storage-write storage-directory encryption-key)
-                            :s3 (fn [k v]
-                                  (s3store/write s3-conn k v))
-                            :memory memorystore/connection-storage-write)
-        storage-rename    (case typ
-                            :file (filestore/connection-storage-rename storage-directory)
-                            :s3 (fn [k new-k]
-                                  (s3store/rename s3-conn k new-k))
-                            :memory nil)
-        serializer        (get-serializer settings)
-        close-fn          (fn []
-                            (case typ
-                              :file nil
-                              :memory (memorystore/close)
-                              :s3 (s3store/close s3-conn)))]
-    ;transact-handler  tx-events/tx-handler
-
-    {:storage-type typ
+  (let [encryption-key           (encryption-secret->key settings)
+        dev?                     (= "dev" (some-> settings :fdb-mode str/lower-case))
+        is-transactor?           (boolean (#{"dev" "ledger"} (some-> settings :fdb-mode str/lower-case)))
+        storage-type             (storage-type settings)
+        s3-conn                  (some-> settings :fdb-storage-s3-bucket s3store/connect)
+        file-ledger-storage-path (file-storage-path :ledger settings)
+        s3-ledger-storage-prefix (:fdb-storage-s3-ledger-prefix settings)
+        storage-read             (case storage-type
+                                   :file (filestore/connection-storage-read
+                                           file-ledger-storage-path
+                                           encryption-key)
+                                   :s3 (s3store/connection-storage-read
+                                         s3-conn
+                                         s3-ledger-storage-prefix
+                                         encryption-key)
+                                   :memory memorystore/connection-storage-read)
+        storage-exists           (case storage-type
+                                   :file (filestore/connection-storage-exists?
+                                           file-ledger-storage-path)
+                                   :s3 (s3store/connection-storage-exists?
+                                         s3-conn s3-ledger-storage-prefix)
+                                   :memory memorystore/connection-storage-read)
+        storage-write            (case storage-type
+                                   :file (filestore/connection-storage-write
+                                           file-ledger-storage-path
+                                           encryption-key)
+                                   :s3 (s3store/connection-storage-write
+                                         s3-conn s3-ledger-storage-prefix
+                                         encryption-key)
+                                   :memory memorystore/connection-storage-write)
+        storage-rename           (case storage-type
+                                   :file (filestore/connection-storage-rename
+                                           file-ledger-storage-path)
+                                   :s3 (s3store/connection-storage-rename
+                                         s3-conn s3-ledger-storage-prefix)
+                                   :memory nil)
+        storage-list             (case storage-type
+                                   :file (filestore/connection-storage-list
+                                           file-ledger-storage-path)
+                                   :s3 (s3store/connection-storage-list
+                                         s3-conn s3-ledger-storage-prefix)
+                                   :memory nil)
+        serializer               (get-serializer settings)
+        close-fn                 (case storage-type
+                                   :file (fn [] nil)
+                                   :memory #(memorystore/close)
+                                   :s3 #(s3store/close s3-conn))]
+    {:storage-type storage-type
      :servers      (:fdb-conn-servers settings)
      :options      {:transactor?    is-transactor?
                     :storage-read   storage-read
@@ -362,6 +424,7 @@
                     ;; A default can be used here for
                     :storage-write  storage-write
                     :storage-rename storage-rename
+                    :storage-list   storage-list
 
                     :req-chan       (async/chan)            ;; create our own request channel so we can monitor it if in 'dev' mode
                     ;:sub-chan            nil
@@ -377,11 +440,16 @@
                     ;; a transactor needs novelty-min and novelty-max, a web browser connection might need some different info
                     :meta           {:novelty-min       (-> settings :fdb-memory-reindex env-bytes)
                                      :novelty-max       (-> settings :fdb-memory-reindex-max env-bytes)
-                                     :dev?              (= "dev" (-> settings :fdb-mode str/lower-case))
-                                     :storage-directory storage-directory
-                                     :encryption-secret encryption-key
+                                     :dev?              dev?
                                      :password-auth     (password-feature-settings settings)
-                                     :open-api          (-> settings :fdb-api-open env-boolean)}}}))
+                                     :open-api          (-> settings :fdb-api-open env-boolean)
+                                     :file-storage-path (when (= :file storage-type)
+                                                          file-ledger-storage-path)
+                                     :s3-storage        (when (= :s3 storage-type)
+                                                          {:bucket (:bucket s3-conn)
+                                                           :prefix s3-ledger-storage-prefix})
+                                     :encryption-secret encryption-key}}}))
+
 
 (defn- build-group-server-configs
   "Takes settings and returns list of group servers properly formatted."
@@ -393,7 +461,8 @@
                                      (when-not (and server-id host port)
                                        (throw (ex-info (str "Invalid group server provided: " server ". Must be in the format of server-id@hostname:port with each server separated by a comma.")
                                                        {:status 400 :error :db/invalid-configuration})))
-                                     (conj acc {:server-id server-id :host host :port (Integer. ^String port)})))
+                                     (conj acc {:server-id server-id :host host
+                                                :port      (Integer/parseInt ^String port)})))
                                  []))
         ;; add in "me", and use existing host/port if provided, otherwise use localhost:fdb-group-port
         servers+me  (if (some #(when (= this-server (:server-id %)) %) servers)
@@ -416,53 +485,137 @@
   "Generates groups settings.
   Raft servers should be a map, with server-ids as keys and values as a map with :host and :port keys."
   [settings group-servers]
-  (let [this-server    (:fdb-group-this-server settings)
-        timeout-ms     (env-milliseconds (:fdb-group-timeout settings))
-        heartbeat-ms   (if-let [fdb-group-heartbeat (:fdb-group-heartbeat settings)]
-                         (env-milliseconds fdb-group-heartbeat)
-                         (quot (env-milliseconds (:fdb-group-timeout settings)) 3))
-        _              (when (> heartbeat-ms timeout-ms)
-                         (throw (ex-info (format "TX group heartbeat milliseconds: %s cannot be greater than timeout milliseconds: %s." timeout-ms heartbeat-ms)
-                                         {:status 400
-                                          :error  :db/invalid-configuration})))
-        private-keys   (cond-> []
-                               (:fdb-group-private-keys settings)
-                               (into (str/split (:fdb-group-private-keys settings) #","))
+  (let [this-server              (:fdb-group-this-server settings)
+        timeout-ms               (env-milliseconds (:fdb-group-timeout settings))
+        heartbeat-ms             (if-let [fdb-group-heartbeat (:fdb-group-heartbeat settings)]
+                                   (env-milliseconds fdb-group-heartbeat)
+                                   (quot (env-milliseconds (:fdb-group-timeout settings)) 3))
+        _                        (when (> heartbeat-ms timeout-ms)
+                                   (throw (ex-info (format "TX group heartbeat milliseconds: %s cannot be greater than timeout milliseconds: %s." timeout-ms heartbeat-ms)
+                                                   {:status 400
+                                                    :error  :db/invalid-configuration})))
+        private-keys             (cond-> []
+                                         (:fdb-group-private-keys settings)
+                                         (into (str/split (:fdb-group-private-keys settings) #","))
 
-                               (:fdb-group-private-keys-file settings)
-                               (into (->> (slurp (:fdb-group-private-keys-file settings))
-                                          (str/split-lines)
-                                          (filter not-empty)
-                                          (reduce #(if (str/includes? %2 ",")
-                                                     (into %1 (str/split %2 #","))
-                                                     (conj %1 %2)) []))))
-        encryption-key (encryption-secret->key settings)
-        storage-write  (filestore/connection-storage-write (storage-directory settings) encryption-key)
-        storage-read   (filestore/connection-storage-read (storage-directory settings) encryption-key)
-        storage-rename (filestore/connection-storage-rename (storage-directory settings))]
+                                         (:fdb-group-private-keys-file settings)
+                                         (into (->> (slurp (:fdb-group-private-keys-file settings))
+                                                    (str/split-lines)
+                                                    (filter not-empty)
+                                                    (reduce #(if (str/includes? %2 ",")
+                                                               (into %1 (str/split %2 #","))
+                                                               (conj %1 %2)) []))))
+        encryption-key           (encryption-secret->key settings)
+        storage-type             (-> settings :fdb-storage-type str/lower-case keyword)
+        s3-conn                  (some-> settings :fdb-storage-s3-bucket s3store/connect)
+        file-ledger-storage-path (file-storage-path :ledger settings)
+        file-group-storage-path  (file-storage-path :group settings)
+        s3-ledger-storage-prefix (:fdb-storage-s3-ledger-prefix settings)
+        s3-group-storage-prefix  (:fdb-storage-s3-group-prefix settings)
+        storage-ledger-write     (case storage-type
+                                   (:file :memory) (filestore/connection-storage-write
+                                                     file-ledger-storage-path
+                                                     encryption-key)
+                                   :s3 (s3store/connection-storage-write
+                                         s3-conn
+                                         s3-ledger-storage-prefix
+                                         encryption-key))
+        storage-group-write      (case storage-type
+                                   (:file :memory) (filestore/connection-storage-write
+                                                     file-group-storage-path
+                                                     encryption-key)
+                                   :s3 (s3store/connection-storage-write
+                                         s3-conn
+                                         s3-group-storage-prefix
+                                         encryption-key))
+        storage-ledger-read      (case storage-type
+                                   (:file :memory) (filestore/connection-storage-read
+                                                     file-ledger-storage-path
+                                                     encryption-key)
+                                   :s3 (s3store/connection-storage-read
+                                         s3-conn
+                                         s3-ledger-storage-prefix
+                                         encryption-key))
+        storage-group-read       (case storage-type
+                                   (:file :memory) (filestore/connection-storage-read
+                                                     file-group-storage-path
+                                                     encryption-key)
+                                   :s3 (s3store/connection-storage-read
+                                         s3-conn
+                                         s3-group-storage-prefix
+                                         encryption-key))
+        storage-ledger-rename    (case storage-type
+                                   (:file :memory) (filestore/connection-storage-rename
+                                                     file-ledger-storage-path)
+                                   :s3 (s3store/connection-storage-rename
+                                         s3-conn s3-ledger-storage-prefix))
+        storage-group-rename     (case storage-type
+                                   (:file :memory) (filestore/connection-storage-rename
+                                                     file-group-storage-path)
+                                   :s3 (s3store/connection-storage-rename
+                                         s3-conn s3-group-storage-prefix))
+        storage-ledger-exists    (case storage-type
+                                   (:file :memory) (filestore/connection-storage-exists?
+                                                     file-ledger-storage-path)
+                                   :s3 (s3store/connection-storage-exists?
+                                         s3-conn s3-ledger-storage-prefix))
+        storage-group-exists     (case storage-type
+                                   (:file :memory) (filestore/connection-storage-exists?
+                                                     file-group-storage-path)
+                                   :s3 (s3store/connection-storage-exists?
+                                         s3-conn s3-group-storage-prefix))
+        storage-ledger-delete    (case storage-type
+                                   (:file :memory) (filestore/connection-storage-delete
+                                                     file-ledger-storage-path)
+                                   :s3 (s3store/connection-storage-delete
+                                         s3-conn s3-ledger-storage-prefix))
+        storage-group-delete     (case storage-type
+                                   (:file :memory) (filestore/connection-storage-delete
+                                                     file-group-storage-path)
+                                   :s3 (s3store/connection-storage-delete
+                                         s3-conn s3-group-storage-prefix))
+        storage-ledger-list      (case storage-type
+                                   (:file :memory) (filestore/connection-storage-list
+                                                     file-ledger-storage-path)
+                                   :s3 (s3store/connection-storage-list
+                                         s3-conn s3-ledger-storage-prefix))
+        storage-group-list       (case storage-type
+                                   (:file :memory) (filestore/connection-storage-list
+                                                     file-group-storage-path)
+                                   :s3 (s3store/connection-storage-list
+                                         s3-conn s3-group-storage-prefix))]
+    {:server-configs        group-servers                   ;; list of server-id@host:port, separated by commas, of servers to connect to. Can include or exclude this server (fdb-group-this-server).
+     :this-server           this-server                     ;; id of this server
+     :port                  (get-in group-servers [this-server :port]) ;; port this server will listen on for group messages
+     :timeout-ms            timeout-ms                      ;; start new election if nothing from leader in this number of milliseconds
+     :heartbeat-ms          heartbeat-ms                    ;; defaults to 1/3 of tx-group-timeout-ms
+     :catch-up-rounds       (env-integer (:fdb-group-catch-up-rounds settings)) ;; defaults to 10
+     :log-history           (env-integer (:fdb-group-log-history settings)) ;; number of historical log files to keep around
+     :snapshot-threshold    (env-integer (:fdb-group-snapshot-threshold settings)) ;; how many new index entries before creating a new snapshot
+     :private-keys          (not-empty private-keys)        ;; Transactor group private key(s). Separate multiple keys with commas. These keys will be replicated to all servers in the group, which they can use as identities for external networks or as defaults for DBs. They only need to be provided one time.
+     :open-api              (-> settings :fdb-api-open env-boolean)
+     :log-directory         (:fdb-group-log-directory settings) ;; where to store raft logs for the group
+     :snapshot-path         (:fdb-group-snapshot-path settings) ;; where in storage to store raft snapshots
+     :storage-ledger-write  storage-ledger-write
+     :storage-ledger-read   storage-ledger-read
+     :storage-ledger-rename storage-ledger-rename
+     :storage-ledger-exists storage-ledger-exists
+     :storage-ledger-delete storage-ledger-delete
+     :storage-ledger-list   storage-ledger-list
 
-    {:server-configs     group-servers                      ;; list of server-id@host:port, separated by commas, of servers to connect to. Can include or exclude this server (fdb-group-this-server).
-     :this-server        this-server                        ;; id of this server
-     :port               (get-in group-servers [this-server :port]) ;; port this server will listen on for group messages
-     :timeout-ms         timeout-ms                         ;; start new election if nothing from leader in this number of milliseconds
-     :heartbeat-ms       heartbeat-ms                       ;; defaults to 1/3 of tx-group-timeout-ms
-     :catch-up-rounds    (env-integer (:fdb-group-catch-up-rounds settings)) ;; defaults to 10
-     :log-history        (env-integer (:fdb-group-log-history settings)) ;; number of historical log files to keep around
-     :snapshot-threshold (env-integer (:fdb-group-snapshot-threshold settings)) ;; how many new index entries before creating a new snapshot
-     :private-keys       (not-empty private-keys)           ;; Transactor group private key(s). Separate multiple keys with commas. These keys will be replicated to all servers in the group, which they can use as identities for external networks or as defaults for DBs. They only need to be provided one time.
-     :open-api           (-> settings :fdb-api-open env-boolean)
-     :log-directory      (:fdb-group-log-directory settings) ;; where to store raft logs and snapshots for the group
-     :storage-directory  (storage-directory settings)       ;; when using file system storage, where to store blocks, index segments, etc.
-     :storage-write      storage-write
-     :storage-read       storage-read
-     :storage-rename     storage-read}))
+     :storage-group-write   storage-group-write
+     :storage-group-read    storage-group-read
+     :storage-group-rename  storage-group-rename
+     :storage-group-exists  storage-group-exists
+     :storage-group-delete  storage-group-delete
+     :storage-group-list    storage-group-list}))
 
 
 (defn raft-transactor-settings
-  [env]
-  {:transactors (->> (str/split (:fdb-group-servers env) #",")
-                     (remove #(= % (:fdb-group-this-server env))))
-   :me          (:fdb-group-this-server env)})
+  [settings]
+  {:transactors (->> (str/split (:fdb-group-servers settings) #",")
+                     (remove #(= % (:fdb-group-this-server settings))))
+   :me          (:fdb-group-this-server settings)})
 
 
 (defn build-settings
@@ -502,8 +655,6 @@
                    :options (case consensus-type
                               :raft (raft-transactor-settings settings)
                               :in-memory {})}}))
-
-
 
 
 (comment

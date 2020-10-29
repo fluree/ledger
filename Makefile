@@ -8,8 +8,11 @@ MINOR_VERSION := $(shell echo $(VERSION) | cut -d '.' -f2)
 
 .PHONY: deps test jar uberjar stage-release prep-release release release-stable release-latest release-version-latest docker-image clean
 
+SOURCES := $(shell find src)
+RESOURCES := $(shell find resources)
+
 build/fluree-$(VERSION).zip: stage-release
-	cd build && zip -r fluree-$(VERSION).zip *
+	cd build && zip -r fluree-$(VERSION).zip * -x 'data/' 'data/**'
 
 stage-release: build/release-staging build/fluree-ledger.standalone.jar build/fluree_start.sh build/logback.xml build/fluree_sample.properties build/LICENSE build/CHANGELOG.md
 
@@ -59,7 +62,7 @@ build/CHANGELOG.md: CHANGELOG.md
 build/logback.xml: dev/logback.xml
 	cp $< build/
 
-target/fluree-ledger.jar: pom.xml src/**/* resources/**/*
+target/fluree-ledger.jar: pom.xml $(SOURCES) $(RESOURCES)
 	clojure -M:jar
 
 jar: target/fluree-ledger.jar
@@ -70,7 +73,7 @@ pom.xml: deps.edn
 test:
 	clojure -M:test
 
-target/fluree-ledger.standalone.jar: pom.xml src/**/* resources/**/*
+target/fluree-ledger.standalone.jar: pom.xml $(SOURCES) $(RESOURCES)
 	clojure -M:uberjar
 
 uberjar: target/fluree-ledger.standalone.jar

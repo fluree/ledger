@@ -14,8 +14,8 @@
                             :dbs          {"mydb1" {:private-key "ABC123SDFSDFSDDFSF" ;; default private key if db is open
                                                     :block       152
                                                     :index       123 ;; last index point
-                                                    :indexes     {123 234234234 ;; each index point and timestamp on when completed - to bring new server in sync and useful for centralized garbage collection
-                                                                  }
+                                                    :indexes     {123 234234234} ;; each index point and timestamp on when completed - to bring new server in sync and useful for centralized garbage collection
+
 
 
                                                     ;; blocks we are processing
@@ -28,14 +28,14 @@
                                                                   ;; files are tracked to allow garbage collection in case index does not complete
                                                                   ;; we use timestamps as a 'heartbeat' on indexing process. If too long of time progresses
                                                                   ;; without next file, or completion, then we can kill the process and reassign to a different server
-                                                                  :files  {"filename" 1234 ;; for new index, new filenames and timestamps when leader receives
-                                                                           }
-                                                                  }
+                                                                  :files  {"filename" 1234}} ;; for new index, new filenames and timestamps when leader receives
 
-                                                    :keys        #{"ABC123"} ;; keys to use as signing keys for open-api
-                                                    }}
-                            :tx-stats     {}                ;; stats on other (external) tx participants
-                            }}
+
+
+                                                    :keys        #{"ABC123"}}} ;; keys to use as signing keys for open-api
+
+                            :tx-stats     {}}}              ;; stats on other (external) tx participants
+
 
  ;; Leases allow other transactors in group to claim leadership over an activity, leases must be renewed before expiration
  ;; server-lease, registers server on network as available to take work. Servers need to renew leases frequently (depends on expiration ms used)
@@ -66,25 +66,32 @@
 
 (defn start
   [group-settings consensus-type join?]
-  (let [{:keys [server-configs this-server port timeout-ms heartbeat-ms log-history snapshot-threshold
-                log-directory storage-read storage-write storage-rename catch-up-rounds
-                private-keys open-api]} group-settings
+  (let [{:keys [server-configs this-server port timeout-ms heartbeat-ms
+                log-history snapshot-threshold log-directory
+                storage-ledger-read storage-group-read storage-ledger-write
+                storage-group-write storage-group-exists storage-group-delete
+                storage-group-list catch-up-rounds private-keys
+                open-api]} group-settings
         group (condp = consensus-type
                 :raft (raft/launch-raft-server server-configs
                                                this-server
-                                               {:port               port
-                                                :log-directory      log-directory
-                                                :storage-read       storage-read
-                                                :storage-write      storage-write
-                                                :storage-rename     storage-rename
-                                                :timeout-ms         timeout-ms
-                                                :heartbeat-ms       heartbeat-ms
-                                                :log-history        log-history
-                                                :snapshot-threshold snapshot-threshold
-                                                :join?              join?
-                                                :catch-up-rounds    catch-up-rounds
-                                                :private-keys       private-keys
-                                                :open-api           open-api})
+                                               {:port                 port
+                                                :log-directory        log-directory
+                                                :storage-ledger-read  storage-ledger-read
+                                                :storage-ledger-write storage-ledger-write
+                                                :storage-group-read   storage-group-read
+                                                :storage-group-write  storage-group-write
+                                                :storage-group-exists storage-group-exists
+                                                :storage-group-delete storage-group-delete
+                                                :storage-group-list   storage-group-list
+                                                :timeout-ms           timeout-ms
+                                                :heartbeat-ms         heartbeat-ms
+                                                :log-history          log-history
+                                                :snapshot-threshold   snapshot-threshold
+                                                :join?                join?
+                                                :catch-up-rounds      catch-up-rounds
+                                                :private-keys         private-keys
+                                                :open-api             open-api})
                 :in-memory (none/launch-in-memory-server group-settings))]
 
 

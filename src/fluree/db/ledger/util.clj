@@ -9,7 +9,7 @@
   exception, passing though ex-data if any, and throws it. The wrapping is done
   to maintain a full stack trace when jumping between multiple contexts."
   [x]
-  (if (instance? Exception x)
+  (if (and (not (nil? x)) (instance? Exception x))
     (throw (ex-info (or (.getMessage x) (str x))
                     (or (ex-data x) {})
                     x))
