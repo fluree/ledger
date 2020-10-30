@@ -108,7 +108,57 @@
         (storage-delete file)))))
 
 
-(defn snapshot-writer
+(defn view-raft-state
+  "Returns current raft state to callback."
+  ([raft] (view-raft-state raft (fn [x] (clojure.pprint/pprint (dissoc x :config)))))
+  ([raft callback]
+   (raft/view-raft-state (:raft raft) callback)))
+
+
+(defn leader-async
+  "Returns leader as a core async channel once available.
+  Default timeout supplied, or specify one."
+  ([raft] (leader-async raft 60000))
+  ([raft timeout]
+   (let [timeout-time (+ (System/currentTimeMillis) timeout)]
+     (async/go-loop [retries 0]
+       (let [resp-chan (async/promise-chan)
+             _         (view-raft-state raft (fn [state]
+                                               (if-let [leader (:leader state)]
+                                                 (async/put! resp-chan leader)
+                                                 (async/close! resp-chan))))
+             resp      (async/<! resp-chan)]
+         (cond
+           resp resp
+
+           (> (System/currentTimeMillis) timeout-time)
+           (ex-info (format "Leader not yet established and timeout of %s reached. Polled raft state %s times." timeout retries)
+                    {:status 400 :error :db/leader-timeout})
+
+           :else
+           (do
+             (async/<! (async/timeout 100))
+             (recur (inc retries)))))))))
+
+
+(defn is-leader?-async
+  [raft]
+  (async/go
+    (let [leader (async/<! (leader-async raft))]
+      (if (instance? Throwable leader)
+        leader
+        (= (:this-server raft) leader)))))
+
+
+(defn is-leader?
+  [raft]
+  (let [leader? (async/<!! (is-leader?-async raft))]
+    (if (instance? Throwable leader?)
+      (throw leader?)
+      leader?)))
+
+
+(defn snapshot-writer*
   "Blocking until write succeeds. An error will stop RAFT entirely."
   [{:keys [path state-atom storage-write] :as config}]
   (fn [index callback]
@@ -126,6 +176,18 @@
                         index (- (System/currentTimeMillis) start-time)))
       (callback)
       (purge-snapshots (assoc config :max-snapshots max-snapshots)))))
+
+
+(defn snapshot-writer
+  "Wraps snapshot-writer* in the logic that determines whether all nodes or
+  only the leader should write snapshots."
+  [{:keys [only-leader-snapshots] :as config}]
+  (let [writer (snapshot-writer* config)]
+    (fn [index callback]
+      (if only-leader-snapshots
+        (when (is-leader? config)
+          (writer index callback))
+        (writer index callback)))))
 
 
 ;; Holds state change functions that are registered
@@ -441,11 +503,7 @@
      :open-api        open-api}))
 
 
-(defn view-raft-state
-  "Returns current raft state to callback."
-  ([raft] (view-raft-state raft (fn [x] (clojure.pprint/pprint (dissoc x :config)))))
-  ([raft callback]
-   (raft/view-raft-state (:raft raft) callback)))
+
 
 
 (defn view-raft-state-async
@@ -471,48 +529,6 @@
   [raft]
   (raft/monitor-raft (:raft raft) nil))
 
-
-(defn leader-async
-  "Returns leader as a core async channel once available.
-  Default timeout supplied, or specify one."
-  ([raft] (leader-async raft 60000))
-  ([raft timeout]
-   (let [timeout-time (+ (System/currentTimeMillis) timeout)]
-     (async/go-loop [retries 0]
-       (let [resp-chan (async/promise-chan)
-             _         (view-raft-state raft (fn [state]
-                                               (if-let [leader (:leader state)]
-                                                 (async/put! resp-chan leader)
-                                                 (async/close! resp-chan))))
-             resp      (async/<! resp-chan)]
-         (cond
-           resp resp
-
-           (> (System/currentTimeMillis) timeout-time)
-           (ex-info (format "Leader not yet established and timeout of %s reached. Polled raft state %s times." timeout retries)
-                    {:status 400 :error :db/leader-timeout})
-
-           :else
-           (do
-             (async/<! (async/timeout 100))
-             (recur (inc retries)))))))))
-
-
-(defn is-leader?-async
-  [raft]
-  (async/go
-    (let [leader (async/<! (leader-async raft))]
-      (if (instance? Throwable leader)
-        leader
-        (= (:this-server raft) leader)))))
-
-
-(defn is-leader?
-  [raft]
-  (let [leader? (async/<!! (is-leader?-async raft))]
-    (if (instance? Throwable leader?)
-      (throw leader?)
-      leader?)))
 
 
 (defn state
