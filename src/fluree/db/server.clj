@@ -25,7 +25,8 @@
             [fluree.db.ledger.consensus.tcp :as ftcp]
             [fluree.db.ledger.txgroup.txgroup-proto :as txproto]
             [fluree.db.constants :as const]
-            [clojure.pprint :as pprint]))
+            [clojure.pprint :as pprint]
+            [fluree.db.conn-events :as conn-events]))
 
 ;; instantiates server operations
 
@@ -51,7 +52,7 @@
   (async/go-loop []
     (let [msg (async/<! producer-chan)]
       (when-not (nil? msg)
-        (connection/process-events conn msg)
+        (conn-events/process-events conn msg)
         (recur)))))
 
 
