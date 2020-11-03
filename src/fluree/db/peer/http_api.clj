@@ -437,14 +437,13 @@
   [action system param auth-map ledger _]
   (go-try
     (require-authentication system auth-map)
-    (let [conn       (:conn system)
-          auth-id    (:auth auth-map)
-          open-api   (open-api? system)
-          sync-block (get-in param [:opts :syncTo])
-          db         (if sync-block
-                       (fdb/sync-to-db conn ledger sync-block {:auth        (when auth-id ["_auth/id" auth-id])
-                                                               :syncTimeout (get-in param [:opts :syncTimeout])})
-                       (fdb/db conn ledger {:auth (when auth-id ["_auth/id" auth-id])}))]
+    (let [conn     (:conn system)
+          auth-id  (:auth auth-map)
+          open-api (open-api? system)
+          db-opts  (cond-> (select-keys (:opts param) [:syncTo :syncTimeout :roles :auth])
+                           (not open-api) (dissoc :roles :auth) ;; open-api can specify auth id or roles to query as
+                           auth-id (assoc :auth ["_auth/id" auth-id]))
+          db       (fdb/db conn ledger db-opts)]
       (case action
         :query
         (let [query (assoc param :opts (merge (:opts param) {:meta true :open-api open-api}))
