@@ -42,7 +42,7 @@
    :fdb-group-log-history        5                          ;; number of historical log files to keep around
 
    :fdb-storage-type             "file"                     ;; file, memory, s3
-   :fdb-storage-file-root        "./data/"
+   :fdb-storage-file-directory   "./data/"
    :fdb-storage-file-group-path  "group/"
    :fdb-storage-file-ledger-path "ledger/"
 
@@ -350,18 +350,32 @@
          :max-exp     (env-milliseconds fdb-pw-auth-jwt-max-exp)
          :max-renewal (env-milliseconds fdb-pw-auth-jwt-max-renewal)}))))
 
+
 (defn- encryption-secret->key
   "Returns the byte-array version of the encryption secret from the settings if utilized."
   [settings]
   (some-> settings :fdb-encryption-secret (hash-string-key 32) byte-array))
 
+
+(defn canonicalize-path
+  "Ensures that `path` arg starts with either `./` or `/`. If it starts with
+  any other character, `./` will be prepended to the returned string. Otherwise
+  the original arg will be returned."
+  [path]
+  (if (boolean (re-find #"^[./]" path))
+    path
+    (str "./" path)))
+
+
 (defn file-storage-path
   [type env]
   (when (= :file (storage-type env))
-    (let [type-kw (keyword (str "fdb-storage-file-" (name type) "-path"))
-          append-slash #(str % "/")]
+    (let [type-kw       (keyword (str "fdb-storage-file-" (name type) "-path"))
+          append-slash  #(str % "/")
+          config-dir    (:fdb-storage-file-directory env)
+          canonical-dir (canonicalize-path config-dir)]
       (->> (type-kw env)
-           (io/file (:fdb-storage-file-root env))
+           (io/file canonical-dir)
            .toString
            append-slash))))
 
@@ -594,7 +608,7 @@
      :snapshot-threshold    (env-integer (:fdb-group-snapshot-threshold settings)) ;; how many new index entries before creating a new snapshot
      :private-keys          (not-empty private-keys)        ;; Transactor group private key(s). Separate multiple keys with commas. These keys will be replicated to all servers in the group, which they can use as identities for external networks or as defaults for DBs. They only need to be provided one time.
      :open-api              (-> settings :fdb-api-open env-boolean)
-     :log-directory         (:fdb-group-log-directory settings) ;; where to store raft logs for the group
+     :log-directory         (-> settings :fdb-group-log-directory canonicalize-path) ;; where to store raft logs for the group
      :snapshot-path         (:fdb-group-snapshot-path settings) ;; where in storage to store raft snapshots
      :storage-ledger-write  storage-ledger-write
      :storage-ledger-read   storage-ledger-read

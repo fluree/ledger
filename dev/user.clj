@@ -171,50 +171,50 @@
 
 
   ;; Three servers
-  (start {:fdb-group-servers       "ABC@localhost:9790,DEF@localhost:9791,GHI@localhost:9792"
-          :fdb-group-this-server   "ABC"
-          :fdb-group-log-directory "./data/ABC/raft/"
-          :fdb-storage-file-root   "./data/ABC/"
-          :fdb-api-port            8090})
-  (start {:fdb-group-servers       "ABC@localhost:9790,DEF@localhost:9791,GHI@localhost:9792"
-          :fdb-group-this-server   "DEF"
-          :fdb-group-log-directory "./data/DEF/raft/"
-          :fdb-storage-file-root   "./data/DEF/"
-          :fdb-api-port            8091})
+  (start {:fdb-group-servers          "ABC@localhost:9790,DEF@localhost:9791,GHI@localhost:9792"
+          :fdb-group-this-server      "ABC"
+          :fdb-group-log-directory    "./data/ABC/raft/"
+          :fdb-storage-file-directory "./data/ABC/"
+          :fdb-api-port               8090})
+  (start {:fdb-group-servers          "ABC@localhost:9790,DEF@localhost:9791,GHI@localhost:9792"
+          :fdb-group-this-server      "DEF"
+          :fdb-group-log-directory    "./data/DEF/raft/"
+          :fdb-storage-file-directory "./data/DEF/"
+          :fdb-api-port               8091})
 
-  (start {:fdb-group-servers       "ABC@localhost:9790,DEF@localhost:9791,GHI@localhost:9792"
-          :fdb-group-this-server   "GHI"
-          :fdb-group-log-directory "./data/GHI/raft/"
-          :fdb-storage-file-root   "./data/GHI/"
-          :fdb-api-port            8092})
+  (start {:fdb-group-servers          "ABC@localhost:9790,DEF@localhost:9791,GHI@localhost:9792"
+          :fdb-group-this-server      "GHI"
+          :fdb-group-log-directory    "./data/GHI/raft/"
+          :fdb-storage-file-directory "./data/GHI/"
+          :fdb-api-port               8092})
 
   ;; Three servers dynamic changes
 
 
   ;; Start first
-  (start {:fdb-group-servers       "ABC@localhost:9790"
-          :fdb-group-this-server   "ABC"
-          :fdb-group-log-directory "./data/ABC/raft/"
-          :fdb-storage-file-root   "./data/ABC/"
-          :fdb-api-port            8090
-          :fdb-join?               false})
+  (start {:fdb-group-servers          "ABC@localhost:9790"
+          :fdb-group-this-server      "ABC"
+          :fdb-group-log-directory    "./data/ABC/raft/"
+          :fdb-storage-file-directory "./data/ABC/"
+          :fdb-api-port               8090
+          :fdb-join?                  false})
 
-  (start {:fdb-group-servers       "ABC@localhost:9790,DEF@localhost:9791"
-          :fdb-group-this-server   "DEF"
-          :fdb-group-log-directory "./data/DEF/raft/"
-          :fdb-storage-file-root   "./data/DEF/"
-          :fdb-api-port            8091
-          :fdb-join?               true})
+  (start {:fdb-group-servers          "ABC@localhost:9790,DEF@localhost:9791"
+          :fdb-group-this-server      "DEF"
+          :fdb-group-log-directory    "./data/DEF/raft/"
+          :fdb-storage-file-directory "./data/DEF/"
+          :fdb-api-port               8091
+          :fdb-join?                  true})
 
   ;; Add server two
   (txproto/-add-server-async (:group system) "DEF")
 
-  (start {:fdb-group-servers       "ABC@localhost:9790,DEF@localhost:9791,GHI@localhost:9792"
-          :fdb-group-this-server   "GHI"
-          :fdb-group-log-directory "./data/GHI/raft/"
-          :fdb-storage-file-root   "./data/GHI/"
-          :fdb-api-port            8092
-          :fdb-join?               true})
+  (start {:fdb-group-servers          "ABC@localhost:9790,DEF@localhost:9791,GHI@localhost:9792"
+          :fdb-group-this-server      "GHI"
+          :fdb-group-log-directory    "./data/GHI/raft/"
+          :fdb-storage-file-directory "./data/GHI/"
+          :fdb-api-port               8092
+          :fdb-join?                  true})
 
   ;; Add/ remove server three
   (txproto/-add-server-async (:group system) "GHI")
