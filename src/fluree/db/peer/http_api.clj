@@ -478,6 +478,9 @@
         :sparql
         [{:status 200} (<? (fdb/sparql-async db param {:open-api open-api}))]
 
+        :sql
+        [{:status 200} (<? (fdb/sql-async db param {:open-api open-api}))]
+
         :ledger-info
         (let [res (<? (fdb/ledger-info-async conn ledger))]
           [{:status 200} {:status 200 :data res}])
@@ -1005,5 +1008,3 @@
 
 
   (.close server5))
-
-
