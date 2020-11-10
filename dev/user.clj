@@ -142,15 +142,14 @@
 (comment
 
   ;; Standalone - On Disk
-  (start {:fdb-mode                "dev"
-          :fdb-group-servers       "myserver@localhost:9790"
-          :fdb-group-this-server   "myserver"
-          :fdb-group-log-directory "./data/group/"
-          :fdb-group-snapshot-path "data/group/snapshots"
-          :fdb-storage-ledger-path "data/ledger/"
-          :fdb-consensus-type      "raft"
-          :fdb-api-open            true
-          :fdb-api-port            8090})
+  (start {:fdb-mode                   "dev"
+          :fdb-group-servers          "myserver@localhost:9790"
+          :fdb-group-this-server      "myserver"
+          :fdb-group-log-directory    "./data/group/"
+          :fdb-storage-file-directory "./data/ledger/"
+          :fdb-consensus-type         "raft"
+          :fdb-api-open               true
+          :fdb-api-port               8090})
 
   ;; Standalone - In Memory
   (start {:fdb-group-servers     "DEF@localhost:11001"
