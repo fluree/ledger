@@ -72,6 +72,29 @@
   (stop)
   (refresh-all :after 'user/re-start))
 
+(defn read-data [path]
+  (-> path
+      io/resource
+      io/reader
+      PushbackReader.
+      edn/read))
+
+(defn create-db [db-name]
+  @(-> system
+       :conn
+       (fdb/new-ledger db-name)))
+
+(defn transact-db [db-name txns]
+  @(-> system
+       :conn
+       (fdb/transact db-name txns)))
+
+(defn query-db [db-name query]
+  @(-> system
+       :conn
+       (fdb/db db-name)
+       (fdb/query query)))
+
 (comment
   (async/<!! (http-api/action-handler :ledger-stats system {} {} :test/chat {}))
   (async/<!! (http-api/action-handler :ledger-info system {} {} :test/chat {}))
