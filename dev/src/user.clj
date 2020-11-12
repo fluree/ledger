@@ -23,7 +23,8 @@
             [fluree.db.ledger.txgroup.core :as txgroup]
             [fluree.db.peer.http-api :as http-api]
             [fluree.db.ledger.txgroup.txgroup-proto :as txproto]
-            [fluree.db.peer.password-auth :as pw-auth])
+            [fluree.db.peer.password-auth :as pw-auth]
+            [fluree.db.query.sql :as sql])
   (:import (java.io PushbackReader)))
 
 (set! *warn-on-reflection* true)
@@ -94,6 +95,11 @@
        :conn
        (fdb/db db-name)
        (fdb/query query)))
+
+(defn sql-query-db [db-name sql-query]
+  (->> sql-query
+       sql/parse
+       (query-db db-name)))
 
 (comment
   (async/<!! (http-api/action-handler :ledger-stats system {} {} :test/chat {}))
