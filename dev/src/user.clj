@@ -73,12 +73,9 @@
   (stop)
   (refresh-all :after 'user/re-start))
 
-(defn read-data [path]
-  (-> path
-      io/resource
-      io/reader
-      PushbackReader.
-      edn/read))
+(defn read-data [resource-path]
+  (with-open [r (-> resource-path io/resource io/reader PushbackReader.)]
+    (edn/read r)))
 
 (defn create-db [db-name]
   @(-> system
@@ -89,6 +86,16 @@
   @(-> system
        :conn
        (fdb/transact db-name txns)))
+
+(defn load-sample-db [db-name resource-path]
+  (let [{:db/keys [collections predicates data]} (read-data resource-path)]
+    (create-db db-name)
+    (Thread/sleep 1000)
+    (transact-db db-name collections)
+    (Thread/sleep 1000)
+    (transact-db db-name predicates)
+    (Thread/sleep 1000)
+    (transact-db db-name data)))
 
 (defn query-db [db-name query]
   @(-> system
