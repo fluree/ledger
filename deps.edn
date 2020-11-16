@@ -1,7 +1,7 @@
 {:deps {org.clojure/clojure {:mvn/version "1.10.1"}
         org.clojure/data.xml {:mvn/version "0.2.0-alpha6"}
         com.fluree/db {:git/url "https://github.com/fluree/db"
-                       :sha "6115d156cfbb7d85a626057d78cec9203999613e"}
+                       :sha "22da7a8cc66781de4e5aea041f172be7ad387b1a"}
         com.fluree/raft {:mvn/version "0.12.0"}
         com.fluree/crypto {:mvn/version "0.3.4"}
 
@@ -25,7 +25,7 @@
  :paths ["src" "resources"]
  :aliases
  {:dev
-  {:extra-paths ["dev/src" "dev/resources"]
+  {:extra-paths ["dev"]
    :extra-deps {org.clojure/tools.namespace {:mvn/version "1.0.0"}}
    :main-opts ["-e" "(require,'user)"
                "-e" "(in-ns,'user)"]}
