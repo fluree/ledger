@@ -95,23 +95,11 @@
     true))
 
 
-(defn rename-db-file-create
-  [conn old-network old-db new-network new-db]
-  (let [path-to-network (-> conn :meta :storage-directory)
-        old-path-part   (str path-to-network (str/replace old-network #"_" "/") "/" old-db)
-        old-path        (str old-path-part "/block")
-        new-path        (str path-to-network new-network "/" new-db "/block")]
-    ;; Only moving /block, because need to reindex if we rename db.
-    ;; NOT deleting any files.
-    (when (not= old-path new-path)
-      (do (io/make-parents (io/file new-path))
-          (.renameTo (File. old-path) (File. new-path))))))
-
-
 (defn rename-db
   [db]
   (let [[nw db] (str/split db "/")]
     (str (rename-nw-or-db nw) "/" (rename-nw-or-db db))))
+
 
 (defn v2->v3
   [conn]

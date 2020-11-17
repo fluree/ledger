@@ -11,8 +11,7 @@
             [clojure.string :as str]
             [fluree.db.util.schema :as schema-util]
             [fluree.db.constants :as const]
-            [fluree.db.api :as fdb])
-  (:import (fluree.db.flake Flake)))
+            [fluree.db.api :as fdb]))
 
 (defn disk-store
   [path-to-dir network dbid]
@@ -173,6 +172,5 @@
 
   (def store (disk-store "data/ledger/" "shi" "test2"))
 
-  (clucie/search store {:_id (str 351843720888321)} 1 (standard-analyzer) 0 1)
+  (clucie/search store {:_id (str 351843720888321)} 1 (standard-analyzer) 0 1))
 
-  )

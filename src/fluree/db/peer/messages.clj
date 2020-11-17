@@ -42,10 +42,10 @@
     (case cmd-type
       :tx (let [{:keys [db tx deps expire nonce]} cmd-data
                 _ (when-not db (throw-invalid-command "No db specified for transaction."))
-                [network dbid] (session/resolve-ledger (:conn system) db)
+                [network dbid] (session/resolve-ledger (:conn system) db)]
                 ;db*     (async/<!! (fdb/db (:conn system) (str network "/" dbid) {:connect? true}))
                 ;sub-id  (async/<!! (dbproto/-subid db* ["_tx/id" id]))
-                ]
+
             (when-not tx (throw-invalid-command "No tx specified for transaction."))
             ;(when sub-id
             ;  (throw-invalid-command (format "Transaction id %s, duplicates an existing transaction id." id)))
@@ -125,9 +125,15 @@
                 (when ((set (txproto/all-ledger-list (:group system))) [network dbid])
                   (throw-invalid-command (format "Cannot create a new db, it already exists or existed: %s" db)))
                 (when snapshot
-                  (let [storage-dir (-> system :conn :meta :storage-directory)
-                        exists?     (filestore/exists? (str storage-dir snapshot))]
-                    (when-not exists? (throw-invalid-command (format "Cannot create a new db, snapshot file, %s, does not exist in storage directory, %s" snapshot storage-dir)))))
+                  (let [storage-exists? (-> system :conn :storage-exists)
+                        exists?         (storage-exists? (str snapshot))]
+                    (when-not exists?
+                      (throw-invalid-command
+                        (format "Cannot create a new db, snapshot file, %s, does not exist in storage, %s"
+                                snapshot (case (-> system :conn :storage-type)
+                                           :s3 (-> system :conn :meta :s3-storage)
+                                           :file (-> system :conn :meta :file-storage-path)
+                                           (-> system :conn :storage-type)))))))
 
                 ;; TODO - do more validation, reconcile with "unsigned-cmd" validation before this
 

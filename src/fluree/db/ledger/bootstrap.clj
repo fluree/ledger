@@ -103,9 +103,9 @@
                      const/$_auth       (flake/->sid const/$_auth 999)
                      const/$_role       (flake/->sid const/$_role 999)
                      const/$_rule       (flake/->sid const/$_rule 999)
-                     const/$_setting    (flake/->sid const/$_setting 999)
+                     const/$_setting    (flake/->sid const/$_setting 999)})
                      ;const/$_shard      (flake/->sid const/$_shard 999)
-                     })
+
 
 
 (defn master-auth-flake
@@ -158,6 +158,7 @@
      (flake/new-flake db-setting-id (get pred->id "_setting/ledgers") auth-subid t true)
      (flake/new-flake db-setting-id (get pred->id "_setting/language") (get ident->id ["_tag/id" "_setting/language:en"]) t true)
      (flake/new-flake db-setting-id (get pred->id "_setting/id") "root" t true)]))
+
 
 (defn bootstrap-db
   "Bootstraps a new db from a signed new-db message."
@@ -549,8 +550,8 @@
     :doc                "Spec for the collection. All entities within this collection must meet this spec. Spec is run post-transaction, but before committing a new block."
     :type               "ref"
     :multi              true
-    :restrictCollection "_fn"
-    }
+    :restrictCollection "_fn"}
+
    ;; _collection/specDoc
    {:_id  ["_predicate" const/$_collection:specDoc]
     :name "_collection/specDoc"
@@ -679,8 +680,8 @@
     :doc                "Ref to functions, which resolve to true or false."
     :type               "ref"
     :multi              true
-    :restrictCollection "_fn"
-    }
+    :restrictCollection "_fn"}
+
    {:_id         ["_predicate" const/$_rule:ops]
     :name        "_rule/ops"
     :doc         "Operations (using tags) that this rule applies to."
@@ -831,5 +832,5 @@
    {:_id  ["_predicate" const/$_shard:mutable]
     :name "_shard/mutable"
     :doc  "Whether this shard is mutable. If not specified, defaults to 'false', meaning the data is immutable."
-    :type "boolean"}
-   ])
+    :type "boolean"}])
+
