@@ -31,7 +31,6 @@
       (ntcp/shutdown! evt-loop))))
 
 
-
 ;;; implementation
 
 (def connections (atom {}))

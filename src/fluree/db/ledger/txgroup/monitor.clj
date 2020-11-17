@@ -8,9 +8,9 @@
             [fluree.db.util.json :as json]
             [fluree.db.util.async :refer [<? <?? go-try]]
             [fluree.db.ledger.txgroup.txgroup-proto :as txproto]
-            [fluree.db.ledger.snapshot :as snapshot]
             [fluree.db.ledger.full-text-index :as full-text]
-            [fluree.db.api :as fdb]))
+            [fluree.db.api :as fdb]
+            [clojure.string :as str]))
 
 ;; For now, just use this as a lock to ensure multiple processes are not trying to redistribute work simultaneously.
 (def ^:private redistribute-workers-lock (atom nil))
@@ -287,7 +287,7 @@
                                          (when-not (empty? cmds)
                                            (->> cmds
                                                 (transact/build-block session)
-                                                (<?))))
+                                                <?)))
                                        ;; db isn't up to date, shouldn't happen but before abandoning, dump and reload db to see if we can get current
                                        (let [_           (session/clear-db! session)
                                              db*         (<? (session/current-db session))
@@ -296,9 +296,10 @@
                                            (do
                                              (log/info (format "Ledger %s/%s is not automatically updating internally, session may be lost." network dbid))
                                              (let [cmds (select-block-commands db queue)]
-                                               (when-not (empty? cmds) (->> cmds
-                                                                            (transact/build-block session)
-                                                                            (<?)))))
+                                               (when-not (empty? cmds)
+                                                 (->> cmds
+                                                      (transact/build-block session)
+                                                      <?))))
                                            (log/warn (format "Ledger skipping new transactions because our last processed 't' is %s, but the latest db we can retrieve is at %s" last-t (:t db))))))))
                                  (catch Exception e
                                    (log/error e "Error processing new block. Exiting tx monitor loop.")))]
@@ -307,6 +308,7 @@
                 (async/put! chan ::kick))
 
               (recur (or (:t new-block) last-t)))))))))
+
 
 (defn db-queue
   [conn network dbid]
@@ -385,6 +387,8 @@
         acquire-lock-result (swap! full-text-lock (fn [lock-map]
                                                     (assoc-in lock-map [ledger :next] [])))]
     existing-next))
+
+
 (comment
 
   @full-text-lock
@@ -394,10 +398,7 @@
       (do
         (log/info "LOCK ID" (get-in @full-text-lock ["fluree/test" :id]))
         (<?? (async/timeout 1000))
-        (recur (dec n)))))
-
-  )
-
+        (recur (dec n))))))
 
 
 (defn state-updates-monitor
@@ -411,56 +412,58 @@
   (let [op   (get-in state-change [:command 0])
         conn (:conn system)]
     (case op
-      :new-db (future
-                (do
-                  (when (txproto/-is-leader? (:group conn))
-                    (let [initialize-dbs (txproto/find-all-dbs-to-initialize (:group conn))]
-                      (doseq [[network dbid command] initialize-dbs]
-                        (let [cmd-data (json/parse (:cmd command))
-                              {:keys [fork forkBlock auth copy copyBlock snapshot snapshotBlock]} cmd-data]
-                          (let [bootstrap-resp (async/<!! (cond
-                                                            snapshot (snapshot/create-db-from-snapshot conn network dbid snapshot snapshotBlock command)
-                                                            :else (bootstrap/bootstrap-db system command)))
-                                ;; force session close, so next request will cause session to keep in sync
-                                session        (session/session conn [network dbid])]
-                            (session/close session))))))))
+      :new-db
+      (future
+        (when (txproto/-is-leader? (:group conn))
+          (let [initialize-dbs (txproto/find-all-dbs-to-initialize (:group conn))]
+            (doseq [[network dbid command] initialize-dbs]
+              (json/parse (:cmd command))
+              (async/<!! (bootstrap/bootstrap-db system command))
+              (let [session  (session/session conn [network dbid])]
+                ;; force session close, so next request will cause session to keep in sync
+                (session/close session))))))
 
       :initialized-db
-      (future (when-not (txproto/-is-leader? (:group conn))
-                (let [command (:command state-change)
-                      session (session/session conn [(get command 2) (get command 3)])]
-                  (session/close session))))
+      (future
+        (when-not (txproto/-is-leader? (:group conn))
+          (let [command (:command state-change)
+                session (session/session conn [(get command 2) (get command 3)])]
+            (session/close session))))
 
-      :assoc-in (when-let [queued-tx (queued-tx state-change)]
-                  (let [[network dbid _] queued-tx]
-                    (when (network-assigned-to? (:group conn) network)
-                      (let [queue-chan (db-queue conn network dbid)]
-                        (async/put! queue-chan ::kick)))))
+      :assoc-in
+      (when-let [queued-tx (queued-tx state-change)]
+        (let [[network dbid _] queued-tx]
+          (when (network-assigned-to? (:group conn) network)
+            (let [queue-chan (db-queue conn network dbid)]
+              (async/put! queue-chan ::kick)))))
 
-      :worker-assign (when (and (not (in-memory-db? (:group system)))
-                                (work-changed? (-> conn :group :this-server) state-change))
-                       ;; something about our work changed, re-run checks and do some work!
-                       (kick-all-assigned-networks-with-queue conn))
+      :worker-assign
+      (when (and (not (in-memory-db? (:group system)))
+                 (work-changed? (-> conn :group :this-server) state-change))
+        ;; something about our work changed, re-run checks and do some work!
+        (kick-all-assigned-networks-with-queue conn))
 
       ;; Currently only used for fullText search indexing
-      :new-block (when-not (= :in-memory (-> system :config :consensus :type))
-                   (go-try
-                     (let [[_ network dbid block-data] (:command state-change)
-                           ledger (str network "/" dbid)
-                           [acquire-lock data] (acquire-full-text-lock ledger block-data)]
-                       (when acquire-lock
-                         (let [db          (<? (fdb/db (:conn system) ledger))
-                               storage-dir (-> system :conn :meta :storage-directory)]
-                           (loop [[block & r] data]
-                             (if block
-                               (do (<? (full-text/handle-block db storage-dir network dbid block))
-                                   (recur r))
+      :new-block
+      (when-not (= :in-memory (-> system :config :consensus :type))
+        (go-try
+          (let [[_ network dbid block-data] (:command state-change)
+                ledger (str network "/" dbid)
+                [acquire-lock data] (acquire-full-text-lock ledger block-data)]
+            (when acquire-lock
+              (let [db          (<? (fdb/db (:conn system) ledger))
+                    storage-dir (-> system :conn :meta :file-storage-path)]
+                (when-not (nil? storage-dir)                ; TODO: Support full-text indexes on s3 too
+                  (loop [[block & r] data]
+                    (if block
+                      (do (<? (full-text/handle-block db storage-dir network dbid block))
+                          (recur r))
 
-                               ;; if no more flakes, check the full-text-lock to see if more were added to the queue while we were processing
-                               (let [next-data (drain-full-text-queue ledger)]
-                                 (if (empty? next-data)
-                                   (release-full-text-lock ledger)
-                                   (recur next-data))))))))))
+                      ;; if no more flakes, check the full-text-lock to see if more were added to the queue while we were processing
+                      (let [next-data (drain-full-text-queue ledger)]
+                        (if (empty? next-data)
+                          (release-full-text-lock ledger)
+                          (recur next-data)))))))))))
 
       ;;else
       nil)))

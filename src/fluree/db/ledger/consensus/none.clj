@@ -170,8 +170,8 @@ Events include:
 (defn in-memory-start-up
   [group conn system shutdown]
   (async/go
-    (try (let [;status           (async/<! (:in-memory-initialized group))
-               ]
+    (try (let [];status           (async/<! (:in-memory-initialized group))
+
 
            (when (empty? (txproto/get-shared-private-key group))
              (log/info "Brand new Fluree instance, establishing default shared private key.")

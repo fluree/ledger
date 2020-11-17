@@ -1,4 +1,4 @@
-FROM clojure:tools-deps-1.10.1.716-slim-buster AS builder
+FROM clojure:tools-deps-1.10.1.727-slim-buster AS builder
 
 RUN mkdir -p /usr/src/fluree-ledger
 WORKDIR /usr/src/fluree-ledger
@@ -36,7 +36,7 @@ USER fluree
 EXPOSE 8080
 
 # Point runtime data paths at volume
-ENV FLUREE_ARGS="-Dfdb-group-log-directory=/var/lib/fluree/group/ -Dfdb-storage-file-directory=/var/lib/fluree/ledger/"
+ENV FLUREE_ARGS="-Dfdb-storage-file-root=/var/lib/fluree/"
 
 ENTRYPOINT ["./fluree_start.sh"]
 CMD []

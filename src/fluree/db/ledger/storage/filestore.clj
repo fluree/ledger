@@ -2,58 +2,10 @@
   (:require [clojure.java.io :as io]
             [clojure.string :as str]
             [clojure.tools.logging :as log]
-            [fluree.db.util.async :as f-async]
             [clojure.core.async :as async]
-            [fluree.crypto :as crypto])
-  (:import (java.io ByteArrayOutputStream)
-           (java.security SecureRandom)
-           (java.nio ByteBuffer)))
-
-
-(defn random-bytes
-  "Generate a random byte array of provided size"
-  [size]
-  (let [seed (byte-array size)]
-    (.nextBytes (SecureRandom.) seed)
-    seed))
-
-
-(defn encrypt-bytes
-  [ba enc-key]
-  (let [iv       (random-bytes 16)
-        enc      (crypto/aes-encrypt ba iv enc-key :none)
-        bb       (ByteBuffer/allocate (+ (count enc) 18))
-        f-format (byte-array [2 1])]
-    (doto bb
-      (.put f-format)
-      (.put iv)
-      (.put enc)
-      (.rewind))
-    (.array bb)))
-
-
-(defn decrypt-bytes
-  [ba enc-key]
-  (let [bb             (ByteBuffer/wrap ba)
-        encrypted-flag (.get bb)
-        encrypted?     (= 2 encrypted-flag)                 ;; first byte is encrypted? (2) or not (1)
-        _              (when-not encrypted?
-                         (throw (ex-info (str "Attempting to read encrypted file, but not flagged as encrypted.")
-                                         {:status 500
-                                          :error  :db/storage-error})))
-        format         (.get bb)                            ;; second byte is file format (only 1 for now - only one format)
-        iv             (byte-array 16)                      ;; initialization vector
-        _              (.get bb iv)
-        enc            (byte-array (.remaining bb))
-        _              (.get bb enc)
-        data           (try
-                         (crypto/aes-decrypt enc iv enc-key :none :bytes)
-                         (catch javax.crypto.BadPaddingException e
-                           ;; incorrect decryption key used
-                           (log/error (str "Files cannot be properly decoded. Have you changed the "
-                                           ":fdb-encryption-secret config setting? Fatal error, exiting."))
-                           (System/exit 1)))]
-    data))
+            [fluree.db.ledger.storage :refer [key->unix-path]]
+            [fluree.db.ledger.storage.crypto :as crypto])
+  (:import (java.io ByteArrayOutputStream FileNotFoundException)))
 
 
 (defn write-file
@@ -61,7 +13,7 @@
   (try
     (with-open [out (io/output-stream (io/file path))]
       (.write out val))
-    (catch java.io.FileNotFoundException e
+    (catch FileNotFoundException e
       (try
         (io/make-parents (io/file path))
         (with-open [out (io/output-stream (io/file path))]
@@ -82,7 +34,7 @@
                 xout (ByteArrayOutputStream.)]
       (io/copy xin xout)
       (.toByteArray xout))
-    (catch java.io.FileNotFoundException e
+    (catch FileNotFoundException e
       nil)
     (catch Exception e (throw e))))
 
@@ -102,41 +54,33 @@
     false))
 
 
-(defn get-file-path
-  "Given a base path and our key, creates a file path.
-
-  We need to get rid of the encoding form on the key... for sure!"
-  [base-path key]
-  (let [key       (if (str/includes? key ".avro")
-                    key (str key ".fdbd"))
-        split-key (-> key
-                      (str/split #"_"))]
-    (apply io/file base-path split-key)))
-
-
 (defn storage-read
   [base-path key]
   (log/trace "Storage read: " {:base-path base-path :key key})
-  (->> (get-file-path base-path key)
+  (->> key
+       (key->unix-path base-path)
        (read-file)))
 
 
 (defn storage-read-async
   [base-path key]
   (async/thread
-    (->> (get-file-path base-path key)
+    (->> key
+         (key->unix-path base-path)
          (read-file))))
 
 
 (defn storage-exists?
   [base-path key]
-  (->> (get-file-path base-path key)
+  (->> key
+       (key->unix-path base-path)
        (exists?)))
 
 (defn storage-exists?-async
   [base-path key]
   (async/thread
-    (->> (get-file-path base-path key)
+    (->> key
+         (key->unix-path base-path)
          (exists?))))
 
 
@@ -147,12 +91,12 @@
    (if encryption-key
      (fn [key]
        (async/thread (let [data (storage-read base-path key)]
-                       (when data (decrypt-bytes data encryption-key)))))
+                      (when data (crypto/decrypt-bytes data encryption-key)))))
      (fn [key]
        (async/thread (storage-read base-path key))))))
 
 
-(defn connection-storage-exists
+(defn connection-storage-exists?
   "Default function for connection storage."
   [base-path]
   (fn [key]
@@ -163,9 +107,11 @@
   [base-path key data]
   (log/trace "Storage write: " {:base-path base-path :key key :data data})
   (if (nil? data)
-    (->> (get-file-path base-path key)
+    (->> key
+         (key->unix-path base-path)
          (safe-delete))
-    (->> (get-file-path base-path key)
+    (->> key
+         (key->unix-path base-path)
          (write-file data))))
 
 
@@ -181,26 +127,71 @@
   ([base-path encryption-key]
    (if encryption-key
      (fn [key data]
-       (let [enc-data (encrypt-bytes data encryption-key)]
+       (let [enc-data (crypto/encrypt-bytes data encryption-key)]
          (storage-write-async base-path key enc-data)))
      (fn [key data]
        (storage-write-async base-path key data)))))
 
+
 (defn storage-rename
   [base-path old-key new-key]
   (.renameTo
-    (get-file-path base-path old-key)
-    (get-file-path base-path new-key)))
+    (key->unix-path base-path old-key)
+    (key->unix-path base-path new-key)))
+
 
 (defn storage-rename-async
   [base-path old-key new-key]
   (async/thread
     (storage-rename base-path old-key new-key)))
 
+
 (defn connection-storage-rename
   [base-path]
   (fn [old-key new-key]
     (storage-rename-async base-path old-key new-key)))
+
+
+(defn storage-delete
+  [base-path key]
+  (let [path (key->unix-path base-path key)]
+    (safe-delete path)))
+
+
+(defn storage-delete-async
+  [base-path key]
+  (async/thread
+    (storage-delete base-path key)))
+
+
+(defn connection-storage-delete
+  [base-path]
+  (fn [key]
+    (storage-delete-async base-path key)))
+
+
+(defn storage-list
+  "Returns a sequence of data maps with keys `#{:name :size :url}` representing
+  the files at `base-path/path`."
+  [base-path path]
+  (let [full-path (str/join "/" [base-path path])]
+    (when (exists? full-path)
+      (let [files (-> full-path io/file file-seq)]
+        (map (fn [f] {:name (.getName f), :url (.toURL f), :size (.length f)})
+             files)))))
+
+
+(defn storage-list-async
+  [base-path path]
+  (async/thread
+    (storage-list base-path path)))
+
+
+(defn connection-storage-list
+  [base-path]
+  (fn [path]
+    (storage-list-async base-path path)))
+
 
 (comment
 
@@ -216,8 +207,6 @@
 
   (= (vec test-ba)
      (-> test-ba
-         (encrypt-bytes enc-key)
-         (decrypt-bytes enc-key)
-         (vec)))
-
-  )
+         (crypto/encrypt-bytes enc-key)
+         (crypto/decrypt-bytes enc-key)
+         (vec))))

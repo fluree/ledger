@@ -244,9 +244,9 @@
 
   (reduce #(if (and (>= %2 frst) (if rhs (<= %2 rhs) true))
              (conj %1 %2)
-             %1) #{} myset)
+             %1) #{} myset))
 
-  )
+
 
 (defn index-branch
   "Gets called when a root index is dirty, and for all sub-roots."
@@ -542,15 +542,4 @@
 
   (def spot-comp (.comparator (-> db :novelty :spot)))
 
-  (validate-idx-continuity (:spot db) true spot-comp)
-
-  (time (async/<!! (fluree.db.ledger.snapshot/create-snapshot conn "test" "one")))
-
-  (async/<!! (fluree.db.api/new-ledger-async
-               conn "test/affssfsfsadfas"
-               {:snapshot "test/one/snapshot/1587130669908.avro"}))
-
-
-  (time (async/<!! (fluree.db.ledger.snapshot/create-snapshot-no-history conn "smol" "one")))
-
-  )
+  (validate-idx-continuity (:spot db) true spot-comp))

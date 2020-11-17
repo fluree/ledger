@@ -20,7 +20,10 @@
         aleph-middleware/aleph-middleware {:mvn/version "0.2.0"}
         ring/ring-core {:mvn/version "1.8.1"}
         ring-cors/ring-cors {:mvn/version "0.1.13"}
-        compojure/compojure {:mvn/version "1.6.2"}}
+        compojure/compojure {:mvn/version "1.6.2"}
+
+        ;; logging
+        ch.qos.logback/logback-classic {:mvn/version "1.2.3"}}
 
  :paths ["src" "resources"]
  :aliases
