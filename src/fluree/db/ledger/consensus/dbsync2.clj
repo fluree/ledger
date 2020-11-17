@@ -1,14 +1,14 @@
 (ns fluree.db.ledger.consensus.dbsync2
   (:require [fluree.db.storage.core :as storage]
-            [clojure.core.async :as async]
+            [clojure.core.async :as async :refer [go >!]]
             [clojure.tools.logging :as log]
             [fluree.db.ledger.storage.filestore :as filestore]
-            [fluree.db.ledger.util :as util]
+            [fluree.db.ledger.util :as util :refer [go-try <?]]
             [fluree.db.ledger.full-text-index :as full-text]
             [fluree.db.ledger.txgroup.txgroup-proto :as txproto]
             [clojure.string :as str]
-            [fluree.db.api :as fdb])
-  (:import (java.io File)))
+            [fluree.db.api :as fdb]))
+
 
 (defn terminate!
   "Shuts down entire server.
@@ -62,8 +62,8 @@
   Should return exception if exhausts all options for remote copying."
   [conn remote-sync-servers server-timeout]
   (let [{:keys [group meta]} conn
-        {:keys [storage-directory encryption-secret]} meta
-        storage-write (filestore/connection-storage-write storage-directory encryption-secret)
+        {:keys [storage-path encryption-secret]} meta
+        storage-write (filestore/connection-storage-write storage-path encryption-secret)
         raft          (:raft group)
         ;; send-rpc has args: [raft server operation data callback]
         send-rpc-fn   (get-in raft [:config :send-rpc-fn])]
@@ -89,7 +89,7 @@
                               (async/close! finished?-port))
                             (async/put! result-ch ex)
                             (async/close! result-ch)))]
-        (async/go
+        (go
           (loop [[server & r] server-list]
             (let [resp-chan    (async/chan 1)
                   callback     (fn [resp] (if (nil? resp)
@@ -133,35 +133,34 @@
 
 (defn get-file-local
   "Returns core async channel, will return true (or exception)
-  when file is local on disk"
+  when file is already in local storage (i.e. local to this node; could be an S3 bucket)"
   [conn port file-key]
   (util/go-try
-    (let [base-path (-> conn :meta :storage-directory)
-          exists?   (util/<? (filestore/storage-exists?-async base-path file-key))]
+    (let [file-exists? (:storage-exists conn)
+          exists?      (<? (file-exists? file-key))]
       (if exists?
         true
         (let [result-ch (async/chan)]
           ;; queue request for file
-          (async/>! port [file-key result-ch])
+          (>! port [file-key result-ch])
           ;; wait until we have confirmation it is in place.
-          (util/<? result-ch))))))
-
+          (<? result-ch))))))
 
 
 (defn get-index-leaf-if-needed
   [conn port child-key]
-  (util/go-try
-    (let [base-path            (-> conn :meta :storage-directory)
-          child-his-key        (str child-key "-his")
-          child-exists?-ch     (filestore/storage-exists?-async base-path child-key)
-          child-his-exists?-ch (filestore/storage-exists?-async base-path child-his-key)
+  (go-try
+    (let [child-his-key        (str child-key "-his")
+          storage-exists?      (:storage-exists conn)
+          child-exists?-ch     (storage-exists? child-key)
+          child-his-exists?-ch (storage-exists? child-his-key)
           ;; pull both files in parallel to speed things up
-          child-exists?        (util/<? child-exists?-ch)
-          child-his-exists?    (util/<? child-his-exists?-ch)]
+          child-exists?        (<? child-exists?-ch)
+          child-his-exists?    (<? child-his-exists?-ch)]
       (when-not child-exists?
-        (async/>! port child-key))
+        (>! port child-key))
       (when-not child-his-exists?
-        (async/>! port child-his-key))
+        (>! port child-his-key))
       :done)))
 
 
@@ -174,7 +173,7 @@
     ;; first get file local if not already here. Will throw if an error occurs
     (util/<? (get-file-local conn port branch-id))
     ;; with file local, we can load and check children
-    (let [branch      (util/<? (storage/read-branch conn branch-id))
+    (let [branch      (<? (storage/read-branch conn branch-id))
           children    (:children branch)
           child-leaf? (true? (-> children first :leaf))]
 
@@ -182,12 +181,12 @@
         (cond
 
           (and c child-leaf?)
-          (do (util/<? (get-index-leaf-if-needed conn port (:id c)))
+          (do (<? (get-index-leaf-if-needed conn port (:id c)))
               (recur r))
 
           ;; child is another branch node
           c
-          (do (util/<? (sync-index-branch conn port (:id c)))
+          (do (<? (sync-index-branch conn port (:id c)))
               (recur r))
 
           ;; no more children, return
@@ -201,27 +200,28 @@
   Returns core async channel with either ::done, or an exception if
   an error occurs during sync."
   [conn network dbid index-point port]
-  (util/go-try
+  (go-try
     ;; will get index root local if not there already... throws on error
     (->> (storage/ledger-root-key network dbid index-point)
          (get-file-local conn port)
-         (util/<?))
+         <?)
     (let [db-root          (storage/read-db-root conn network dbid index-point)
-          {:keys [spot psot post opst]} (util/<? db-root)
+          {:keys [spot psot post opst]} (<? db-root)
           sync-spot-ch     (sync-index-branch conn port (:id spot))
           sync-psot-ch     (sync-index-branch conn port (:id psot))
           sync-post-ch     (sync-index-branch conn port (:id post))
           sync-opst-ch     (sync-index-branch conn port (:id opst))
           garbage-file-key (storage/ledger-garbage-key network dbid index-point)
-          garbage-exists?  (util/<? (filestore/storage-exists?-async (-> conn :meta :storage-directory) garbage-file-key))]
+          storage-exists?  (:storage-exists conn)
+          garbage-exists?  (<? (storage-exists? garbage-file-key))]
 
       ;; kick off 4 indexes in parallel...  will throw if an error occurs
-      (util/<? sync-spot-ch)
-      (util/<? sync-psot-ch)
-      (util/<? sync-post-ch)
-      (util/<? sync-opst-ch)
+      (<? sync-spot-ch)
+      (<? sync-psot-ch)
+      (<? sync-post-ch)
+      (<? sync-opst-ch)
       (when-not garbage-exists?
-        (async/>! port garbage-file-key))
+        (>! port garbage-file-key))
       ::done)))
 
 
@@ -229,40 +229,42 @@
   "Checks actual file directory for any missing blocks through provided 'check through' block.
   Puts block file keys (filenames) onto provided port if they are missing."
   [conn network dbid check-through port]
-  (async/go
-    (let [file-path   (storage/block-storage-path conn network dbid)
-          block-files (->> file-path
-                           (file-seq)
-                           (filter #(and (.isFile ^File %)
-                                         (re-matches #"^[0-9]+\.fdbd" (.getName ^File %)))))
-          blocks      (reduce (fn [acc ^File block-file]
-                                (let [block (some->> (.getName block-file)
-                                                     ^String (re-find #"^[0-9]+")
-                                                     (Long.))]
-                                  (if (> (.length block-file) 0)
-                                    (conj acc block)
-                                    acc)))
-                              #{} block-files)]
+  (go-try
+    (let [file-path    (storage/block-storage-path conn network dbid)
+          storage-list (:storage-list conn)
+          all-files    (<? (storage-list file-path))
+          last-element (fn [path] (-> path (str/split #"/") last))
+          block-files  (filter #(->> % :name last-element (re-matches #"^[0-9]+\.fdbd"))
+                               all-files)
+          blocks       (reduce (fn [acc block-file]
+                                 (let [block (some->> (:name block-file)
+                                                      last-element
+                                                      ^String (re-find #"^[0-9]+")
+                                                      Long/parseLong)]
+                                   (if (> (:size block-file) 0)
+                                     (conj acc block)
+                                     acc)))
+                               #{} block-files)]
       (loop [block-n check-through]
         (if (< block-n 1)
           ::finished
           (do
             (when-not (contains? blocks block-n)
               ;; block is missing, or file is empty... add to files we need to sync
-              (async/>! port (storage/ledger-block-key network dbid block-n)))
+              (>! port (storage/ledger-block-key network dbid block-n)))
             (recur (dec block-n))))))))
 
 
 (defn check-db-full-consistency
   "First checks every block, then checks all DB indexes."
   [conn current-state port network dbid]
-  (util/go-try
+  (go-try
     (let [latest-block (txproto/block-height* current-state network dbid)
           last-index   (txproto/latest-index* current-state network dbid)
           ;; wait to sync all blocks until we start checking latest index file
-          block-result (util/<? (check-all-blocks-consistency conn network dbid latest-block port))
+          block-result (<? (check-all-blocks-consistency conn network dbid latest-block port))
           index-result (when last-index
-                         (util/<? (sync-index-point conn network dbid last-index port)))]
+                         (<? (sync-index-point conn network dbid last-index port)))]
       (log/debug (str network "/" dbid ": block-sync complete to: " latest-block
                       ": index-sync complete for: " last-index ". "
                       "Block-sync result: " block-result ", Index-sync result: " index-result "."))
@@ -282,28 +284,28 @@
                                    (check-db-full-consistency conn current-state sync-chan network dbid))
                                  db-list)]
     (if (empty? db-list)
-      (async/go ::done)
+      (go ::done)
       (let [remote-copy-fn (remote-copy-fn* conn remote-sync-servers 3000)]
 
         ;; kick off pipeline of file copying, results of every operation will be placed on res-chan
         (async/pipeline-async parallelism res-chan remote-copy-fn sync-chan)
 
         ;; each db sync may have errors, check and throw/exit if we hit any
-        (async/go
+        (go
           (try
             (loop [[c & r] find-files-results]
               (if (nil? c)
                 (do
                   (async/close! sync-chan)                  ;; close sync-chan so pipeline will close
                   ::done)
-                (let [next-result (util/<? c)]
+                (let [next-result (<? c)]
                   (recur r))))
             (catch Exception e
               (async/close! sync-chan)
               (terminate! conn "Error synchronizing files, fatal error - exiting." e))))
 
         ;; the file retrieval process queues up, and may also have an error... throw if we have a problem
-        (async/go
+        (go
           (try
             (loop [i 0]
               (let [next-result (util/<? res-chan)]
@@ -335,7 +337,7 @@
                    (if (not= full-text-block block)
                      (let [[nw dbid] (str/split ledger #"/")
                            db (util/<? (fdb/db conn ledger))]
-                       (do (util/<? (full-text/sync-full-text-index db storage-dir nw dbid
-                                                                    (inc full-text-block) block)))
+                       (util/<? (full-text/sync-full-text-index db storage-dir nw dbid
+                                                                (inc full-text-block) block))
                        (recur r))
                      (recur r)))))))

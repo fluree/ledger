@@ -14,14 +14,10 @@
             [fluree.db.peer.messages :as messages]
 
             [fluree.db.ledger.stats :as stats]
-            [fluree.db.ledger.storage.filestore :as filestore]
             [fluree.db.ledger.storage.memorystore :as memorystore]
             [fluree.db.ledger.txgroup.core :as txgroup]
-            [fluree.db.ledger.consensus.raft :as raft]
-            [fluree.db.ledger.txgroup.monitor :as group-monitor]
-            [fluree.db.ledger.consensus.dbsync2 :as dbsync2]
             [fluree.db.ledger.upgrade :as upgrade]
-            [fluree.raft :as fraft]
+            [fluree.raft :as raft]
             [fluree.db.ledger.consensus.tcp :as ftcp]
             [fluree.db.ledger.txgroup.txgroup-proto :as txproto]
             [fluree.db.constants :as const]
@@ -132,8 +128,7 @@
                                                  (connection/connect (:fdb-group-servers-ports settings) (assoc conn-opts :memory? memory?)))]
                           ;; launch message consumer, handles messages back from ledger
                           (local-message-response conn-impl producer-chan)
-                          (-> conn-impl
-                              (assoc :group group)))
+                          (assoc conn-impl :group group))
          system         {:config    config
                          :conn      conn
                          :webserver nil
@@ -141,7 +136,7 @@
 
          ;; add a leader-watch function to upgrade data if required
          _              (when (and (= :raft consensus-type) transactor?)
-                          (fraft/add-leader-watch (:raft group) ::upgrade (check-version-upgrade-fn conn system) :become-leader))
+                          (raft/add-leader-watch (:raft group) ::upgrade (check-version-upgrade-fn conn system) :become-leader))
 
          webserver      (let [webserver-opts (-> (:webserver config)
                                                  (assoc :system system))]

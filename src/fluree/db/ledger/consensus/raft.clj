@@ -2,22 +2,20 @@
   (:require [fluree.raft :as raft]
             [clojure.java.io :as io]
             [taoensso.nippy :as nippy]
-            [clojure.core.async :as async]
+            [clojure.core.async :as async :refer [<! <!!]]
             [clojure.tools.logging :as log]
             [clojure.string :as str]
-            [fluree.db.ledger.storage.filestore :as filestore]
             [fluree.db.storage.core :as storage]
             [fluree.db.serde.avro :as avro]
             [fluree.db.event-bus :as event-bus]
             [fluree.db.ledger.consensus.tcp :as ftcp]
-            [fluree.db.util.async :refer [<? go-try]]
+            [fluree.db.util.async :refer [go-try <??]]
             [fluree.db.ledger.txgroup.txgroup-proto :as txproto :refer [TxGroup]]
             [fluree.db.ledger.consensus.update-state :as update-state]
             [fluree.db.ledger.txgroup.monitor :as group-monitor]
             [fluree.db.ledger.consensus.dbsync2 :as dbsync2]
             [fluree.crypto :as crypto])
-  (:import (java.util UUID)
-           (java.io File)))
+  (:import (java.util UUID)))
 
 
 (defn snapshot-xfer
@@ -33,14 +31,12 @@
   If multiple parts are returned, additional requests for each part will be
   requested. A snapshot should be broken into multiple parts if it is larger than
   the amount of data you want to push across the network at once."
-  [path]
+  [{:keys [path storage-read] :as config}]
   (fn [id part]
+    ;; TODO: Actually use the part arg or get rid of it - WSM 2020-09-01
     ;; in this example we do everything in one part, regardless of snapshot size
-    (let [file (io/file path (str id ".snapshot"))
-          ba   (byte-array (.length file))
-          is   (io/input-stream file)]
-      (.read is ba)
-      (.close is)
+    (let [file (str path id ".snapshot")
+          ba   (<!! (storage-read file))]
       {:parts 1
        :data  ba})))
 
@@ -52,18 +48,23 @@
   If snapshot-part = 1, should first delete any existing file if it exists (possible to have historic partial snapshot lingering).
 
   As soon as final part write succeeds, can safely garbage collect any old snapshots on disk except the most recent one."
-  [path]
+  [{:keys [path storage-delete storage-write] :as config}]
   (fn [snapshot-map]
     (let [{:keys [leader-id snapshot-term snapshot-index snapshot-part snapshot-parts snapshot-data]} snapshot-map
-          file (io/file path (str snapshot-index ".snapshot"))]
+          file (str snapshot-index ".snapshot")]
 
+      ;; NOTE: Currently snapshot-part is always 1 b/c we never send multi-part snapshots.
+      ;;   See comment in `snapshot-xfer` for more details. - WSM 2020-09-01
       (when (= 1 snapshot-part)
         ;; delete any old file if exists
-        (io/make-parents file)
-        (io/delete-file file true))
+        (storage-delete file))
 
-      (with-open [out (io/output-stream file :append true)]
-        (.write out ^bytes snapshot-data)))))
+      ;; TODO: If multi-part snapshot transfers are implemented, need to figure out
+      ;;   how & when to write out / upload the file here. For local FS, can just
+      ;;   add a way to request appending. For something like S3, we will need to
+      ;;   do something else like gather all parts locally and then upload or
+      ;;   investigate streaming multipart uploads or similar.
+      (<?? (storage-write file snapshot-data)))))
 
 
 (defn snapshot-reify
@@ -72,11 +73,14 @@
 
   Called with snapshot-id to reify, which corresponds to the commit index the snapshot was taken.
   Should throw if snapshot not found, or unable to parse. This will stop raft."
-  [path state-atom]
+  [{:keys [path state-atom storage-read] :as config}]
   (fn [snapshot-id]
     (try
-      (let [file  (io/file path (str snapshot-id ".snapshot"))
-            state (nippy/thaw-from-file file)]
+      (let [file  (str path snapshot-id ".snapshot")
+            _     (log/debug "Reifying snapshot" file)
+            data  (<?? (storage-read file))
+            state (when data (nippy/thaw data))]
+        (log/debug "Read snapshot data:" (pr-str state))
         (reset! state-atom state))
       (catch Exception e (log/error e "Error reifying snapshot: " snapshot-id)))))
 
@@ -84,42 +88,106 @@
 (defn- return-snapshot-id
   "Takes java file and returns log id (typically same as start index)
   from the file name as a long integer."
-  [^File file]
-  (when-let [match (re-find #"^([0-9]+)\.snapshot$" (.getName file))]
+  [file]
+  (when-let [match (re-find #"^([0-9]+)\.snapshot$" (:name file))]
     (Long/parseLong (second match))))
 
 
 (defn- purge-snapshots
-  [path max-snapshots]
-  (let [rm-snapshots (some->> (file-seq (clojure.java.io/file path))
-                              (filter #(.isFile ^File %))
+  [{:keys [path storage-list storage-delete max-snapshots] :as config}]
+  (let [rm-snapshots (some->> (storage-list path)
+                              <!!
                               (keep return-snapshot-id)
                               (sort >)
                               (drop max-snapshots))]
     (when (not-empty rm-snapshots)
       (log/info "Removing snapshots: " rm-snapshots))
     (doseq [snapshot rm-snapshots]
-      (let [file (io/file path (str snapshot ".snapshot"))]
-        (io/delete-file file true)))))
+      (let [file (str/join "/" [(str/replace path #"/$" "")
+                                (str snapshot ".snapshot")])]
+        (storage-delete file)))))
+
+
+(defn view-raft-state
+  "Returns current raft state to callback."
+  ([raft] (view-raft-state raft (fn [x] (clojure.pprint/pprint (dissoc x :config)))))
+  ([raft callback]
+   (raft/view-raft-state (:raft raft) callback)))
+
+
+(defn leader-async
+  "Returns leader as a core async channel once available.
+  Default timeout supplied, or specify one."
+  ([raft] (leader-async raft 60000))
+  ([raft timeout]
+   (let [timeout-time (+ (System/currentTimeMillis) timeout)]
+     (async/go-loop [retries 0]
+       (let [resp-chan (async/promise-chan)
+             _         (view-raft-state raft (fn [state]
+                                               (if-let [leader (:leader state)]
+                                                 (async/put! resp-chan leader)
+                                                 (async/close! resp-chan))))
+             resp      (async/<! resp-chan)]
+         (cond
+           resp resp
+
+           (> (System/currentTimeMillis) timeout-time)
+           (ex-info (format "Leader not yet established and timeout of %s reached. Polled raft state %s times." timeout retries)
+                    {:status 400 :error :db/leader-timeout})
+
+           :else
+           (do
+             (async/<! (async/timeout 100))
+             (recur (inc retries)))))))))
+
+
+(defn is-leader?-async
+  [raft]
+  (async/go
+    (let [leader (async/<! (leader-async raft))]
+      (if (instance? Throwable leader)
+        leader
+        (= (:this-server raft) leader)))))
+
+
+(defn is-leader?
+  [raft]
+  (let [leader? (async/<!! (is-leader?-async raft))]
+    (if (instance? Throwable leader?)
+      (throw leader?)
+      leader?)))
+
+
+(defn snapshot-writer*
+  "Blocking until write succeeds. An error will stop RAFT entirely."
+  [{:keys [path state-atom storage-write] :as config}]
+  (fn [index callback]
+    (log/info "Ledger group snapshot write triggered for index:" index)
+    (let [start-time    (System/currentTimeMillis)
+          state         @state-atom
+          file          (str path index ".snapshot")
+          max-snapshots 6
+          data          (nippy/freeze state)]
+      (log/debug "Writing raft snapshot" file "with contents" (pr-str state))
+      (try
+        (<?? (storage-write file data))
+        (catch Exception e (log/error e "Error writing snapshot index:" index)))
+      (log/info (format "Ledger group snapshot completed for index %s in %s milliseconds."
+                        index (- (System/currentTimeMillis) start-time)))
+      (callback)
+      (purge-snapshots (assoc config :max-snapshots max-snapshots)))))
 
 
 (defn snapshot-writer
-  "Blocking until write succeeds. An error will stop RAFT entirely."
-  [path state-atom]
-  (fn [index callback]
-    (log/info "Ledger group snapshot write triggered for index: " index)
-    (let [start-time    (System/currentTimeMillis)
-          state         @state-atom
-          file          (io/file path (str index ".snapshot"))
-          max-snapshots 6]
-      (io/make-parents file)
-      (future
-        (try (nippy/freeze-to-file file state)
-             (catch Exception e (log/error e "Error writing snapshot index: " index)))
-        (log/info (format "Ledger group snapshot completed for index %s in %s milliseconds."
-                          index (- (System/currentTimeMillis) start-time)))
-        (callback)
-        (purge-snapshots path max-snapshots)))))
+  "Wraps snapshot-writer* in the logic that determines whether all nodes or
+  only the leader should write snapshots."
+  [{:keys [only-leader-snapshots] :as config}]
+  (let [writer (snapshot-writer* config)]
+    (fn [index callback]
+      (if only-leader-snapshots
+        (when (is-leader? config)
+          (writer index callback))
+        (writer index callback)))))
 
 
 ;; Holds state change functions that are registered
@@ -379,33 +447,50 @@
 ;; useful for setting a base 'version' in state
 (def default-state {:version 3})
 
-
 (defn start-instance
   [raft-config]
   (let [{:keys [port this-server log-directory entries-max log-history
-                storage-read storage-write private-keys open-api]} raft-config
+                storage-ledger-read storage-group-read storage-ledger-write
+                storage-group-write storage-group-exists storage-group-delete
+                storage-group-list private-keys open-api]} raft-config
         event-chan             (async/chan)
         command-chan           (async/chan)
         state-machine-atom     (atom default-state)
         log-directory          (or log-directory (str "raftlog/" (name this-server) "/"))
-        raft-config*           (assoc raft-config :event-chan event-chan
-                                                  :command-chan command-chan
-                                                  :send-rpc-fn send-rpc
-                                                  :log-history log-history
-                                                  :log-directory log-directory
-                                                  :entries-max (or entries-max 50)
-                                                  :state-machine (state-machine this-server state-machine-atom storage-read storage-write)
-                                                  :snapshot-write (snapshot-writer (str log-directory "snapshots/") state-machine-atom)
-                                                  :snapshot-reify (snapshot-reify (str log-directory "snapshots/") state-machine-atom)
-                                                  :snapshot-xfer (snapshot-xfer (str log-directory "snapshots/"))
-                                                  :snapshot-install (snapshot-installer (str log-directory "snapshots/")))
+        snapshot-config        {:path           "snapshots/"
+                                :state-atom     state-machine-atom
+                                :storage-read   storage-group-read
+                                :storage-write  storage-group-write
+                                :storage-exists storage-group-exists
+                                :storage-delete storage-group-delete
+                                :storage-list   storage-group-list}
+        raft-config*           (assoc raft-config
+                                 :event-chan event-chan
+                                 :command-chan command-chan
+                                 :send-rpc-fn send-rpc
+                                 :log-history log-history
+                                 :log-directory log-directory
+                                 :entries-max (or entries-max 50)
+                                 :state-machine (state-machine this-server
+                                                               state-machine-atom
+                                                               storage-ledger-read
+                                                               storage-ledger-write)
+                                 :snapshot-write (snapshot-writer snapshot-config)
+                                 :snapshot-reify (snapshot-reify snapshot-config)
+                                 :snapshot-xfer (snapshot-xfer snapshot-config)
+                                 :snapshot-install (snapshot-installer snapshot-config))
         _                      (log/debug "Starting Raft with config:" (pr-str raft-config*))
         raft                   (raft/start raft-config*)
-        client-message-handler (partial message-consume raft storage-read)
+        client-message-handler (partial message-consume raft storage-ledger-read) ; Or should it be group?
         new-client-handler     (fn [client]
                                  (ftcp/monitor-remote-connection this-server client client-message-handler nil))
         ;; both starts server and returns a shutdown function
         server-shutdown-fn     (ftcp/start-tcp-server port new-client-handler)]
+
+    ;; handy for debugging
+    ;(add-watch state-machine-atom :logger
+    ;           (fn [_ _ _ nv]
+    ;             (log/debug "state atom changed to" (pr-str nv))))
 
     {:raft            raft
      :state-atom      state-machine-atom
@@ -419,11 +504,6 @@
 
 
 
-(defn view-raft-state
-  "Returns current raft state to callback."
-  ([raft] (view-raft-state raft (fn [x] (clojure.pprint/pprint (dissoc x :config)))))
-  ([raft callback]
-   (raft/view-raft-state (:raft raft) callback)))
 
 
 (defn view-raft-state-async
@@ -450,47 +530,6 @@
   (raft/monitor-raft (:raft raft) nil))
 
 
-(defn leader-async
-  "Returns leader as a core async channel once available.
-  Default timeout supplied, or specify one."
-  ([raft] (leader-async raft 60000))
-  ([raft timeout]
-   (let [timeout-time (+ (System/currentTimeMillis) timeout)]
-     (async/go-loop [retries 0]
-       (let [resp-chan (async/promise-chan)
-             _         (view-raft-state raft (fn [state]
-                                               (if-let [leader (:leader state)]
-                                                 (async/put! resp-chan leader)
-                                                 (async/close! resp-chan))))
-             resp      (async/<! resp-chan)]
-         (cond
-           resp resp
-
-           (> (System/currentTimeMillis) timeout-time)
-           (ex-info (format "Leader not yet established and timeout of %s reached. Polled raft state %s times." timeout retries)
-                    {:status 400 :error :db/leader-timeout})
-
-           :else
-           (do
-             (async/<! (async/timeout 100))
-             (recur (inc retries)))))))))
-
-
-(defn is-leader?-async
-  [raft]
-  (async/go
-    (let [leader (async/<! (leader-async raft))]
-      (if (instance? Throwable leader)
-        leader
-        (= (:this-server raft) leader)))))
-
-
-(defn is-leader?
-  [raft]
-  (let [leader? (async/<!! (is-leader?-async raft))]
-    (if (instance? Throwable leader?)
-      (throw leader?)
-      leader?)))
 
 (defn state
   [raft]
@@ -515,7 +554,7 @@
      resp-chan))
   ([group entry timeout-ms callback]
    (go-try (let [raft'  (:raft group)
-                 leader (async/<! (leader-async group))]
+                 leader (<! (leader-async group))]
              (if (= (:this-server raft') leader)
                (raft/new-entry raft' entry callback timeout-ms)
                (let [id           (str (UUID/randomUUID))
@@ -524,6 +563,7 @@
                  (raft/register-callback raft' id timeout-ms callback)
                  ;; send command to leader
                  (send-rpc raft' leader :new-command command-data nil)))))))
+
 
 (defn add-server-async
   "Sends a command to the leader. If no callback provided, returns a core async promise channel
@@ -548,6 +588,7 @@
                    ;; send command to leader
                    (send-rpc raft' leader :add-server [id newServer] nil)))))))
 
+
 (defn remove-server-async
   "Sends a command to the leader. If no callback provided, returns a core async promise channel
   that will eventually contain a response."
@@ -571,6 +612,7 @@
                    ;; send command to leader
                    (send-rpc raft' leader :remove-server [id server] nil)))))))
 
+
 (defn local-state
   "Returns local, current state from state machine"
   [raft]
@@ -590,7 +632,7 @@
 
 (defn acquire-lease
   [raft ks id expire-ms]
-  (async/<!! (acquire-lease-async raft ks id expire-ms)))
+  (<!! (acquire-lease-async raft ks id expire-ms)))
 
 
 (defn release-lease-async
@@ -606,32 +648,6 @@
     (if (or (nil? lease) (< (:expire lease) (System/currentTimeMillis)))
       nil
       (:id lease))))
-
-
-(defn storage-write-async
-  "Performs a fully consistent storage write."
-  [raft k data]
-  (let [command [:storage-write k data]]
-    (new-entry-async raft command)))
-
-
-(defn storage-write
-  "Performs a fully consistent storage write."
-  [raft k data]
-  (async/<!! (storage-write-async raft k data)))
-
-
-(defn storage-read-async*
-  "Performs a fully consistent storage-read of provided key."
-  [raft key]
-  (let [command [:storage-read key]]
-    (new-entry-async raft command)))
-
-
-(defn storage-read*
-  "Performs a fully consistent storage-read of provided key."
-  [raft key]
-  (async/<!! (storage-read-async* raft key)))
 
 
 (defn server-active?
@@ -695,10 +711,7 @@
 (defn raft-start-up
   [group conn system* shutdown join?]
   (async/go
-    (try (let [status           (async/<!! (:raft-initialized group))
-               ;; status is :leader or :follower once initialized
-               ;; get caught up and fully committed
-               fully-committed? (async/<! (index-fully-committed? group true))]
+    (try (let [fully-committed? (async/<! (index-fully-committed? group true))]
            (when (instance? Throwable fully-committed?)
              (log/error fully-committed? "Exception when initializing raft. Shutting down.")
              (shutdown system*)
@@ -707,11 +720,12 @@
            ;; do an initial file sync... the committed raft may contain blocks that end up leaving gaps
            (let [sync-finished? (async/<! (dbsync2/consistency-full-check conn (:other-servers (:raft group))))
                  ;; then check the full-text index is up-to-date
-                 storage-dir    (-> conn :meta :storage-directory)
+                 storage-path   (-> conn :meta :file-storage-path)
                  group-raft     (:group conn)
                  current-state  @(:state-atom group-raft)
-                 ledgers-info   (txproto/all-ledger-block current-state)
-                 _              (async/<! (dbsync2/check-full-text-synced conn storage-dir ledgers-info))]
+                 ledgers-info   (txproto/all-ledger-block current-state)]
+             (when-not (nil? storage-path) ; TODO: Support full-text indexes on s3 storage too
+               (async/<! (dbsync2/check-full-text-synced conn storage-path ledgers-info)))
              (if (instance? Exception sync-finished?)
                (dbsync2/terminate! conn
                                    "Terminating due to file syncing error, unable to sync required files with other servers."
