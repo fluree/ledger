@@ -23,7 +23,9 @@
             [fluree.db.ledger.txgroup.core :as txgroup]
             [fluree.db.peer.http-api :as http-api]
             [fluree.db.ledger.txgroup.txgroup-proto :as txproto]
-            [fluree.db.peer.password-auth :as pw-auth]))
+            [fluree.db.peer.password-auth :as pw-auth]
+            [fluree.db.query.sql :as sql])
+  (:import (java.io PushbackReader)))
 
 (set! *warn-on-reflection* true)
 
@@ -71,6 +73,40 @@
   (stop)
   (refresh-all :after 'user/re-start))
 
+(defn read-data [resource-path]
+  (with-open [r (-> resource-path io/resource io/reader PushbackReader.)]
+    (edn/read r)))
+
+(defn create-db [db-name]
+  @(-> system
+       :conn
+       (fdb/new-ledger db-name)))
+
+(defn transact-db [db-name txns]
+  @(-> system
+       :conn
+       (fdb/transact db-name txns)))
+
+(defn load-sample-db [db-name resource-path]
+  (let [{:db/keys [collections predicates data]} (read-data resource-path)]
+    (create-db db-name)
+    (Thread/sleep 1000)
+    (transact-db db-name collections)
+    (Thread/sleep 1000)
+    (transact-db db-name predicates)
+    (Thread/sleep 1000)
+    (transact-db db-name data)))
+
+(defn query-db [db-name query]
+  @(-> system
+       :conn
+       (fdb/db db-name)
+       (fdb/query query)))
+
+(defn sql-query-db [db-name sql-query]
+  (->> sql-query
+       sql/parse
+       (query-db db-name)))
 
 (comment
   (async/<!! (http-api/action-handler :ledger-stats system {} {} :test/chat {}))
