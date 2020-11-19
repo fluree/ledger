@@ -95,16 +95,17 @@
 
 ;; TODO - too easy to forget to adjust this if we add a new collection type - we should
 ;; have an extra check when loading to ensure we have all the ecounts correct.
-(def genesis-ecount {const/$_predicate  (flake/->sid const/$_predicate 999)
-                     const/$_collection (flake/->sid const/$_collection 19)
-                     const/$_tag        (flake/->sid const/$_tag 999)
-                     const/$_fn         (flake/->sid const/$_fn 999)
-                     const/$_user       (flake/->sid const/$_user 999)
-                     const/$_auth       (flake/->sid const/$_auth 999)
-                     const/$_role       (flake/->sid const/$_role 999)
-                     const/$_rule       (flake/->sid const/$_rule 999)
-                     const/$_setting    (flake/->sid const/$_setting 999)})
-                     ;const/$_shard      (flake/->sid const/$_shard 999)
+(def genesis-ecount {const/$_predicate  (flake/->sid const/$_predicate 1000)
+                     const/$_collection (flake/->sid const/$_collection 20)
+                     const/$_tag        (flake/->sid const/$_tag 1000)
+                     const/$_fn         (flake/->sid const/$_fn 1000)
+                     const/$_user       (flake/->sid const/$_user 1000)
+                     const/$_auth       (flake/->sid const/$_auth 1000)
+                     const/$_role       (flake/->sid const/$_role 1000)
+                     const/$_rule       (flake/->sid const/$_rule 1000)
+                     const/$_setting    (flake/->sid const/$_setting 1000)
+                     const/$_prefix     (flake/->sid const/$_prefix 1000)
+                     const/$_shard      (flake/->sid const/$_shard 1000)})
 
 
 
@@ -157,7 +158,29 @@
      ;; add ledger that uses master auth
      (flake/new-flake db-setting-id (get pred->id "_setting/ledgers") auth-subid t true)
      (flake/new-flake db-setting-id (get pred->id "_setting/language") (get ident->id ["_tag/id" "_setting/language:en"]) t true)
-     (flake/new-flake db-setting-id (get pred->id "_setting/id") "root" t true)]))
+     (flake/new-flake db-setting-id (get pred->id "_setting/id") "root" t true)
+
+     ;; add default prefix values
+     ;; rdf
+     (flake/new-flake (flake/->sid const/$_prefix 0) (get pred->id "_prefix/prefix") "rdf" t true)
+     (flake/new-flake (flake/->sid const/$_prefix 0) (get pred->id "_prefix/uri") "http://www.w3.org/1999/02/22-rdf-syntax-ns#" t true)
+     ;; rdfs
+     (flake/new-flake (flake/->sid const/$_prefix 1) (get pred->id "_prefix/prefix") "rdfs" t true)
+     (flake/new-flake (flake/->sid const/$_prefix 1) (get pred->id "_prefix/uri") "http://www.w3.org/2000/01/rdf-schema#" t true)
+     ;; xsd
+     (flake/new-flake (flake/->sid const/$_prefix 2) (get pred->id "_prefix/prefix") "xsd" t true)
+     (flake/new-flake (flake/->sid const/$_prefix 2) (get pred->id "_prefix/uri") "http://www.w3.org/2001/XMLSchema#" t true)
+     ;; owl
+     (flake/new-flake (flake/->sid const/$_prefix 3) (get pred->id "_prefix/prefix") "owl" t true)
+     (flake/new-flake (flake/->sid const/$_prefix 3) (get pred->id "_prefix/uri") "http://www.w3.org/2002/07/owl#" t true)
+     ;; shacl
+     (flake/new-flake (flake/->sid const/$_prefix 4) (get pred->id "_prefix/prefix") "sh" t true)
+     (flake/new-flake (flake/->sid const/$_prefix 4) (get pred->id "_prefix/uri") "http://www.w3.org/ns/shacl#" t true)
+     ;; fluree examples
+     (flake/new-flake (flake/->sid const/$_prefix 5) (get pred->id "_prefix/prefix") "fluree" t true)
+     (flake/new-flake (flake/->sid const/$_prefix 5) (get pred->id "_prefix/uri") "http://www.flur.ee/ns/example#" t true)
+     ]))
+
 
 
 (defn bootstrap-db
@@ -292,6 +315,10 @@
    {:_id     ["_collection" const/$_shard]
     :name    "_shard"
     :doc     "Shard settings."
+    :version "1"}
+   {:_id     ["_collection" const/$_prefix]
+    :name    "_prefix"
+    :doc     "Prefix settings."
     :version "1"}
 
 
@@ -832,5 +859,17 @@
    {:_id  ["_predicate" const/$_shard:mutable]
     :name "_shard/mutable"
     :doc  "Whether this shard is mutable. If not specified, defaults to 'false', meaning the data is immutable."
-    :type "boolean"}])
+    :type "boolean"}
+
+   ; _prefix
+   {:_id    ["_predicate" const/$_prefix:prefix]
+    :name   "_prefix/prefix"
+    :doc    "Prefix name, a blank string is used as the default prefix."
+    :type   "string"
+    :unique true}
+   {:_id   ["_predicate" const/$_prefix:uri]
+    :name  "_prefix/uri"
+    :doc   "Full URI value of the prefix"
+    :type  "string"
+    :index true}])
 
