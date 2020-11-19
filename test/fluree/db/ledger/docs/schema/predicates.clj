@@ -59,18 +59,18 @@
                                             (basic/get-conn)
                                             test/ledger-chat
                                             txn
-                                            {:timeout 240000})) test/safe-Throwable->map :cause)
+                                            {:timeout 480000})) test/safe-Throwable->map :cause)
         set-upsert         [{:_id ["_predicate/name" "_predicate/name"], :upsert true}]
         upsertRes          (async/<!! (fdb/transact-async
                                         (basic/get-conn)
                                         test/ledger-chat
                                         set-upsert
-                                        {:timeout 240000}))
+                                        {:timeout 480000}))
         attemptToUpsertRes (async/<!! (fdb/transact-async
                                         (basic/get-conn)
                                         test/ledger-chat
                                         txn
-                                        {:timeout 240000}))]
+                                        {:timeout 480000}))]
 
     (is (str/includes? res "Predicate _predicate/name does not allow upsert"))
     (is (str/includes? res "duplicates an existing _predicate/name (_user/username)"))
