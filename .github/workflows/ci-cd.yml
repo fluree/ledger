@@ -7,7 +7,7 @@ on:
 jobs:
   test:
     name: Run Tests
-    runs-on: self-hosted
+    runs-on: [self-hosted, docker]
     steps:
       - uses: actions/checkout@v2
       - name: Run integration tests
@@ -24,7 +24,7 @@ jobs:
 
   #  debug:
   #    needs: test
-  #    runs-on: self-hosted
+  #    runs-on: [self-hosted, docker]
   #    steps:
   #      - run: echo "$GITHUB_CONTEXT"
   #        env:
@@ -33,7 +33,7 @@ jobs:
   # All of this Docker stuff copied from:
   # https://github.com/marketplace/actions/build-and-push-docker-images#complete-workflow
   docker:
-    runs-on: self-hosted
+    runs-on: [self-hosted, docker]
     needs: test
     steps:
       - uses: actions/checkout@v2
