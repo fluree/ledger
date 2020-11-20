@@ -46,7 +46,7 @@
 
     (is (= #{:block :t :flakes} (-> res first keys set)))
 
-    (is (= (-> flakes first (flake/Flake->parts)) [351843720888321 1003 351843720888320 -7 true nil]))))
+    (is (= (-> flakes first (flake/Flake->parts)) [351843720888321 1004 351843720888320 -7 true nil]))))
 
 
 (deftest history-with-flake-format-pretty-print

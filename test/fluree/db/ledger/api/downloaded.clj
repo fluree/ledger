@@ -130,7 +130,7 @@
                                        responseKeys)))))
 
     ; Are all the predicates what we expect?
-    (is (= collections #{"_rule" "nestedComponent" "_fn" "_predicate" "_setting" "chat" "_auth" "_user" "person" "_shard" "_tag" "comment" "_role" "_collection"}))
+    (is (= collections #{"_rule" "nestedComponent" "_fn" "_predicate" "_setting" "chat" "_auth" "_user" "person" "_shard" "_tag" "comment" "_role" "_collection" "_prefix"}))
 
     (is (< 10 (count collections)))))
 
@@ -192,7 +192,7 @@
                                        responseKeys)))))
 
     ; Are all the predicates what we expect?
-    (is (= collections #{"_rule" "nestedComponent" "_fn" "_predicate" "_setting" "chat" "_auth" "_user" "person" "_shard" "_tag" "comment" "_role" "_collection"}))
+    (is (= collections #{"_rule" "nestedComponent" "_fn" "_predicate" "_setting" "chat" "_auth" "_user" "person" "_shard" "_tag" "comment" "_role" "_collection" "_prefix"}))
 
     ; Are some of the predicates we expect returned?
     (is (every? boolean (map #(predicates %) ["comment/nestedComponent" "person/stringUnique"])))))

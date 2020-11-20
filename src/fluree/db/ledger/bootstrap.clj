@@ -96,7 +96,7 @@
 ;; TODO - too easy to forget to adjust this if we add a new collection type - we should
 ;; have an extra check when loading to ensure we have all the ecounts correct.
 (def genesis-ecount {const/$_predicate  (flake/->sid const/$_predicate 1000)
-                     const/$_collection (flake/->sid const/$_collection 20)
+                     const/$_collection (flake/->sid const/$_collection 19)
                      const/$_tag        (flake/->sid const/$_tag 1000)
                      const/$_fn         (flake/->sid const/$_fn 1000)
                      const/$_user       (flake/->sid const/$_user 1000)
