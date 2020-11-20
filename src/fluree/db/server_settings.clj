@@ -42,7 +42,8 @@
    :fdb-group-log-history        5                          ;; number of historical log files to keep around
 
    :fdb-storage-type             "file"                     ;; file, memory, s3
-   :fdb-storage-file-directory   "./data/"
+   :fdb-storage-file-root        "./data/"
+   :fdb-storage-file-directory   nil                        ;; deprecated in favor of fdb-storage-file-root
    :fdb-storage-file-group-path  "group/"
    :fdb-storage-file-ledger-path "ledger/"
 
@@ -367,17 +368,37 @@
     (str "./" path)))
 
 
-(defn file-storage-path
+(defn- file-storage-path*
+  "Once we remove support for :fdb-storage-file-directory, replace
+  file-storage-path with this fn, adopt its docstring, and make it public."
   [type env]
   (when (= :file (storage-type env))
-    (let [type-kw       (keyword (str "fdb-storage-file-" (name type) "-path"))
-          append-slash  #(str % "/")
-          config-dir    (:fdb-storage-file-directory env)
-          canonical-dir (canonicalize-path config-dir)]
+    (let [type-kw        (keyword (str "fdb-storage-file-" (name type) "-path"))
+          append-slash   #(str % "/")
+          config-dir     (:fdb-storage-file-root env)
+          canonical-dir  (canonicalize-path config-dir)]
       (->> (type-kw env)
            (io/file canonical-dir)
            .toString
            append-slash))))
+
+
+(defn file-storage-path
+  "Returns the full canonicalized path for local FS storage of the given type.
+  Returns nil if FS storage isn't being used."
+  [type env]
+  (when (= :file (storage-type env))
+    (if (= :ledger (keyword type))
+      (if-let [old-ledger-dir (:fdb-storage-file-directory env)]
+        (do
+          (log/warn (str "fdb-storage-file-directory is deprecated. "
+                         "Please use fdb-storage-file-root instead. "
+                         "Usually you can just set it to the parent directory "
+                         "(i.e. if you have fdb-storage-file-directory=data/ledger, "
+                         "change it to fdb-storage-file-root=./data)."))
+          old-ledger-dir)
+        (file-storage-path* type env))
+      (file-storage-path* type env))))
 
 
 (defn generate-conn-settings
