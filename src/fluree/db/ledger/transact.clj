@@ -28,14 +28,38 @@
             [fluree.db.ledger.merkle :as merkle])
   (:import (fluree.db.flake Flake)
            (java.time Instant)
-           (java.util UUID)))
+           (java.util UUID)
+           (java.net URI)))
 
 (def collection-name-regex #"^[a-zA-Z0-9_][a-zA-Z0-9\.\-_]{0,254}$")
 (def predicate-name-regex #"^[a-zA-Z0-9_][a-zA-Z0-9\.\-_]{0,254}/[a-zA-Z0-9][a-zA-Z0-9\.\-_]{0,254}$")
-(def predicate-contains-__-regex #"^.*__.*$")
-(def predicate-contains-via-regex #"^.*_Via_.*$")
 
 (def tag-id-regex #"^[^/]{1,255}/[^/]{1,255}$")
+
+(defn url?
+  "Returns true a java.net.URI is a URL."
+  [^URI uri]
+  (try
+    (.toURL uri)
+    true
+    (catch Exception _ false)))
+
+(defn- lowercase-URL
+  "For a URL string, makes scheme and host parts lowercase"
+  [url-string]
+  (let [[_ scheme+host rest] (re-find #"^([^:]+://[^/]+)(.+)$" url-string)]
+    (str (str/lower-case scheme+host) rest)))
+
+(defn normalize-uri
+  "Given a valid string URI, returns a normalized string.
+  If not a valid URI, returns exception."
+  [s]
+  (let [uri        (-> (URI. s) .normalize)
+        normalized (.toString uri)]
+    (if (url? uri)
+      (lowercase-URL normalized)                            ;; if a URL, we lowercase the scheme and host part
+      normalized)))
+
 
 (defn action->op
   [action]
@@ -67,58 +91,80 @@
         cname (dbproto/-c-prop db :name cid)]
     [cid cname]))
 
-
+(defn- predicate-name-illegal-chars
+  "Checks and throws if any illegal characters exist in the predicate name,
+  returns original value if no error."
+  [predicate-name]
+  (if (or (str/includes? predicate-name "_Via_")
+          (str/includes? predicate-name "__")
+          (str/includes? predicate-name "/_"))
+    (throw (ex-info (str "Predicate name defined with illegal characters: " predicate-name)
+                    {:status 400 :error :db/invalid-predicate}))
+    predicate-name))
 
 (defn- validate-internal-predicate
   "Mostly here to throw an error, will return nil if all checks out."
-  ([collection-name pred-map]
-   ;; a map is provided, find relevant predicate if applicable.
-   (cond
-     (= "_tag" collection-name)
-     (when-let [value (or (get pred-map :_tag/id)
-                          (get pred-map :id)
-                          (get pred-map const/$_tag:id))]
-       (when-not (nil? value)
-         (validate-internal-predicate "_tag" "_tag/id" value)))
+  [collection-name pred-name value]
+  (cond
+    (= "_tag" collection-name)
+    (do
+      (when (and (= "_tag/id" pred-name) (not (re-matches tag-id-regex value)))
+        (throw (ex-info (str "Invalid tag id. Must include a namespace with a single /, i.e: 'tagnamespace/tagname'. Provided: " value)
+                        {:status 400
+                         :error  :db/invalid-tag})))
+      value)
 
-     (= "_predicate" collection-name)
-     (when-let [value (or (get pred-map :_predicate/name)
-                          (get pred-map :name)
-                          (get pred-map const/$_predicate:name))]
-       (when-not (nil? value)
-         (validate-internal-predicate "_predicate" "_predicate/name" value)))
+    (= "_predicate" collection-name)
+    (try
+      (-> value
+          normalize-uri
+          predicate-name-illegal-chars)
+      (catch Exception _
+        (throw (ex-info (str "Invalid predicate name. Must be a valid URI and cannot contain '__', '/_', or '_Via_'. Provided: " value)
+                        {:status 400 :error :db/invalid-predicate}))))
 
-     (= "_collection" collection-name)
-     (when-let [value (or (get pred-map :_collection/name)
-                          (get pred-map :name)
-                          (get pred-map const/$_collection:name))]
-       (when-not (nil? value)
-         (validate-internal-predicate "_collection" "_collection/name" value)))
+    (= "_collection" collection-name)
+    (do
+      (when (and (= "_collection/name" pred-name) (not (re-matches collection-name-regex value)))
+        (throw (ex-info (str "Invalid collection name, must start with a-z, A-Z, or 0-9 and can also include .-_. Provided: " value)
+                        {:status 400
+                         :error  :db/invalid-collection})))
+      value)
 
-     :else nil))
-  ([collection-name pred-name value]
-   (cond
-     (= "_tag" collection-name)
-     (when (and (= "_tag/id" pred-name) (not (re-matches tag-id-regex value)))
-       (throw (ex-info (str "Invalid tag id. Must include a namespace with a single /, i.e: 'tagnamespace/tagname'. Provided: " value)
-                       {:status 400
-                        :error  :db/invalid-tag})))
+    :else value))
 
-     (= "_predicate" collection-name)
-     (when (or (not= "_predicate/name" pred-name)
-               (not (re-matches predicate-name-regex value))
-               (re-matches predicate-contains-via-regex value)
-               (re-matches predicate-contains-__-regex value))
-       (throw (ex-info (str "Invalid predicate name. Must start with a-z, A-Z, or 0-9, and can include .-_. Cannot contain '__', '/_', or '_Via_'. Must include a namespace with a single /, i.e: 'mynamespace/mypred'. Provided: " value)
-                       {:status 400 :error :db/invalid-predicate})))
+(defn- conform-sys-predicate
+  "Validates, and then returns possibly modified values from the key-value map for system collections
+  and predicates."
+  [collection-name kv-map]
+  (let [tag-id-key    #{:_tag/id :id const/$_tag:id}
+        pred-name-key #{:_predicate/name :name const/$_predicate:name}
+        coll-name-key #{:_collection/name :name const/$_collection:name}]
 
-     (= "_collection" collection-name)
-     (when (and (= "_collection/name" pred-name) (not (re-matches collection-name-regex value)))
-       (throw (ex-info (str "Invalid collection name, must start with a-z, A-Z, or 0-9 and can also include .-_. Provided: " value)
-                       {:status 400
-                        :error  :db/invalid-collection})))
+    ;; a map is provided, find relevant predicate if applicable.
+    (cond
+      (= "_tag" collection-name)
+      (if-let [id-key (some tag-id-key (keys kv-map))]
+        (->> (get kv-map id-key)
+             (validate-internal-predicate "_tag" "_tag/id")
+             (assoc kv-map id-key))
+        kv-map)
 
-     :else nil)))
+      (= "_predicate" collection-name)
+      (if-let [name-key (some pred-name-key (keys kv-map))]
+        (->> (get kv-map name-key)
+             (validate-internal-predicate "_predicate" "_predicate/name")
+             (assoc kv-map name-key))
+        kv-map)
+
+      (= "_collection" collection-name)
+      (if-let [name-key (some coll-name-key (keys kv-map))]
+        (->> (get kv-map name-key)
+             (validate-internal-predicate "_collection" "_collection/name")
+             (assoc kv-map name-key))
+        kv-map)
+
+      :else kv-map)))
 
 (defn resolve-ident
   "Acts as a local cache for ident resolution.
@@ -172,9 +218,9 @@
           temp-ident? (util/temp-ident? _id)
           _id'        (<? (resolve-id db txi _id temp-ident? ident-cache))
           [collection-id collection-name] (resolve-collection-id+name db _id')
-          p-o-pairs   (dissoc txi :_id :_action :_meta)]
-      (when (#{"_tag" "_predicate" "_collection"} collection-name)
-        (validate-internal-predicate collection-name p-o-pairs))
+          sys-coll?   (#{"_tag" "_predicate" "_collection"} collection-name) ;; extra manipulation / validation needed
+          p-o-pairs   (cond->> (dissoc txi :_id :_action :_meta)
+                               sys-coll? (conform-sys-predicate collection-name))]
 
       (when (and (= collection-name "_fn") (contains? p-o-pairs :code))
         (<? (permissions/parse-fn db (:code p-o-pairs) (:params p-o-pairs))))
@@ -314,13 +360,13 @@
 
 (defn create-tag
   [db ecount tag-cache t tag]
-  (validate-internal-predicate "_tag" "_tag/id" tag)
-  (let [tag-cid  (dbproto/-c-prop db :id "_tag")
+  (let [tag*     (validate-internal-predicate "_tag" "_tag/id" tag)
+        tag-cid  (dbproto/-c-prop db :id "_tag")
         next-sid (if-let [last-tag-id (get ecount tag-cid)]
                    (inc last-tag-id)
                    (flake/->sid tag-cid 1))
         ecount'  (assoc ecount tag-cid next-sid)
-        tag-smt  [true next-sid const/$_tag:id tag t nil]]
+        tag-smt  [true next-sid const/$_tag:id tag* t nil]]
     [ecount' tag-smt]))
 
 

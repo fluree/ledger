@@ -98,8 +98,7 @@
   (testing "Ensure bad predicate names throw an exception")
   (let [good-pred-names ["person/hometown" "_user/hometown" "person/1...." "person/12a-"
                          "person/a._" "person/0aA_..----"]
-        bad-pred-names  ["location" "person/__city" "person/-city" "person/a__city" "/city"
-                         "person/" "person/city/" "person/..--city" "person/ci/ty"]
+        bad-pred-names  ["location_Via_anything" "person/__city" "person/_city" ":bad:uri"]
         good-tx         (mapv (fn [n] {:_id  "_predicate"
                                        :name n
                                        :type "string"}) good-pred-names)
@@ -117,7 +116,7 @@
                                      {:timeout 240000}))
         bad-resp-errs   (map #(-> % test/safe-Throwable->map :cause) bad-resp)]
 
-    (is (= 9 (count bad-resp-errs)))
+    (is (= (count bad-pred-names) (count bad-resp-errs)))
 
     (is (every? #(str/includes? % "Invalid predicate name.") bad-resp-errs))
 
