@@ -801,8 +801,9 @@
                  accept-encodings (or (get headers "accept")
                                       "application/json")
                  signature        (return-signature request)
+                 jwt              (return-token request)    ;may not be signed if client is using password auth
                  open-api?        (open-api? system)
-                 _                (if (and (not open-api?) (not signature))
+                 _                (if (and (not open-api?) (not signature) (not jwt))
                                     (throw (ex-info (str "To request an item from storage, open-api must be true or your request must be signed.") {:status 401
                                                                                                                                                     :error  :db/invalid-transaction})))
                  response-type    (if (str/includes? accept-encodings "application/json")
@@ -816,7 +817,9 @@
                  _                (when-not (and network db type)
                                     (throw (ex-info (str "Incomplete request. At least a network, db and type are required. Provided network: " network " db: " db " type: " type " key: " key)
                                                     {:status 400 :error :db/invalid-request})))
-                 auth-id          (when signature
+                 auth-id          (cond
+
+                                    signature
                                     (let [this-server (get-in system [:group :this-server])
                                           servers     (get-in system [:config :group :server-configs])
                                           host        (-> (filter (fn [n] (= (:server-id n) this-server)) servers)
@@ -827,7 +830,16 @@
                                                                                                          (if type (str "/" type))
                                                                                                          (if key (str "/" key))) host)
                                           db          (<? (fdb/db (:conn system) db-name))]
-                                      (<? (verify-auth db auth authority))))
+                                      (<? (verify-auth db auth authority)))
+
+                                    jwt
+                                    (let [jwt-auth (-> (pw-auth/fluree-auth-map (:conn system) jwt) :auth)
+                                          db'      (<? (fdb/db (:conn system) db-name))
+                                          auth-id' (<? (dbproto/-subid db' ["_auth/id" jwt-auth] true))
+                 _                                 (when (util/exception? auth-id')
+                                                     (throw (ex-info (str "Auth id for request does not exist in the database: " jwt-auth)
+                                                                     {:status 403 :error :db/invalid-auth})))]
+                                      jwt-auth))
                  formatted-key    (cond-> (str network "_" db "_" type)
                                           key (str "_" key))
                  avro-data        (<? (storage-read-fn formatted-key))
