@@ -833,7 +833,10 @@
                                       (<? (verify-auth db auth authority)))
 
                                     jwt
-                                    (let [jwt-auth (:auth (pw-auth/fluree-auth-map (:conn system) jwt))
+                                    (let [jwt-auth (-> system
+                                                       :conn
+                                                       (pw-auth/fluree-auth-map jwt)
+                                                       :auth)
                                           db'      (<? (fdb/db (:conn system) db-name))
                                           auth-id' (<? (dbproto/-subid db' ["_auth/id" jwt-auth] true))
                  _                                 (when (util/exception? auth-id')
