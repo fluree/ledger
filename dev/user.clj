@@ -92,15 +92,16 @@
        :conn
        (fdb/transact db-name txns)))
 
-(defn load-sample-db [db-name resource-path]
-  (let [{:db/keys [collections predicates data]} (read-edn-data resource-path)]
-    (create-db db-name)
+(defn load-sample-db [db-name & resource-paths]
+  (create-db db-name)
+  (Thread/sleep 1000)
+  (loop [[p & rst] resource-paths]
+    (->> p
+         read-edn-data
+         (transact-db db-name))
     (Thread/sleep 1000)
-    (transact-db db-name collections)
-    (Thread/sleep 1000)
-    (transact-db db-name predicates)
-    (Thread/sleep 1000)
-    (transact-db db-name data)))
+    (when (seq rst)
+      (recur rst))))
 
 (defn query-db [db-name query]
   @(-> system
