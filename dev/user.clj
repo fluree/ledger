@@ -92,12 +92,12 @@
        :conn
        (fdb/transact db-name txns)))
 
-(defn load-sample-db [db-name & resource-paths]
+(defn load-sample-db [db-name loader & resource-paths]
   (create-db db-name)
   (Thread/sleep 1000)
   (loop [[p & rst] resource-paths]
     (->> p
-         read-edn-data
+         loader
          (transact-db db-name))
     (Thread/sleep 1000)
     (when (seq rst)
