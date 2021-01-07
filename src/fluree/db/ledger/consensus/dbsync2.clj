@@ -329,11 +329,10 @@
   [ [nw/ledger block] [nw/ledger block] [nw/ledger block] ]"
   [conn storage-dir ledger-block-arr]
   (util/go-try
-    (loop [[[ledger block] & r] ledger-block-arr]
-      (cond (not ledger) true
-            (= block 1) (recur r)
-            ;else
-            true (let [full-text-block (read-string (full-text/check-full-text-block storage-dir ledger))]
+   (loop [[[ledger block] & r] ledger-block-arr]
+     (cond (not ledger) true
+           (= block 1) (recur r)
+           :else (let [full-text-block (read-string (full-text/check-full-text-block storage-dir ledger))]
                    (if (not= full-text-block block)
                      (let [[nw dbid] (str/split ledger #"/")
                            db (util/<? (fdb/db conn ledger))]

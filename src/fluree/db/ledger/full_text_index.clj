@@ -109,11 +109,13 @@
   [db path-to-dir network dbid]
   (go-try (let [_             (delete-files-recursively (str path-to-dir network "/" dbid "/lucene"))
                 fullTextPreds (-> db :schema :fullText)
-                language      (or (-> db :settings :language) :default)
+                language      (-> db :settings :language (or :default))
                 addFlakes     (loop [[pred & r] fullTextPreds
                                      full []]
                                 (if pred
-                                  (recur r (concat full (<? (query-range/index-range db :psot = [pred])))) full))]
+                                  (recur r (->> (<? (query-range/index-range db :psot = [pred]))
+                                                (into full)))
+                                  full))]
             (<? (add-flakes-to-store path-to-dir network dbid addFlakes language)))))
 
 ;;; TODO - handle multi predicates - prevent from going into index - handle at schema setting level.
@@ -173,4 +175,3 @@
   (def store (disk-store "data/ledger/" "shi" "test2"))
 
   (clucie/search store {:_id (str 351843720888321)} 1 (standard-analyzer) 0 1))
-
