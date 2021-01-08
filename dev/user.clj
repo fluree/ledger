@@ -83,6 +83,7 @@
   (-> resource-path io/resource slurp json/parse))
 
 (defn create-db [db-name]
+  (log/info "Creating ledger " db-name)
   @(-> system
        :conn
        (fdb/new-ledger db-name)))
@@ -96,6 +97,7 @@
   (create-db db-name)
   (Thread/sleep 1000)
   (loop [[p & rst] resource-paths]
+    (log/info "Loading resource " p " into ledger " db-name)
     (->> p
          loader
          (transact-db db-name))

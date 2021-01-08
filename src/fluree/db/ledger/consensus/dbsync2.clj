@@ -335,7 +335,7 @@
            :else (let [full-text-block (read-string (full-text/check-full-text-block storage-dir ledger))]
                    (if (not= full-text-block block)
                      (let [[nw dbid] (str/split ledger #"/")
-                           db (util/<? (fdb/db conn ledger))]
+                           db        (util/<? (fdb/db conn ledger))
                        (util/<? (full-text/sync-full-text-index db storage-dir nw dbid
                                                                 (inc full-text-block) block))
                        (recur r))

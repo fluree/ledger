@@ -735,7 +735,6 @@
            ;; register on the network
            (async/<! (register-server-lease-async group 5000))
 
-
            (when (async/<! (is-leader?-async group))
              (when (empty? (txproto/get-shared-private-key group))
                (log/info "Brand new Fluree instance, establishing default shared private key.")
