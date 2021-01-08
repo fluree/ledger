@@ -66,7 +66,7 @@ build/logback.xml: dev/logback.xml
 	cp $< build/
 
 target/fluree-ledger.jar: pom.xml $(SOURCES) $(RESOURCES)
-	clojure -M:jar
+	clojure -X:jar
 
 jar: target/fluree-ledger.jar
 
@@ -77,7 +77,7 @@ test:
 	clojure -M:test
 
 target/fluree-ledger.standalone.jar: pom.xml $(SOURCES) $(RESOURCES)
-	clojure -M:uberjar
+	clojure -X:uberjar
 
 uberjar: target/fluree-ledger.standalone.jar
 
