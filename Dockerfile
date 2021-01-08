@@ -5,7 +5,7 @@ WORKDIR /usr/src/fluree-ledger
 
 COPY deps.edn ./
 
-RUN clojure -A:test -Stree
+RUN clojure -A:test -P
 
 COPY . ./
 
