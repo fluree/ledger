@@ -326,17 +326,16 @@
 
 (defn check-full-text-synced
   "Takes an array of arrays.
-  [ [nw/ledger block] [nw/ledger block] [nw/ledger block] ]"
+  [ [nw dbid block] [nw dbid block] [nw dbid block] ]"
   [conn storage-dir ledger-block-arr]
   (util/go-try
-   (loop [[[ledger block] & r] ledger-block-arr]
-     (cond (not ledger) true
+   (loop [[[network dbid block] & r] ledger-block-arr]
+     (cond (not network) true
            (= block 1) (recur r)
-           :else (let [full-text-block (read-string (full-text/check-full-text-block storage-dir ledger))]
+           :else (let [full-text-block (read-string (full-text/check-full-text-block storage-dir network dbid))]
                    (if (not= full-text-block block)
-                     (let [[nw dbid] (str/split ledger #"/")
-                           db        (util/<? (fdb/db conn ledger))
-                       (util/<? (full-text/sync-full-text-index db storage-dir nw dbid
+                     (let [db        (util/<? (fdb/db conn [network dbid]))]
+                       (util/<? (full-text/sync-full-text-index db storage-dir network dbid
                                                                 (inc full-text-block) block))
                        (recur r))
                      (recur r)))))))

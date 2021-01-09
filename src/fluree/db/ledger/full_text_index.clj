@@ -1,8 +1,9 @@
 (ns fluree.db.ledger.full-text-index
   (:require [clucie.core :as clucie]
-            [fluree.db.query.analytical-full-text :as full-text]
+            [fluree.db.query.analytical-full-text :as full-text-query]
             [clucie.store :as store]
             [fluree.db.flake :as flake]
+            [fluree.db.full-text :as full-text]
             [fluree.db.util.log :as log]
             [clojure.core.async :refer [timeout go-loop]]
             [fluree.db.util.async :refer [<? <?? go-try]]
@@ -13,9 +14,6 @@
             [fluree.db.constants :as const]
             [fluree.db.api :as fdb]))
 
-(defn disk-store
-  [path-to-dir network dbid]
-  (store/disk-store (str path-to-dir network "/" dbid "/lucene")))
 
 (defn retry-fn
   [fn-to-retry error-msg timeout-ms max-times subject]
@@ -38,8 +36,8 @@
   ([storage-dir network dbid flakes language]
    (add-flakes-to-store storage-dir network dbid flakes language {}))
   ([storage-dir network dbid flakes language opts]
-   (go-try (let [store           (disk-store storage-dir network dbid)
-                 analyzer        (full-text/analyzer language)
+   (go-try (let [store           (full-text/storage storage-dir network dbid)
+                 analyzer        (full-text-query/analyzer language)
                  subject-flakes  (group-by #(.-s %) flakes)
                  subjects        (keys subject-flakes)
                  timeout-ms      (or (:timeout opts) 500)
@@ -73,8 +71,8 @@
 
 (defn remove-flakes-from-store
   [storage-dir network dbid flakes language]
-  (let [store          (disk-store storage-dir network dbid)
-        analyzer       (full-text/analyzer language)
+  (let [store          (full-text/storage storage-dir network dbid)
+        analyzer       (full-text-query/analyzer language)
         subject-flakes (group-by #(.-s %) flakes)]
     (mapv (fn [[s flakes]]
             (let [_         (log/trace "Removing flakes from full text index: " flakes)
@@ -94,14 +92,20 @@
     (when (.isFile f1*)
       (io/delete-file f1* silently))))
 
+(defn latest-block-file-path
+  [dir network dbid]
+  (let [storage-path (full-text/storage-path dir network dbid)]
+    (str storage-path "/block.txt")))
+
 (defn track-full-text
-  [dir ledger block]
-  (with-open [w (clojure.java.io/writer (str dir ledger "/lucene/block.txt") :append false)]
-    (.write w (str block))))
+  [dir network dbid block]
+  (let [block-path (latest-block-file-path dir network dbid)]
+    (with-open [w (clojure.java.io/writer block-path :append false)]
+      (.write w (str block)))))
 
 (defn check-full-text-block
-  [dir ledger]
-  (try (let [file (str dir ledger "/lucene/block.txt")]
+  [dir [network dbid]]
+  (try (let [file (latest-block-file-path dir network dbid)]
          (slurp file))
        (catch Exception e nil)))
 
@@ -124,7 +128,7 @@
   (go-try
    (if (schema-util/get-language-change (:flakes block))
      (do (<? (reset-full-text-index db storage-dir network dbid))
-         (track-full-text storage-dir (str network "/" dbid) (:block db)))
+         (track-full-text storage-dir network dbid (:block db)))
      (let [language            (or (-> db :settings :language) :default)
            [fullTextAdd fullTextRemove] (reduce (fn [[add remove] flake]
                                                   (if (= const/$_predicate:fullText (.-p flake))
@@ -153,7 +157,7 @@
 
        (do (<? (add-flakes-to-store storage-dir network dbid lucene-add-queue language))
            (remove-flakes-from-store storage-dir network dbid lucene-remove-queue language)
-           (track-full-text storage-dir (str network "/" dbid) (:block block)))))))
+           (track-full-text storage-dir network dbid (:block block)))))))
 
 (defn sync-full-text-index
   [db storage-dir network dbid start-block end-block]
@@ -172,6 +176,6 @@
   (<?? (fdb/block-range db 2 2))
   (reset-full-text-index db "data/ledger/" "shi" "test2")
 
-  (def store (disk-store "data/ledger/" "shi" "test2"))
+  (def store (full-text/storage "data/ledger/" "shi" "test2"))
 
   (clucie/search store {:_id (str 351843720888321)} 1 (standard-analyzer) 0 1))
