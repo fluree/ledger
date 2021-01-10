@@ -5,7 +5,7 @@
             [fluree.db.flake :as flake]
             [fluree.db.full-text :as full-text]
             [fluree.db.util.log :as log]
-            [clojure.core.async :refer [timeout go-loop]]
+            [clojure.core.async :as async :refer [chan timeout go-loop]]
             [fluree.db.util.async :refer [<? <?? go-try]]
             [clojure.java.io :as io]
             [fluree.db.query.range :as query-range]
@@ -13,7 +13,8 @@
             [fluree.db.util.schema :as schema-util]
             [fluree.db.constants :as const]
             [fluree.db.api :as fdb])
-  (:import java.time.Instant))
+  (:import fluree.db.flake.Flake
+           java.time.Instant))
 
 
 (defn retry-fn
@@ -123,6 +124,27 @@
                                   full))]
             (<? (add-flakes-to-store path-to-dir network dbid addFlakes language)))))
 
+(defn full-text-flake?
+  [^Flake f]
+  (= const/$_predicate:fullText
+     (.-p f)))
+
+(defn separate-by-op
+  [flakes]
+  (let [grouped (group-by (fn [^Flake f]
+                            (.-op f))
+                          flakes)
+        add     (get grouped true)
+        rem     (get grouped false)]
+    [add rem]))
+
+(defn predicate-flakes
+  [db preds]
+  (->> preds
+       (map (fn [p]
+              (query-range/index-range db :psot = [p])))
+       async/merge))
+
 ;;; TODO - handle multi predicates - prevent from going into index - handle at schema setting level.
 (defn handle-block
   [db storage-dir network dbid block]
@@ -135,22 +157,26 @@
      (if (schema-util/get-language-change (:flakes block))
        (do (<? (reset-full-text-index db storage-dir network dbid))
            (track-full-text storage-dir network dbid (:block db)))
-       (let [language            (or (-> db :settings :language) :default)
-             [fullTextAdd fullTextRemove] (reduce (fn [[add remove] flake]
-                                                    (if (= const/$_predicate:fullText (.-p flake))
-                                                      (if (.-op flake)
-                                                        [(conj add flake) remove]
-                                                        [add (conj remove flake)])
-                                                      [add remove]))
-                                                  [[] []] (:flakes block))
-             addToIndex          (-> (map #(try (<?? (query-range/index-range db :psot = [(.-s %)]))
-                                                (catch Exception e []))
-                                          fullTextAdd) flatten)
-             removeFromIndex     (-> (map #(try (<?? (query-range/index-range db :psot = [(.-s %)]))
-                                                (catch Exception e []))
-                                          fullTextRemove) flatten)
+       (let [language            (-> db :settings :language (or :default))
+             [add rem]           (->> block
+                                      :flakes
+                                      (filter full-text-flake?)
+                                      separate-by-op)
+
+             add-to-index        (->> add
+                                      (map (fn [^Flake f]
+                                             (.-s f)))
+                                      (predicate-flakes db)
+                                      <?)
+
+             remove-from-index   (->> rem
+                                      (map (fn [^Flake f]
+                                             (.-s f)))
+                                      (predicate-flakes db)
+                                      <?)
+
              fullText            (-> db :schema :fullText)
-             lucene-add-queue    (concat (filter #(and (fullText (.-p %)) (.-op %)) (:flakes block)) addToIndex)
+             lucene-add-queue    (concat (filter #(and (fullText (.-p %)) (.-op %)) (:flakes block)) add-to-index)
              lucene-remove-queue (concat (filter (fn [flake]
                                                    (and (fullText (.-p flake))
                                                         (not (.-op flake))
@@ -159,7 +185,7 @@
                                                         ;; it's being updated
                                                         (not (some #(and (= (.-s flake) (.-s %))
                                                                          (= (.-p flake) (.-p %))) lucene-add-queue))))
-                                                 (:flakes block)) removeFromIndex)]
+                                                 (:flakes block)) remove-from-index)]
 
          (do (<? (add-flakes-to-store storage-dir network dbid lucene-add-queue language))
              (remove-flakes-from-store storage-dir network dbid lucene-remove-queue language)
