@@ -93,17 +93,20 @@
        :conn
        (fdb/transact db-name txns)))
 
+(defn load-ledger-resources [resource-paths]
+  (loop [[p & rst] resource-paths]
+    (when p
+      (log/info "Loading resource " p " into ledger " db-name)
+      (->> p
+           loader
+           (transact-db db-name))
+      (Thread/sleep 1000)
+      (recur rst))))
+
 (defn load-sample-db [db-name loader & resource-paths]
   (create-db db-name)
   (Thread/sleep 1000)
-  (loop [[p & rst] resource-paths]
-    (log/info "Loading resource " p " into ledger " db-name)
-    (->> p
-         loader
-         (transact-db db-name))
-    (Thread/sleep 1000)
-    (when (seq rst)
-      (recur rst))))
+  (load-ledger-resources resource-paths))
 
 (defn query-db [db-name query]
   @(-> system
