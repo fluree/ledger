@@ -4,7 +4,7 @@
             [fluree.db.flake :as flake]
             [fluree.db.full-text :as full-text]
             [fluree.db.util.log :as log]
-            [clojure.core.async :as async :refer [chan timeout go-loop]]
+            [clojure.core.async :as async :refer [chan timeout go-loop >!]]
             [fluree.db.util.async :refer [<? <?? go-try]]
             [clojure.java.io :as io]
             [fluree.db.query.range :as query-range]
@@ -34,41 +34,46 @@
               (recur (dec max-times) timeout-ms)))))))
 
 (defn add-flakes-to-store
-  ([storage-dir network dbid flakes language]
-   (add-flakes-to-store storage-dir network dbid flakes language {}))
-  ([storage-dir network dbid flakes language opts]
-   (go-try (let [store           (full-text/storage storage-dir network dbid)
-                 analyzer        (full-text/analyzer language)
-                 subject-flakes  (group-by #(.-s %) flakes)
-                 subjects        (keys subject-flakes)
-                 timeout-ms      (or (:timeout opts) 500)
-                 max-retry-times (or (:retry opts) 10)]
-             (<? (go-loop [[s & r] subjects]
-                   (if-not s
-                     (do (if subjects (log/info (str "Add full text flakes to store complete for: " (count subjects) " subjects.")))
-                         true)
-                     (let [subject   s
-                           flakes    (get subject-flakes subject)
-                           existing  (-> (try (clucie/search store {:_id (str s)} 1 analyzer 0 1)
-                                              (catch Exception e [])) first)
-                           flake-map (reduce (fn [acc f]
-                                               (assoc acc (keyword (str (.-p f))) (.-o f))) {} flakes)
-                           s-res     (if existing
-                                       (merge existing flake-map)
-                                       (let [cid (flake/sid->cid s)]
-                                         (assoc flake-map :_id s :collection cid)))
-                           add-fn    (if existing
-                                       (fn [] (clucie/update! store s-res (keys s-res) :_id (str s) analyzer))
-                                       (fn [] (clucie/add! store [s-res] (keys s-res) analyzer)))
-                           add-resp  (try (add-fn)
-                                          (catch Exception e (let [cause     (:cause (Throwable->map e))
-                                                                   error-msg "Lock held by this virtual machine"]
-                                                               (if (str/includes? cause error-msg)
-                                                                 (<? (retry-fn add-fn error-msg timeout-ms max-retry-times subject)) (throw e)))))]
-                       (log/trace (str "Added flakes for subject: " subject " to full text index."))
-                       (<? (timeout timeout-ms))
-                       (recur r)))))))))
-
+  ([storage-dir network dbid flake-ch language]
+   (add-flakes-to-store storage-dir network dbid flake-ch language {}))
+  ([storage-dir network dbid flake-ch language opts]
+   (go-try
+    (let [store           (full-text/storage storage-dir network dbid)
+          analyzer        (full-text/analyzer language)
+          timeout-ms      (-> opts :timeout (or 500))
+          max-retry-times (-> opts :retry (or 10))]
+      (loop []
+        (when-let [flakes (<? flake-ch)]
+          (let [subject-flakes  (group-by #(.-s %) flakes)
+                subjects        (keys subject-flakes)]
+            (loop [[s & r] subjects]
+              (if-not s
+                (do (if subjects (log/info (str "Add full text flakes to store complete for: " (count subjects) " subjects.")))
+                    true)
+                (let [subject   s
+                      flakes    (get subject-flakes subject)
+                      existing   (try
+                                   (first (clucie/search store {:_id (str s)} 1 analyzer 0 1))
+                                   (catch Exception e
+                                     nil))
+                      flake-map (reduce (fn [acc ^Flake f]
+                                          (assoc acc (keyword (str (.-p f))) (.-o f))) {} flakes)
+                      s-res     (if existing
+                                  (merge existing flake-map)
+                                  (let [cid (flake/sid->cid s)]
+                                    (assoc flake-map :_id s :collection cid)))
+                      add-fn    (if existing
+                                  (fn [] (clucie/update! store s-res (keys s-res) :_id (str s) analyzer))
+                                  (fn [] (clucie/add! store [s-res] (keys s-res) analyzer)))
+                      add-resp  (try (add-fn)
+                                     (catch Exception e (let [cause     (:cause (Throwable->map e))
+                                                              error-msg "Lock held by this virtual machine"]
+                                                          (if (str/includes? cause error-msg)
+                                                            (<? (retry-fn add-fn error-msg timeout-ms max-retry-times subject)) (throw e)))))]
+                  (log/trace (str "Added flakes for subject: " subject " to full text index."))
+                  (<? (timeout timeout-ms))
+                  (recur r))))
+            (recur))))))))
 
 (defn remove-flakes-from-store
   [storage-dir network dbid flakes language]
@@ -123,7 +128,7 @@
                                   full))]
             (<? (add-flakes-to-store path-to-dir network dbid addFlakes language)))))
 
-(defn full-text-flake?
+(defn full-text-predicate?
   [^Flake f]
   (= const/$_predicate:fullText
      (.-p f)))
@@ -137,7 +142,7 @@
         rem     (get grouped false)]
     [add rem]))
 
-(defn predicate-flakes
+(defn filter-predicate-flakes
   [db preds]
   (->> preds
        (map (fn [p]
@@ -159,32 +164,46 @@
        (let [language            (-> db :settings :language (or :default))
              [add rem]           (->> block
                                       :flakes
-                                      (filter full-text-flake?)
+                                      (filter full-text-predicate?)
                                       separate-by-op)
 
              add-to-index        (->> add
                                       (map (fn [^Flake f]
                                              (.-s f)))
-                                      (predicate-flakes db)
-                                      <?)
+                                      (filter-predicate-flakes db))
 
              remove-from-index   (->> rem
                                       (map (fn [^Flake f]
                                              (.-s f)))
-                                      (predicate-flakes db)
-                                      <?)
+                                      (filter-predicate-flakes db))
 
-             fullText            (-> db :schema :fullText)
-             lucene-add-queue    (concat (filter #(and (fullText (.-p %)) (.-op %)) (:flakes block)) add-to-index)
-             lucene-remove-queue (concat (filter (fn [flake]
-                                                   (and (fullText (.-p flake))
-                                                        (not (.-op flake))
-                                                        ;; We only want to add flakes to "remove" if that
-                                                        ;; s-p is being removed, not if
-                                                        ;; it's being updated
-                                                        (not (some #(and (= (.-s flake) (.-s %))
-                                                                         (= (.-p flake) (.-p %))) lucene-add-queue))))
-                                                 (:flakes block)) remove-from-index)]
+             current-index-preds (-> db :schema :fullText)
+
+             lucene-add-queue    (->> block
+                                      :flakes
+                                      (filter (fn [^Flake f]
+                                                (and (contains? current-index-preds
+                                                                (.-p f))
+                                                     (.-op f))))
+                                      vec
+                                      (>! add-to-index))
+
+             lucene-remove-queue (->> block
+                                      :flakes
+                                      (filter (fn [^Flake f]
+                                                (and (contains? current-index-preds
+                                                                (.-p f))
+                                                     (not (.-op f))
+                                                     ;; We only want to add flakes to "remove" if that
+                                                     ;; s-p is being removed, not if
+                                                     ;; it's being updated
+                                                     ;;
+                                                     ;; OPTIMIZE - This scans the entire add queue for each flake!
+                                                     (not (some #(and (= (.-s f) (.-s %))
+                                                                      (= (.-p f) (.-p %)))
+                                                                lucene-add-queue)))))
+                                      vec
+                                      (>! remove-from-index))]
 
          (do (<? (add-flakes-to-store storage-dir network dbid lucene-add-queue language))
              (remove-flakes-from-store storage-dir network dbid lucene-remove-queue language)
