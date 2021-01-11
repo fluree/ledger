@@ -11,7 +11,8 @@
             [clojure.string :as str]
             [fluree.db.util.schema :as schema-util]
             [fluree.db.constants :as const]
-            [fluree.db.api :as fdb]))
+            [fluree.db.api :as fdb])
+  (:import java.time.Instant))
 
 (defn disk-store
   [path-to-dir network dbid]
@@ -120,38 +121,50 @@
 (defn handle-block
   [db storage-dir network dbid block]
   (go-try
-    (if (schema-util/get-language-change (:flakes block))
-      (do (<? (reset-full-text-index db storage-dir network dbid))
-          (track-full-text storage-dir (str network "/" dbid) (:block db)))
-      (let [language            (or (-> db :settings :language) :default)
-            [fullTextAdd fullTextRemove] (reduce (fn [[add remove] flake]
-                                                   (if (= const/$_predicate:fullText (.-p flake))
-                                                     (if (.-op flake)
-                                                       [(conj add flake) remove]
-                                                       [add (conj remove flake)])
-                                                     [add remove]))
-                                                 [[] []] (:flakes block))
-            addToIndex          (-> (map #(try (<?? (query-range/index-range db :psot = [(.-s %)]))
-                                               (catch Exception e []))
-                                         fullTextAdd) flatten)
-            removeFromIndex     (-> (map #(try (<?? (query-range/index-range db :psot = [(.-s %)]))
-                                               (catch Exception e []))
-                                         fullTextRemove) flatten)
-            fullText            (-> db :schema :fullText)
-            lucene-add-queue    (concat (filter #(and (fullText (.-p %)) (.-op %)) (:flakes block)) addToIndex)
-            lucene-remove-queue (concat (filter (fn [flake]
-                                                  (and (fullText (.-p flake))
-                                                       (not (.-op flake))
-                                                       ;; We only want to add flakes to "remove" if that
-                                                       ;; s-p is being removed, not if
-                                                       ;; it's being updated
-                                                       (not (some #(and (= (.-s flake) (.-s %))
-                                                                        (= (.-p flake) (.-p %))) lucene-add-queue))))
-                                                (:flakes block)) removeFromIndex)]
+   (let [start-time (Instant/now)]
+     (log/info (str "Full-Text Search Index Update began at: " start-time)
+               {:network network
+                :dbid    dbid
+                :block   (:block block)})
+     (if (schema-util/get-language-change (:flakes block))
+       (do (<? (reset-full-text-index db storage-dir network dbid))
+           (track-full-text storage-dir (str network "/" dbid) (:block db)))
+       (let [language            (or (-> db :settings :language) :default)
+             [fullTextAdd fullTextRemove] (reduce (fn [[add remove] flake]
+                                                    (if (= const/$_predicate:fullText (.-p flake))
+                                                      (if (.-op flake)
+                                                        [(conj add flake) remove]
+                                                        [add (conj remove flake)])
+                                                      [add remove]))
+                                                  [[] []] (:flakes block))
+             addToIndex          (-> (map #(try (<?? (query-range/index-range db :psot = [(.-s %)]))
+                                                (catch Exception e []))
+                                          fullTextAdd) flatten)
+             removeFromIndex     (-> (map #(try (<?? (query-range/index-range db :psot = [(.-s %)]))
+                                                (catch Exception e []))
+                                          fullTextRemove) flatten)
+             fullText            (-> db :schema :fullText)
+             lucene-add-queue    (concat (filter #(and (fullText (.-p %)) (.-op %)) (:flakes block)) addToIndex)
+             lucene-remove-queue (concat (filter (fn [flake]
+                                                   (and (fullText (.-p flake))
+                                                        (not (.-op flake))
+                                                        ;; We only want to add flakes to "remove" if that
+                                                        ;; s-p is being removed, not if
+                                                        ;; it's being updated
+                                                        (not (some #(and (= (.-s flake) (.-s %))
+                                                                         (= (.-p flake) (.-p %))) lucene-add-queue))))
+                                                 (:flakes block)) removeFromIndex)]
 
-        (do (<? (add-flakes-to-store storage-dir network dbid lucene-add-queue language))
-            (remove-flakes-from-store storage-dir network dbid lucene-remove-queue language)
-            (track-full-text storage-dir (str network "/" dbid) (:block block)))))))
+         (do (<? (add-flakes-to-store storage-dir network dbid lucene-add-queue language))
+             (remove-flakes-from-store storage-dir network dbid lucene-remove-queue language)
+             (track-full-text storage-dir (str network "/" dbid) (:block block)))))
+     (let [end-time (Instant/now)]
+       (log/info (str "Full-Text Search Index Update ended at: " end-time)
+                 {:network  network
+                  :dbid     dbid
+                  :block    (:block block)
+                  :duration (- (.toEpochMilli end-time)
+                               (.toEpochMilli start-time))})))))
 
 (defn sync-full-text-index
   [db storage-dir network dbid start-block end-block]
@@ -173,4 +186,3 @@
   (def store (disk-store "data/ledger/" "shi" "test2"))
 
   (clucie/search store {:_id (str 351843720888321)} 1 (standard-analyzer) 0 1))
-
