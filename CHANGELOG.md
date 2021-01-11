@@ -1,5 +1,52 @@
 # Changelog
 
+## 1.0.0
+- Add auth check to delete-db request (FC-705)
+- Transactions issued to `command` http API does not wait for full transaction response (FC-889)
+- Fix issue where new collection first _id is skipping first value (starts with 1, not 0) (FC-810)
+- Adjust tests to account for updated ecount start point at 0 vs 1 (FC-874)
+- Move generate-merkle-root fn to db library for reuse (FC-824)
+- Ledger server reindex would not increment latest block if needed (FC-823)
+- Feature: S3 Storage (FC-790, FC-803)
+- Fluree Health Check - Include Server Status (FC-742)
+- When using an integer _id value in a transaction, it is not properly validated that it exists. (FC-721)
+- nw-state endpoint: Summarize work in command queue & new-db queue (FC-718)
+- Unit Tests Failing: fix typo in Clojure API for history query  (FC-716)
+- Fix unit tests for History Query - result format changed for pretty-print option (FC-694)
+- Remove fluree.db.enterprise namespace, make aes disk encryption standard (FC-781)
+- Exit if unable to write files to disk - critical failure (FC-778)
+- Add support for Kupernetes (FC-741)
+- Add jwt support to storage-handler (FC-937)
+- Improve syncTo by registering a listener w/callback to return results (FC-849, FC-847 , FC-846)
+- Updated Admin UI for new branding & open source (FC-801, FC-804, FC-811, FC-864, FC-862, FC-925, FC-919)
+
+## 0.16.0-rc4
+- Update Admin UI (FC-772)
+
+## 0.16.0-rc2
+- Collection default smartfunctions not always triggering properly (FC-879)
+
+## 0.16.0-rc1
+- Update Admin UI (FC-776)
+- Admin UI: Make modals move-able (FC-615)
+- Admin UI: Add Type to Predicate screen (FC-584)
+
+## 0.15.7
+- fix issue with combination of string? where, :orderBy and :offset (FC-743)
+
+## 0.15.6
+- fix issue where :offset excluded ref data (FC-736)
+
+## 0.15.5
+- wire-up auth to subscription (cljs & web-socket) (FC-693)
+
+## 0.15.4
+- fix so auth wo perm can't update _predicate (FC-669)
+- Fix for root permissions to skip filtering (FC-689)
+
+## 0.15.3
+- fix bug in delete-ledger auth logic (FC-659)
+
 ## 0.15.2
 - Update Admin UI [FC-647]
 
