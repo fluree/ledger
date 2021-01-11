@@ -1,6 +1,5 @@
 (ns fluree.db.ledger.full-text-index
   (:require [clucie.core :as clucie]
-            [fluree.db.query.analytical-full-text :as full-text-query]
             [clucie.store :as store]
             [fluree.db.flake :as flake]
             [fluree.db.full-text :as full-text]
@@ -39,7 +38,7 @@
    (add-flakes-to-store storage-dir network dbid flakes language {}))
   ([storage-dir network dbid flakes language opts]
    (go-try (let [store           (full-text/storage storage-dir network dbid)
-                 analyzer        (full-text-query/analyzer language)
+                 analyzer        (full-text/analyzer language)
                  subject-flakes  (group-by #(.-s %) flakes)
                  subjects        (keys subject-flakes)
                  timeout-ms      (or (:timeout opts) 500)
@@ -74,7 +73,7 @@
 (defn remove-flakes-from-store
   [storage-dir network dbid flakes language]
   (let [store          (full-text/storage storage-dir network dbid)
-        analyzer       (full-text-query/analyzer language)
+        analyzer       (full-text/analyzer language)
         subject-flakes (group-by #(.-s %) flakes)]
     (mapv (fn [[s flakes]]
             (let [_         (log/trace "Removing flakes from full text index: " flakes)
