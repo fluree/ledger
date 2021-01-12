@@ -31,6 +31,7 @@
             [fluree.db.permissions-validate :as permissions-validate]
             [fluree.db.peer.password-auth :as pw-auth]
             [fluree.db.ledger.reindex :as reindex]
+            [fluree.db.ledger.full-text-index :as full-text]
             [fluree.db.ledger.mutable :as mutable]
             [fluree.db.auth :as auth]
             [fluree.db.ledger.delete :as delete])
@@ -386,6 +387,16 @@
                       :t     (:t reindexed)
                       :stats (:stats reindexed)}])))
 
+(defmethod action-handler :reindex-fulltext
+  [_ system _ _ ledger _]
+  ;; For now, does not require authentication
+  (go-try
+    (let [conn           (:conn system)
+          [network dbid] (graphdb/validate-ledger-ident ledger)
+          db             (fdb/db conn ledger)
+          storage-dir    (-> conn :meta :file-storage-path)
+          reindexed      (<? (full-text/reset-full-text-index db storage-dir network dbid))]
+      [{:status 200} {:reindex-count reindexed}])))
 
 (defmethod action-handler :export
   [_ system param auth-map ledger _]
