@@ -108,14 +108,26 @@
 
 (defn reset-full-text-index
   [db path-to-dir network dbid]
-  (go-try (let [_             (delete-files-recursively (str path-to-dir network "/" dbid "/lucene"))
-                fullTextPreds (-> db :schema :fullText)
-                language      (or (-> db :settings :language) :default)
-                addFlakes     (loop [[pred & r] fullTextPreds
-                                     full []]
-                                (if pred
-                                  (recur r (concat full (<? (query-range/index-range db :psot = [pred])))) full))]
-            (<? (add-flakes-to-store path-to-dir network dbid addFlakes language)))))
+  (go-try
+   (let [start-time (Instant/now)]
+     (log/info (str "Full-Text Search Index Reset began at: " start-time)
+               {:network network
+                :dbid    dbid})
+     (delete-files-recursively (str path-to-dir network "/" dbid "/lucene"))
+     (let [fullTextPreds (-> db :schema :fullText)
+           language      (or (-> db :settings :language) :default)
+           addFlakes     (loop [[pred & r] fullTextPreds
+                                full []]
+                           (if pred
+                             (recur r (concat full (<? (query-range/index-range db :psot = [pred])))) full))
+           add-result    (<? (add-flakes-to-store path-to-dir network dbid addFlakes language))
+           end-time      (Instant/now)]
+       (log/info (str "Full-Text Search Index Reset ended at: " start-time)
+                 {:network  network
+                  :dbid     dbid
+                  :duration (- (.toEpochMilli end-time)
+                               (.toEpochMilli start-time))})
+       add-result))))
 
 ;;; TODO - handle multi predicates - prevent from going into index - handle at schema setting level.
 (defn handle-block
@@ -127,7 +139,8 @@
                 :dbid    dbid
                 :block   (:block block)})
      (if (schema-util/get-language-change (:flakes block))
-       (do (<? (reset-full-text-index db storage-dir network dbid))
+       (do (log/info "Resetting full text index")
+           (<? (reset-full-text-index db storage-dir network dbid))
            (track-full-text storage-dir (str network "/" dbid) (:block db)))
        (let [language            (or (-> db :settings :language) :default)
              [fullTextAdd fullTextRemove] (reduce (fn [[add remove] flake]
