@@ -396,9 +396,7 @@
           db             (fdb/db conn ledger)
           storage-dir    (-> conn :meta :file-storage-path)
           reindexed      (<? (full-text/reset-full-text-index db storage-dir network dbid))]
-      [{:status 200} {:block (:block reindexed)
-                      :t     (:t reindexed)
-                      :stats (:stats reindexed)}])))
+      [{:status 200} {:reindex-count reindexed}])))
 
 (defmethod action-handler :export
   [_ system param auth-map ledger _]

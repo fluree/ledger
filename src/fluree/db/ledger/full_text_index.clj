@@ -39,37 +39,40 @@
   ([storage-dir network dbid flakes language]
    (add-flakes-to-store storage-dir network dbid flakes language {}))
   ([storage-dir network dbid flakes language opts]
-   (go-try (let [store           (disk-store storage-dir network dbid)
-                 analyzer        (full-text/analyzer language)
-                 subject-flakes  (group-by #(.-s %) flakes)
-                 subjects        (keys subject-flakes)
-                 timeout-ms      (or (:timeout opts) 500)
-                 max-retry-times (or (:retry opts) 10)]
-             (<? (go-loop [[s & r] subjects]
-                   (if-not s
-                     (do (if subjects (log/info (str "Add full text flakes to store complete for: " (count subjects) " subjects.")))
-                         true)
-                     (let [subject   s
-                           flakes    (get subject-flakes subject)
-                           existing  (-> (try (clucie/search store {:_id (str s)} 1 analyzer 0 1)
-                                              (catch Exception e [])) first)
-                           flake-map (reduce (fn [acc f]
-                                               (assoc acc (keyword (str (.-p f))) (.-o f))) {} flakes)
-                           s-res     (if existing
-                                       (merge existing flake-map)
-                                       (let [cid (flake/sid->cid s)]
-                                         (assoc flake-map :_id s :collection cid)))
-                           add-fn    (if existing
-                                       (fn [] (clucie/update! store s-res (keys s-res) :_id (str s) analyzer))
-                                       (fn [] (clucie/add! store [s-res] (keys s-res) analyzer)))
-                           add-resp  (try (add-fn)
-                                          (catch Exception e (let [cause     (:cause (Throwable->map e))
-                                                                   error-msg "Lock held by this virtual machine"]
-                                                               (if (str/includes? cause error-msg)
-                                                                 (<? (retry-fn add-fn error-msg timeout-ms max-retry-times subject)) (throw e)))))]
-                       (log/trace (str "Added flakes for subject: " subject " to full text index."))
-                       (<? (timeout timeout-ms))
-                       (recur r)))))))))
+   (go-try
+    (let [store           (disk-store storage-dir network dbid)
+          analyzer        (full-text/analyzer language)
+          subject-flakes  (group-by #(.-s %) flakes)
+          subjects        (keys subject-flakes)
+          subject-count   (count subjects)
+          timeout-ms      (or (:timeout opts) 500)
+          max-retry-times (or (:retry opts) 10)]
+      (<? (go-loop [[s & r] subjects]
+            (if-not s
+              (do (when subjects
+                    (log/info (str "Add full text flakes to store complete for: " subject-count " subjects.")))
+                  subject-count)
+              (let [subject   s
+                    flakes    (get subject-flakes subject)
+                    existing  (-> (try (clucie/search store {:_id (str s)} 1 analyzer 0 1)
+                                       (catch Exception e [])) first)
+                    flake-map (reduce (fn [acc f]
+                                        (assoc acc (keyword (str (.-p f))) (.-o f))) {} flakes)
+                    s-res     (if existing
+                                (merge existing flake-map)
+                                (let [cid (flake/sid->cid s)]
+                                  (assoc flake-map :_id s :collection cid)))
+                    add-fn    (if existing
+                                (fn [] (clucie/update! store s-res (keys s-res) :_id (str s) analyzer))
+                                (fn [] (clucie/add! store [s-res] (keys s-res) analyzer)))
+                    add-resp  (try (add-fn)
+                                   (catch Exception e (let [cause     (:cause (Throwable->map e))
+                                                            error-msg "Lock held by this virtual machine"]
+                                                        (if (str/includes? cause error-msg)
+                                                          (<? (retry-fn add-fn error-msg timeout-ms max-retry-times subject)) (throw e)))))]
+                (log/trace (str "Added flakes for subject: " subject " to full text index."))
+                (<? (timeout timeout-ms))
+                (recur r)))))))))
 
 
 (defn remove-flakes-from-store
