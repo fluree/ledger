@@ -48,6 +48,17 @@ This will generate `build/fluree-$(VERSION).zip`.
 Its contents will also be left in the `build/` directory for manual testing
 (e.g. `cd build && ./fluree_start.sh`).
 
+### System-wide installation
+
+`make install` will install fluree to `/usr/local` (by default) and you can then run
+`fluree` to start it up. Config files `fluree.properties` and `fluree-logback.xml` will
+be copied to `/usr/local/etc` if they don't already exist. You can modify them to your
+needs.
+
+If you want to install somewhere other than `/usr/local` you can set the `DESTDIR` variable
+like this: `make install DESTDIR=/other/path`. Fluree will then be installed to `/other/path/bin`,
+`/other/path/etc`, & `/other/path/share/java`.
+
 ### Releasing
 
 By default releases will be uploaded to the `fluree-releases-public` S3 bucket.
