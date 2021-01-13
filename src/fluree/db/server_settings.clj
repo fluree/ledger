@@ -409,6 +409,7 @@
         storage-type             (storage-type settings)
         s3-conn                  (some-> settings :fdb-storage-s3-bucket s3store/connect)
         file-ledger-storage-path (file-storage-path :ledger settings)
+        _                        (log/debug "generate-conn-settings file-ledger-storage-path:" file-ledger-storage-path)
         s3-ledger-storage-prefix (:fdb-storage-s3-ledger-prefix settings)
         storage-read             (case storage-type
                                    :file (filestore/connection-storage-read
