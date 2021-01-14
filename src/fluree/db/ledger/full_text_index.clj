@@ -49,9 +49,9 @@
           max-retry-times (or (:retry opts) 10)]
       (loop [[s & r] subjects]
         (if-not s
-          (do (when subjects
-                (log/info (str "Add full text flakes to store complete for: " subject-count " subjects.")))
-              subject-count)
+          (do
+            (log/info (str "Add full text flakes to store complete for: " subject-count " subjects."))
+            subject-count)
           (let [subject   s
                 flakes    (get subject-flakes subject)
                 existing  (-> (try (clucie/search store {:_id (str s)} 1 analyzer 0 1)
@@ -112,13 +112,15 @@
 (defn reset-full-text-index
   [db path-to-dir network dbid]
   (go-try
-   (let [start-time (Instant/now)]
+   (let [start-time      (Instant/now)
+         fullTextPreds   (-> db :schema :fullText)
+         full-text-count (count fullTextPreds)]
      (log/info (str "Full-Text Search Index Reset began at: " start-time)
-               {:network network
-                :dbid    dbid})
+               {:network      network
+                :dbid         dbid})
+     (log/info (str "Resetting " full-text-count " full text predicates"))
      (delete-files-recursively (str path-to-dir network "/" dbid "/lucene"))
-     (let [fullTextPreds (-> db :schema :fullText)
-           language      (or (-> db :settings :language) :default)
+     (let [language      (or (-> db :settings :language) :default)
            addFlakes     (loop [[pred & r] fullTextPreds
                                 full []]
                            (if pred

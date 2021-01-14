@@ -393,7 +393,7 @@
   (go-try
     (let [conn           (:conn system)
           [network dbid] (graphdb/validate-ledger-ident ledger)
-          db             (fdb/db conn ledger)
+          db             (<? (fdb/db conn ledger))
           storage-dir    (-> conn :meta :file-storage-path)
           reindexed      (<? (full-text/reset-full-text-index db storage-dir network dbid))]
       [{:status 200} {:reindex-count reindexed}])))
