@@ -116,8 +116,8 @@
          fullTextPreds   (-> db :schema :fullText)
          full-text-count (count fullTextPreds)]
      (log/info (str "Full-Text Search Index Reset began at: " start-time)
-               {:network      network
-                :dbid         dbid})
+               {:network network
+                :dbid    dbid})
      (log/info (str "Resetting " full-text-count " full text predicates"))
      (delete-files-recursively (str path-to-dir network "/" dbid "/lucene"))
      (let [language      (or (-> db :settings :language) :default)
