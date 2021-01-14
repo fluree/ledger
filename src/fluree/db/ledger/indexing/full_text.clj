@@ -1,8 +1,23 @@
 (ns fluree.db.ledger.indexing.full-text
   (:require [clojure.core.async :as async :refer [<! >! chan go go-loop]]
+            [clojure.string :as str]
+            [fluree.db.query.analytical-full-text :as full-text]
             [clucie.core :as lucene]
             [clucie.store :as lucene-store])
   (:import fluree.db.flake.Flake))
+
+(defn index-store
+  [storage-path [network dbid]]
+  (let [store-path (str/join "/" [storage-path network dbid "lucene"])]
+    (lucene-store/disk-store store-path)))
+
+(defn get-subject
+  [idx-store lang subj]
+  (let [analyzer (full-text/analyzer lang)
+        subj-id  (str subj)]
+    (-> idx-store
+        (lucene/search {:_id subj-id} 1 analyzer 0 1)
+        first)))
 
 (defn group-by-subject
   "Expects `flake-chan` to be a channel that contains a stream of flakes.
