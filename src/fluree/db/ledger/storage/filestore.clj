@@ -174,7 +174,8 @@
   "Returns a sequence of data maps with keys `#{:name :size :url}` representing
   the files at `base-path/path`."
   [base-path path]
-  (let [full-path (str/join "/" [base-path path])]
+  (let [full-path (str base-path path)]
+    (log/debug "storage-list full-path:" full-path)
     (when (exists? full-path)
       (let [files (-> full-path io/file file-seq)]
         (map (fn [f] {:name (.getName f), :url (.toURL f), :size (.length f)})
