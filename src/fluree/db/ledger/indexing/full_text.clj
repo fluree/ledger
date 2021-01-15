@@ -154,6 +154,12 @@
        group-by-subject
        (purge-subjects writer init-stats)))
 
+(defn reset-index
+  [writer {:keys [network dbid] :as db}]
+  (let [[cur-update-ch cur-rem-ch] (updated-subjects db flakes)
+        initial-stats {:indexed 0, :errors 0}]
+    (index-flakes writer initial-stats add-queue)))
+
 (defn update-index
   [writer {:keys [network dbid] :as db} {:keys [flakes] :as block}]
   (go
@@ -169,3 +175,35 @@
 
       final-stats)))
 
+
+(defn write-block
+  [{:keys [network dbid] :as db} storage-path {:keys [flakes] :as block}]
+  (let [start-time  (Instant/now)
+        coordinates {:network network, :dbid dbid, :block (:block block)}
+        lang        (-> db :settings :language (or :default))]
+
+    (log/info (str "Full-Text Search Index began processing new block at: "
+                   start-time)
+              coordinates)
+
+    (go
+      (with-open [store  (full-text/storage storage-path [network dbid])
+                  writer (full-text/writer store lang)]
+
+        (let [stats    (if (schema/get-language-change flakes)
+                         (<! (reset-index writer db))
+                         (<! (update-index writer db block)))
+
+              end-time (Instant/now)
+              duration (- (.toEpochMilli end-time)
+                          (.toEpochMilli start-time))
+
+              status   (-> stats
+                           (merge coordinates)
+                           (assoc :duration duration))]
+
+          (log/info (str "Full-Text Search Index ended processing new block at: "
+                         end-time)
+                    status)
+
+          status)))))
