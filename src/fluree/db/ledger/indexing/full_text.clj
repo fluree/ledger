@@ -1,6 +1,7 @@
 (ns fluree.db.ledger.indexing.full-text
   (:require [clojure.core.async :as async :refer [<! >! chan go go-loop]]
             [clojure.string :as str]
+            [clojure.tools.logging :as log]
             [fluree.db.full-text :as full-text]
             [clucie.core :as lucene]
             [clucie.store :as lucene-store])
@@ -37,3 +38,53 @@
     (async/pipe subj-attr-chan out-chan)
 
     out-chan))
+
+(defn process-subjects
+  "Processes each subject - predicate-map pair in `subj-chan` with the supplied
+  `processor` function. The processor should modify the index with the writer
+  and return updated stats tracking successes and errors"
+  [processor writer init-stats subj-chan]
+  (go-loop [stats init-stats]
+    (if-let [[subj pred-map] (<! subj-chan)]
+      (let [stats* (processor writer stats subj pred-map)]
+        (recur stats*))
+      stats)))
+
+(defn index-subjects
+  "Add the subjects from `subj-chan` to the index using the `writer`. Keeps track
+  of successfully `:indexed` subjects and `:errors` in the stats map returned."
+  [writer init-stats subj-chan]
+  (process-subjects (fn [writer stats subj pred-map]
+                      (try
+                        (full-text/put-subject writer subj pred-map)
+                        (log/trace "Indexed full text predicates for subject "
+                                   subj)
+                        (update stats :indexed inc)
+
+                        (catch Exception e
+                          (log/error e (str "Error indexing full text "
+                                            "predicates for subject "
+                                            subj))
+                          (update stats :errors inc))))
+
+                    writer init-stats subj-chan))
+
+(defn purge-subjects
+  "Remove the included predicates for each subject from `subj-chan` from the index
+  using the `writer`. Keeps track of successfully `:purged` subjects and
+  `:errors` in the stats map returned."
+  [init-stats writer subj-chan]
+  (process-subjects (fn [writer stats subj pred-map]
+                      (try
+                        (full-text/purge-subject)
+                        (log/trace "Purged stale full text predicates for "
+                                   "subject " subj)
+                        (update stats :purged inc)
+
+                        (catch Exception e
+                          (log/error e (str "Error purging stale full text "
+                                            "predicates for subject " subj))
+                          (update stats :errors inc))))
+
+                    writer init-stats subj-chan))
+
