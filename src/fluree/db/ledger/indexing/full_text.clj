@@ -1,11 +1,74 @@
 (ns fluree.db.ledger.indexing.full-text
   (:require [fluree.db.full-text :as full-text]
+            [fluree.db.query.range :as query-range]
+            [fluree.db.util.schema :as schema]
             [clojure.core.async :as async :refer [<! >! chan go go-loop]]
             [clojure.string :as str]
             [clojure.tools.logging :as log]
             [clucie.core :as lucene]
             [clucie.store :as lucene-store])
-  (:import fluree.db.flake.Flake))
+  (:import fluree.db.flake.Flake
+           java.time.Instant))
+
+(defn separate-by-op
+  [flakes]
+  (let [grouped (group-by #(.-op ^Flake %) flakes)
+        add     (get grouped true)
+        rem     (get grouped false)]
+    [add rem]))
+
+(defn predicate-flakes
+  "Returns a channel that will contain a stream of every flake known to `db`
+  involving any of the predicates in the `preds` sequence."
+  [db preds]
+  (let [idx-chan (->> preds
+                      (map (fn [p]
+                             (query-range/index-range db :psot = [p])))
+                      async/merge)
+        out-chan (chan nil (mapcat seq))]
+    (async/pipe idx-chan out-chan)))
+
+(defn updated-predicates
+  "Returns a pair of channels, [`add` `rem`], where `add` contains a stream of all
+  the flakes known to `db` involving predicates that were newly added to the
+  full text index in the `flakes` sequences, and `rem` contains a stream of all
+  the flakes known to db involving the predicates retracted from the full text
+  index in `flakes`"
+  [db flakes]
+  (->> flakes
+       (filter full-text/predicate?)
+       separate-by-op
+       (map (partial predicate-flakes db))))
+
+(defn updated-subjects
+  "Returns a pair of channels, [`add` `rem`], where `add` contains a stream of the
+  added flakes in the `flakes` sequence involving predicates that were already
+  tracked in the full text index for `db`, and `rem` contains a stream of all
+  the retracted flakes from the flakes sequence involving the predicates that
+  were previously tracked in the full text index for `db`."
+  [db flakes]
+  (let [cur-idx-preds  (-> db :schema :fullText)
+
+        [cur-updates cur-removals]
+        (->> flakes
+             (filter (fn [^Flake f]
+                       (contains? cur-idx-preds (.-p f))))
+             separate-by-op)
+
+        cur-update-ch  (async/to-chan! cur-updates)
+
+        ;; We only want to add flakes to "remove" if that s-p is being
+        ;; removed, not if it's being updated
+        update-set     (->> cur-updates
+                            (map (fn [^Flake f]
+                                   [(.-s f) (.-p f)]))
+                            (into #{}))
+        cur-rem-ch     (->> cur-removals
+                            (filter (fn [^Flake f]
+                                      (not (contains? update-set
+                                                      [(.-s f) (.-p f)]))))
+                            async/to-chan!)]
+    [cur-update-ch cur-rem-ch]))
 
 (defn group-by-subject
   "Expects `flake-chan` to be a channel that contains a stream of flakes.
@@ -90,4 +153,19 @@
   (->> flake-chan
        group-by-subject
        (purge-subjects writer init-stats)))
+
+(defn update-index
+  [writer {:keys [network dbid] :as db} {:keys [flakes] :as block}]
+  (go
+    (let [[add-pred-ch rem-pred-ch]  (updated-predicates db flakes)
+          [cur-update-ch cur-rem-ch] (updated-subjects db flakes)
+
+          add-queue (async/merge add-pred-ch cur-update-ch)
+          rem-queue (async/merge rem-pred-ch cur-rem-ch)
+
+          initial-stats {:indexed 0, :purged 0, :errors 0}
+          indexed-stats (<! (index-flakes writer initial-stats add-queue))
+          final-stats   (<! (purge-flakes writer indexed-stats rem-queue))]
+
+      final-stats)))
 
