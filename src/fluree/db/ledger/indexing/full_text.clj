@@ -40,6 +40,10 @@
        separate-by-op
        (map (partial predicate-flakes db))))
 
+(defn current-index-predicates
+  [d]
+  (-> db :schema :fullText))
+
 (defn updated-subjects
   "Returns a pair of channels, [`add` `rem`], where `add` contains a stream of the
   added flakes in the `flakes` sequence involving predicates that were already
@@ -47,7 +51,7 @@
   the retracted flakes from the flakes sequence involving the predicates that
   were previously tracked in the full text index for `db`."
   [db flakes]
-  (let [cur-idx-preds  (-> db :schema :fullText)
+  (let [cur-idx-preds (current-index-predicates db)
 
         [cur-updates cur-removals]
         (->> flakes
@@ -156,9 +160,10 @@
 
 (defn reset-index
   [writer {:keys [network dbid] :as db}]
-  (let [[cur-update-ch cur-rem-ch] (updated-subjects db flakes)
+  (let [cur-idx-preds (current-index-predicates db)
+        idx-queue     (predicate-flakes db cur-idx-preds)
         initial-stats {:indexed 0, :errors 0}]
-    (index-flakes writer initial-stats add-queue)))
+    (index-flakes writer initial-stats idx-queue)))
 
 (defn update-index
   [writer {:keys [network dbid] :as db} {:keys [flakes] :as block}]
