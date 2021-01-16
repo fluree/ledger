@@ -1,5 +1,5 @@
 (ns fluree.db.ledger.indexing.full-text
-  (:require [fluree.db.full-text :as full-text]
+  (:require [fluree.db.full-text.store :as full-text]
             [fluree.db.query.range :as query-range]
             [fluree.db.util.schema :as schema]
             [clojure.core.async :as async :refer [<! >! chan go go-loop]]
@@ -111,7 +111,7 @@
   [writer init-stats subj-chan]
   (process-subjects (fn [stats subj pred-map]
                       (try
-                        (full-text/put-subject writer subj pred-map)
+                        (full-text-store/put-subject writer subj pred-map)
                         (log/trace "Indexed full text predicates for subject "
                                    subj)
                         (update stats :indexed inc)
@@ -136,7 +136,7 @@
   [init-stats writer subj-chan]
   (process-subjects (fn [stats subj pred-map]
                       (try
-                        (full-text/purge-subject)
+                        (full-text-store/purge-subject)
                         (log/trace "Purged stale full text predicates for "
                                    "subject " subj)
                         (update stats :purged inc)
@@ -187,8 +187,8 @@
               coordinates)
 
     (go
-      (with-open [store  (full-text/storage storage-path [network dbid])
-                  writer (full-text/writer store lang)]
+      (with-open [store  (full-text-store/storage storage-path [network dbid])
+                  writer (full-text-store/writer store lang)]
 
         (let [stats    (if (schema/get-language-change flakes)
                          (<! (reset-index writer db))
