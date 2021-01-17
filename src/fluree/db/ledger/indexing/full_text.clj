@@ -163,6 +163,7 @@
   (let [cur-idx-preds (current-index-predicates db)
         idx-queue     (predicate-flakes db cur-idx-preds)
         initial-stats {:indexed 0, :errors 0}]
+    (full-text-store/forget writer)
     (index-flakes writer initial-stats idx-queue)))
 
 (defn update-index
@@ -207,7 +208,7 @@
                            (merge coordinates)
                            (assoc :duration duration))]
 
-          (full-text-store/register-block storage-path [network dbid])
+          (full-text-store/register-block writer status)
 
           (log/info (str "Full-Text Search Index ended processing new block at: "
                          end-time)
