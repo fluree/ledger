@@ -1,5 +1,5 @@
 (ns fluree.db.ledger.indexing.full-text
-  (:require [fluree.db.full-text.store :as full-text]
+  (:require [fluree.db.full-text :as full-text]
             [fluree.db.query.range :as query-range]
             [fluree.db.util.schema :as schema]
             [clojure.core.async :as async :refer [<! >! chan go go-loop]]
@@ -41,7 +41,7 @@
        (map (partial predicate-flakes db))))
 
 (defn current-index-predicates
-  [d]
+  [db]
   (-> db :schema :fullText))
 
 (defn updated-subjects
@@ -115,7 +115,7 @@
   [writer init-stats subj-chan]
   (process-subjects (fn [stats subj pred-map]
                       (try
-                        (full-text-store/put-subject writer subj pred-map)
+                        (full-text/put-subject writer subj pred-map)
                         (log/trace "Indexed full text predicates for subject "
                                    subj)
                         (update stats :indexed inc)
@@ -140,7 +140,7 @@
   [init-stats writer subj-chan]
   (process-subjects (fn [stats subj pred-map]
                       (try
-                        (full-text-store/purge-subject)
+                        (full-text/purge-subject)
                         (log/trace "Purged stale full text predicates for "
                                    "subject " subj)
                         (update stats :purged inc)
@@ -163,7 +163,7 @@
   (let [cur-idx-preds (current-index-predicates db)
         idx-queue     (predicate-flakes db cur-idx-preds)
         initial-stats {:indexed 0, :errors 0}]
-    (full-text-store/forget writer)
+    (full-text/forget writer)
     (index-flakes writer initial-stats idx-queue)))
 
 (defn update-index
@@ -193,8 +193,8 @@
               coordinates)
 
     (go
-      (with-open [store  (full-text-store/storage storage-path [network dbid])
-                  writer (full-text-store/writer store lang)]
+      (with-open [store  (full-text/storage storage-path [network dbid])
+                  writer (full-text/writer store lang)]
 
         (let [stats    (if (schema/get-language-change flakes)
                          (<! (reset-index writer db))
@@ -208,7 +208,7 @@
                            (merge coordinates)
                            (assoc :duration duration))]
 
-          (full-text-store/register-block writer status)
+          (full-text/register-block writer status)
 
           (log/info (str "Full-Text Search Index ended processing new block at: "
                          end-time)
