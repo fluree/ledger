@@ -207,6 +207,8 @@
                            (merge coordinates)
                            (assoc :duration duration))]
 
+          (full-text-store/register-block storage-path [network dbid])
+
           (log/info (str "Full-Text Search Index ended processing new block at: "
                          end-time)
                     status)
