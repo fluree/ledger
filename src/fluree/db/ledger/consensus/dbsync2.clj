@@ -1,10 +1,11 @@
 (ns fluree.db.ledger.consensus.dbsync2
   (:require [fluree.db.storage.core :as storage]
-            [clojure.core.async :as async :refer [go >!]]
+            [clojure.core.async :as async :refer [go go-loop <! >!]]
             [clojure.tools.logging :as log]
             [fluree.db.ledger.storage.filestore :as filestore]
             [fluree.db.ledger.util :as util :refer [go-try <?]]
-            [fluree.db.ledger.full-text-index :as full-text]
+            [fluree.db.ledger.indexing.full-text :as full-text-indexing]
+            [fluree.db.full-text :as full-text-storage]
             [fluree.db.ledger.txgroup.txgroup-proto :as txproto]
             [clojure.string :as str]
             [fluree.db.api :as fdb]))
@@ -329,16 +330,22 @@
   "Takes an array of arrays.
   [ [nw/ledger block] [nw/ledger block] [nw/ledger block] ]"
   [conn storage-dir ledger-block-arr]
-  (util/go-try
+  (go
     (loop [[[ledger block] & r] ledger-block-arr]
-      (cond (not ledger) true
-            (= block 1) (recur r)
-            ;else
-            true (let [full-text-block (read-string (full-text/check-full-text-block storage-dir ledger))]
-                   (if (not= full-text-block block)
-                     (let [[nw dbid] (str/split ledger #"/")
-                           db (util/<? (fdb/db conn ledger))]
-                       (util/<? (full-text/sync-full-text-index db storage-dir nw dbid
-                                                                (inc full-text-block) block))
-                       (recur r))
-                     (recur r)))))))
+      (if ledger
+        (do (when (> block 1)
+              (let [[network dbid] (str/split ledger #"/")
+
+                    {full-text-block :block}
+                    (-> storage-dir
+                        (full-text-storage/read-block-registry [network dbid]))]
+
+                (when-not (= full-text-block block)
+                  (let [db        (util/<? (fdb/db conn ledger))
+                        start     (inc full-text-block)
+                        end       block]
+                    (<! (full-text-indexing/write-range db storage-dir start end))))))
+
+            (recur r))
+
+        true))))
