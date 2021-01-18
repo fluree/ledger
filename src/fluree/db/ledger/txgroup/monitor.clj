@@ -8,7 +8,7 @@
             [fluree.db.util.json :as json]
             [fluree.db.util.async :refer [<? <?? go-try]]
             [fluree.db.ledger.txgroup.txgroup-proto :as txproto]
-            [fluree.db.ledger.full-text-index :as full-text]
+            [fluree.db.ledger.indexing.full-text :as full-text]
             [fluree.db.api :as fdb]
             [clojure.string :as str]))
 
@@ -456,7 +456,7 @@
                 (when-not (nil? storage-dir)                ; TODO: Support full-text indexes on s3 too
                   (loop [[block & r] data]
                     (if block
-                      (do (<? (full-text/handle-block db storage-dir network dbid block))
+                      (do (<? (full-text/write-block db storage-dir block))
                           (recur r))
 
                       ;; if no more flakes, check the full-text-lock to see if more were added to the queue while we were processing
