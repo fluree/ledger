@@ -1,5 +1,6 @@
 (ns fluree.db.ledger.indexing.full-text
-  (:require [fluree.db.full-text :as full-text]
+  (:require [fluree.db.api :as fdb]
+            [fluree.db.full-text :as full-text]
             [fluree.db.query.range :as query-range]
             [fluree.db.util.schema :as schema]
             [clojure.core.async :as async :refer [<! >! chan go go-loop]]
@@ -215,3 +216,20 @@
                     status)
 
           status)))))
+
+
+(defn write-range
+  [{:keys [network dbid] :as db} storage-path start-block end-block]
+  (let [block-chan (-> db
+                       (fdb/block-range start-block end-block)
+                       (async/pipe (chan nil (mapcat seq))))
+        out-chan   (chan)]
+
+    (go-loop []
+      (if-let [block (<! block-chan)]
+        (let [write-status (<! (write-block db storage-path block))]
+          (>! out-chan write-status)
+          (recur))
+        (async/close! out-chan)))
+
+    out-chan))
