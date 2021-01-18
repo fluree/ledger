@@ -3,7 +3,7 @@
             [fluree.db.full-text :as full-text]
             [fluree.db.query.range :as query-range]
             [fluree.db.util.schema :as schema]
-            [clojure.core.async :as async :refer [<! >! chan go go-loop]]
+            [clojure.core.async :as async :refer [<! >! alt! chan go go-loop]]
             [clojure.string :as str]
             [clojure.tools.logging :as log]
             [clucie.core :as lucene]
@@ -184,7 +184,7 @@
 
 
 (defn write-block
-  [{:keys [network dbid] :as db} storage-path {:keys [flakes] :as block}]
+  [writer {:keys [network dbid] :as db} {:keys [flakes] :as block}]
   (let [start-time  (Instant/now)
         coordinates {:network network, :dbid dbid, :block (:block block)}
         lang        (-> db :settings :language (or :default))]
@@ -194,32 +194,30 @@
               coordinates)
 
     (go
-      (with-open [store  (full-text/storage storage-path [network dbid])
-                  writer (full-text/writer store lang)]
 
-        (let [stats    (if (schema/get-language-change flakes)
-                         (<! (reset-index writer db))
-                         (<! (update-index writer db block)))
+      (let [stats    (if (schema/get-language-change flakes)
+                       (<! (reset-index writer db))
+                       (<! (update-index writer db block)))
 
-              end-time (Instant/now)
-              duration (- (.toEpochMilli end-time)
-                          (.toEpochMilli start-time))
+            end-time (Instant/now)
+            duration (- (.toEpochMilli end-time)
+                        (.toEpochMilli start-time))
 
-              status   (-> stats
-                           (merge coordinates)
-                           (assoc :duration duration))]
+            status   (-> stats
+                         (merge coordinates)
+                         (assoc :duration duration))]
 
-          (full-text/register-block writer status)
+        (full-text/register-block writer status)
 
-          (log/info (str "Full-Text Search Index ended processing new block at: "
-                         end-time)
-                    status)
+        (log/info (str "Full-Text Search Index ended processing new block at: "
+                       end-time)
+                  status)
 
-          status)))))
+        status))))
 
 
 (defn write-range
-  [{:keys [network dbid] :as db} storage-path start-block end-block]
+  [writer {:keys [network dbid] :as db} start-block end-block]
   (let [block-chan (-> db
                        (fdb/block-range start-block end-block)
                        (async/pipe (chan nil (mapcat seq))))
@@ -227,9 +225,55 @@
 
     (go-loop []
       (if-let [block (<! block-chan)]
-        (let [write-status (<! (write-block db storage-path block))]
+        (let [write-status (<! (write-block writer db block))]
           (>! out-chan write-status)
           (recur))
         (async/close! out-chan)))
 
     out-chan))
+
+
+(defn indexer
+  "Manage full-text indexing processes in the background. Initializes an index
+  writer and listener in a background thread and returns a map containing two
+  function values. The function under the `stop-fn` key stops the background
+  listener thread after disposing of any resources, and the function under the
+  `process-fn` key sends messages to the background listener that runs different
+  indexing jobs based on the `:action` key of the message map, and will return a
+  channel that will eventually contain the result of the index operation. The
+  recognized actions are `:block`, `:range`, and `:reset`."
+  [storage-path]
+  (let [write-q (chan)
+        stopper (fn []
+                  (async/close! write-q))
+        runner  (fn [msg]
+                  (let [resp-ch (chan)]
+                    (async/put! write-q [msg resp-ch] (fn [val]
+                                                        (when val
+                                                          (async/close! resp-ch))))
+                    resp-ch))]
+
+    (go-loop []
+      (with-open [store  (full-text/storage storage-path [network dbid])
+                  writer (full-text/writer store lang)]
+
+        (when-let [[msg resp-ch] (<! write-q)]
+
+          (let [result  (case (:action message)
+                          :block (let [{:keys [db block]} msg]
+                                   (<! (write-block writer db block)))
+
+                          :range (let [{:keys [db start end]} msg]
+                                   (<! (write-range writer db start end)))
+
+                          :reset (let [{db :db} msg]
+                                   (<! (reset-index writer db)))
+
+                          ::unrecognized-action)]
+
+            (async/put! resp-ch result)))
+
+        (recur))))
+
+    {:stop-fn    stopper
+     :process-fn runner}))
