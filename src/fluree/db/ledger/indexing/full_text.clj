@@ -260,33 +260,33 @@
                                                           (async/close! resp-ch))))
                     resp-ch))]
 
-    (go
-      (with-open [store  (full-text/storage storage-path [network dbid])
-                  writer (full-text/writer store lang)]
-        (loop []
+    (go-loop []
 
-          (when-let [[msg resp-ch] (<! write-q)]
+      (when-let [[msg resp-ch] (<! write-q)]
 
-            (let [{:keys [network dbid] :as db} (:db msg)
-                  lang (-> db :settings :language (or :default))]
+        (let [{:keys [network dbid] :as db} (:db msg)
+              lang (-> db :settings :language (or :default))]
 
-              (let [result  (case (:action msg)
+          (with-open [store  (full-text/storage storage-path [network dbid])
+                      writer (full-text/writer store lang)]
 
-                              :block (let [{:keys [block]} msg]
-                                       (<! (write-block writer db block)))
+            (let [result  (case (:action msg)
 
-                              :range (let [{:keys [start end]} msg]
-                                       (<! (write-range writer db start end)))
+                            :block (let [{:keys [block]} msg]
+                                     (<! (write-block writer db block)))
 
-                              :reset (<! (reset-index writer db))
+                            :range (let [{:keys [start end]} msg]
+                                     (<! (write-range writer db start end)))
 
-                              :sync  (<! (sync-index writer db))
+                            :reset (<! (reset-index writer db))
 
-                              ::unrecognized-action)]
+                            :sync  (<! (sync-index writer db))
 
-                (async/put! resp-ch result))))
+                            ::unrecognized-action)]
 
-          (recur))))
+              (async/put! resp-ch result)))))
+
+      (recur))
 
     {:close   closer
      :process runner}))
