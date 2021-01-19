@@ -8,7 +8,6 @@
             [fluree.db.util.json :as json]
             [fluree.db.util.async :refer [<? <?? go-try]]
             [fluree.db.ledger.txgroup.txgroup-proto :as txproto]
-            [fluree.db.ledger.indexing.full-text :as full-text]
             [fluree.db.api :as fdb]
             [clojure.string :as str]))
 
@@ -359,48 +358,6 @@
       ;; return network db is within
       (second command))))
 
-;; For now, just use this as a lock to ensure multiple processes are not trying to redistribute work simultaneously.
-(def ^:private full-text-lock (atom {}))
-
-(defn- acquire-full-text-lock
-  [ledger data]
-  "If acquired, we return true, as well as data passed in + any queued data.
-  Returns false otherwise."
-  (let [myid                (rand-int (Integer/MAX_VALUE))
-        existing-next       (get-in @full-text-lock [ledger :next])
-        acquire-lock-result (swap! full-text-lock (fn [lock-map]
-                                                    (if (get-in lock-map [ledger :id])
-                                                      (update-in lock-map [ledger :next] conj data)
-                                                      (assoc lock-map ledger {:id myid :next []}))))]
-    (if (= myid (get-in @full-text-lock [ledger :id]))
-      (do (log/trace (str "Full text lock acquired for: " ledger))
-          [true (conj existing-next data)])
-      [false nil])))
-
-(defn- release-full-text-lock [ledger]
-  "Releases lock"
-  (log/trace (str "Full text lock released for: " ledger))
-  (swap! full-text-lock assoc ledger {:id nil :next []}))
-
-(defn- drain-full-text-queue [ledger]
-  (let [existing-next       (get-in @full-text-lock [ledger :next])
-        acquire-lock-result (swap! full-text-lock (fn [lock-map]
-                                                    (assoc-in lock-map [ledger :next] [])))]
-    existing-next))
-
-
-(comment
-
-  @full-text-lock
-
-  (loop [n 20]
-    (if (> n 0)
-      (do
-        (log/info "LOCK ID" (get-in @full-text-lock ["fluree/test" :id]))
-        (<?? (async/timeout 1000))
-        (recur (dec n))))))
-
-
 (defn state-updates-monitor
   "Function to be called with every state change, to possibly kick of an action.
 
@@ -445,25 +402,15 @@
 
       ;; Currently only used for fullText search indexing
       :new-block
-      (when-not (= :in-memory (-> system :config :consensus :type))
-        (go-try
-          (let [[_ network dbid block-data] (:command state-change)
-                ledger (str network "/" dbid)
-                [acquire-lock data] (acquire-full-text-lock ledger block-data)]
-            (when acquire-lock
-              (let [db          (<? (fdb/db (:conn system) ledger))
-                    storage-dir (-> system :conn :meta :file-storage-path)]
-                (when-not (nil? storage-dir)                ; TODO: Support full-text indexes on s3 too
-                  (loop [[block & r] data]
-                    (if block
-                      (do (<? (full-text/write-block db storage-dir block))
-                          (recur r))
-
-                      ;; if no more flakes, check the full-text-lock to see if more were added to the queue while we were processing
-                      (let [next-data (drain-full-text-queue ledger)]
-                        (if (empty? next-data)
-                          (release-full-text-lock ledger)
-                          (recur next-data)))))))))))
+      (go-try
+       (let [[_ network dbid block-data] (:command state-change)
+             db          (<? (fdb/db (:conn system) [network dbid]))
+             indexer     (-> conn :full-text/indexer :process)]
+         ;; TODO: Support full-text indexes on s3 too
+         (loop [[block & r] block-data]
+           (if block
+             (do (<? (indexer {:action :block, :db db, :block block}))
+                 (recur r))))))
 
       ;;else
       nil)))

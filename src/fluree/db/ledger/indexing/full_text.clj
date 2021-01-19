@@ -186,8 +186,7 @@
 (defn write-block
   [writer {:keys [network dbid] :as db} {:keys [flakes] :as block}]
   (let [start-time  (Instant/now)
-        coordinates {:network network, :dbid dbid, :block (:block block)}
-        lang        (-> db :settings :language (or :default))]
+        coordinates {:network network, :dbid dbid, :block (:block block)}]
 
     (log/info (str "Full-Text Search Index began processing new block at: "
                    start-time)
@@ -233,7 +232,15 @@
     out-chan))
 
 
-(defn indexer
+(defn sync-index
+  [writer {:keys [network dbid block] :as db}]
+  (let [last-indexed (-> writer
+                         full-text/writer->storage-path
+                         (full-text/read-block-registry [network dbid]))]
+    (write-range writer db (inc last-indexed) block)))
+
+
+(defn start-indexer
   "Manage full-text indexing processes in the background. Initializes an index
   writer and listener in a background thread and returns a map containing two
   function values. The function under the `stop-fn` key stops the background
@@ -244,7 +251,7 @@
   recognized actions are `:block`, `:range`, and `:reset`."
   [storage-path]
   (let [write-q (chan)
-        stopper (fn []
+        closer  (fn []
                   (async/close! write-q))
         runner  (fn [msg]
                   (let [resp-ch (chan)]
@@ -254,26 +261,32 @@
                     resp-ch))]
 
     (go-loop []
-      (with-open [store  (full-text/storage storage-path [network dbid])
-                  writer (full-text/writer store lang)]
 
-        (when-let [[msg resp-ch] (<! write-q)]
+      (when-let [[msg resp-ch] (<! write-q)]
 
-          (let [result  (case (:action message)
-                          :block (let [{:keys [db block]} msg]
-                                   (<! (write-block writer db block)))
+        (let [{:keys [network dbid] :as db} (:db msg)
+              lang (-> db :settings :language (or :default))]
 
-                          :range (let [{:keys [db start end]} msg]
-                                   (<! (write-range writer db start end)))
+          (with-open [store  (full-text/storage storage-path [network dbid])
+                      writer (full-text/writer store lang)]
 
-                          :reset (let [{db :db} msg]
-                                   (<! (reset-index writer db)))
+            (let [result  (case (:action msg)
 
-                          ::unrecognized-action)]
+                            :block (let [{:keys [block]} msg]
+                                     (<! (write-block writer db block)))
 
-            (async/put! resp-ch result)))
+                            :range (let [{:keys [start end]} msg]
+                                     (<! (write-range writer db start end)))
 
-        (recur))))
+                            :reset (<! (reset-index writer db))
 
-    {:stop-fn    stopper
-     :process-fn runner}))
+                            :sync  (<! (sync-index writer db))
+
+                            ::unrecognized-action)]
+
+              (async/put! resp-ch result)))))
+
+      (recur))
+
+    {:close   closer
+     :process runner}))

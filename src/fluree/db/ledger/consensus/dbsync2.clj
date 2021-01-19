@@ -4,8 +4,6 @@
             [clojure.tools.logging :as log]
             [fluree.db.ledger.storage.filestore :as filestore]
             [fluree.db.ledger.util :as util :refer [go-try <?]]
-            [fluree.db.ledger.indexing.full-text :as full-text-indexing]
-            [fluree.db.full-text :as full-text-storage]
             [fluree.db.ledger.txgroup.txgroup-proto :as txproto]
             [clojure.string :as str]
             [fluree.db.api :as fdb]))
@@ -335,16 +333,9 @@
       (if ledger
         (do (when (> block 1)
               (let [[network dbid] (str/split ledger #"/")
-
-                    {full-text-block :block}
-                    (-> storage-dir
-                        (full-text-storage/read-block-registry [network dbid]))]
-
-                (when-not (= full-text-block block)
-                  (let [db        (util/<? (fdb/db conn ledger))
-                        start     (inc full-text-block)
-                        end       block]
-                    (<! (full-text-indexing/write-range db storage-dir start end))))))
+                    db             (util/<? (fdb/db conn ledger))
+                    indexer        (:full-text/indexer conn)]
+                (<! (indexer {:action :sync, :db db}))))
 
             (recur r))
 
