@@ -6,10 +6,12 @@ VERSION ?= SNAPSHOT
 MAJOR_VERSION := $(shell echo $(VERSION) | cut -d '.' -f1)
 MINOR_VERSION := $(shell echo $(VERSION) | cut -d '.' -f2)
 
-.PHONY: deps test jar uberjar stage-release run prep-release release release-stable release-latest release-version-latest docker-image clean
+.PHONY: deps test jar uberjar stage-release run prep-release release release-stable release-latest release-version-latest docker-image install clean
 
 SOURCES := $(shell find src)
 RESOURCES := $(shell find resources)
+
+DESTDIR ?= /usr/local
 
 build/fluree-$(VERSION).zip: stage-release
 	cd build && zip -r fluree-$(VERSION).zip * -x 'data/' 'data/**'
@@ -102,6 +104,24 @@ endif
 docker-push-latest: docker-push
 	docker tag fluree/ledger:$(VERSION) fluree/ledger:latest
 	docker push fluree/ledger:latest
+
+$(DESTDIR)/etc/fluree.properties: resources/fluree_sample.properties
+	install -d $(@D)
+	install -m 0644 $^ $@
+
+$(DESTDIR)/etc/fluree-logback.xml: resources/logback.xml
+	install -d $(@D)
+	install -m 0644 $^ $@
+
+$(DESTDIR)/share/java/fluree-ledger.standalone.jar: build/fluree-ledger.standalone.jar
+	install -d $(@D)
+	install -m 0644 $^ $@
+
+$(DESTDIR)/bin/fluree: resources/fluree_start.sh
+	install -d $(@D)
+	install $^ $@
+
+install: $(DESTDIR)/bin/fluree $(DESTDIR)/share/java/fluree-ledger.standalone.jar | $(DESTDIR)/etc/fluree.properties $(DESTDIR)/etc/fluree-logback.xml
 
 clean:
 	rm -rf build
