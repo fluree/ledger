@@ -229,7 +229,7 @@
   Puts block file keys (filenames) onto provided port if they are missing."
   [conn network dbid check-through port]
   (go-try
-    (let [file-path    (storage/block-storage-path network dbid)
+    (let [file-path    (storage/block-storage-path conn network dbid)
           _            (log/debug "check-all-blocks-consistency block-storage-path:" file-path)
           storage-list (:storage-list conn)
           all-files    (<? (storage-list file-path))
