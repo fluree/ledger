@@ -127,7 +127,7 @@
                                                   :memory memorystore/connection-storage-write)
                               producer-chan     (async/chan (async/sliding-buffer 100))
                               publish-fn        (local-message-process {:config config :group group} producer-chan)
-                              full-text-indexer (-> conn-opts :meta :file-storage-path full-text/start-indexer)
+                              full-text-indexer (full-text/start-indexer)
                               conn-impl         (if transactor?
                                                   (connection/connect nil (assoc conn-opts :storage-write storage-write-fn :publish publish-fn :memory? memory?))
                                                   (connection/connect (:fdb-group-servers-ports settings) (assoc conn-opts :memory? memory?)))]
