@@ -407,10 +407,7 @@
              db          (<? (fdb/db (:conn system) [network dbid]))
              indexer     (-> conn :full-text/indexer :process)]
          ;; TODO: Support full-text indexes on s3 too
-         (loop [[block & r] block-data]
-           (if block
-             (do (<? (indexer {:action :block, :db db, :block block}))
-                 (recur r))))))
+         (<? (indexer {:action :block, :db db, :block block-data}))))
 
       ;;else
       nil)))
