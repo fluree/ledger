@@ -652,7 +652,6 @@
                                                    :active? (> (:expire item) instant)}]))
                               acc)))
               raft'     (-> raft
-                            (dissoc :cmd-queue :new-db-queue :networks)
                             (assoc :cmd-queue cmd-q
                                    :new-db-queue new-db-q
                                    :networks nw-data))
