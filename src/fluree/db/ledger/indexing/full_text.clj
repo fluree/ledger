@@ -173,8 +173,8 @@
     (let [[add-pred-ch rem-pred-ch]  (updated-predicates db flakes)
           [cur-update-ch cur-rem-ch] (updated-subjects db flakes)
 
-          add-queue (async/merge add-pred-ch cur-update-ch)
-          rem-queue (async/merge rem-pred-ch cur-rem-ch)
+          add-queue (async/merge [add-pred-ch cur-update-ch])
+          rem-queue (async/merge [rem-pred-ch cur-rem-ch])
 
           initial-stats {:indexed 0, :purged 0, :errors 0}
           indexed-stats (<! (index-flakes writer initial-stats add-queue))
