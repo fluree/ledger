@@ -260,6 +260,8 @@
                                                           (async/close! resp-ch))))
                     resp-ch))]
 
+    (log/info "Starting Full Text Indexer")
+
     (go-loop []
 
       (when-let [[msg resp-ch] (<! write-q)]
@@ -284,7 +286,9 @@
 
                             ::unrecognized-action)]
 
-              (async/put! resp-ch result)))))
+              (if result
+                (async/put! resp-ch result)
+                (async/close! resp-ch))))))
 
       (recur))
 
