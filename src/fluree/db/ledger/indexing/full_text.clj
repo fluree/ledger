@@ -26,7 +26,7 @@
                       (map (fn [p]
                              (query-range/index-range db :psot = [p])))
                       async/merge)
-        out-chan (chan nil (mapcat seq))]
+        out-chan (chan 1 (mapcat seq))]
     (async/pipe idx-chan out-chan)))
 
 (defn updated-predicates
@@ -95,7 +95,7 @@
                                             obj  (.-o f)]
                                         (update m subj assoc pred obj)))
                                     {} flake-chan)
-        out-chan      (chan nil (mapcat seq))]
+        out-chan      (chan 1 (mapcat seq))]
     (async/pipe subj-map-chan out-chan)))
 
 (defn process-subjects
