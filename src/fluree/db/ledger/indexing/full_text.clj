@@ -138,7 +138,7 @@
   "Remove the included predicates for each subject from `subj-chan` from the index
   using the `writer`. Keeps track of successfully `:purged` subjects and
   `:errors` in the stats map returned."
-  [init-stats writer subj-chan]
+  [writer init-stats subj-chan]
   (process-subjects (fn [stats subj pred-map]
                       (try
                         (full-text/purge-subject)
