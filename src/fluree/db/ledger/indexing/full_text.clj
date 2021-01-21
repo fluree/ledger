@@ -254,7 +254,7 @@
     (log/info "Starting Full Text Indexer")
 
     (go-loop []
-      (when-let [[msg resp-ch] (<! write-q)]
+      (if-let [[msg resp-ch] (<! write-q)]
         (let [{:keys [db]} msg
               lang         (-> db :settings :language (or :default))]
 
@@ -274,9 +274,11 @@
                 (async/put! resp-ch result (fn [val]
                                              (when val
                                                (async/close! resp-ch))))
-                (async/close! resp-ch)))))
+                (async/close! resp-ch))))
 
-        (recur)))
+          (recur))
+
+        (log/info "Stopping Full Text Indexer")))
 
     {:close   closer
      :process runner}))
