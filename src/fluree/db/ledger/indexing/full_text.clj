@@ -13,9 +13,7 @@
 
 (defn separate-by-op
   [flakes]
-  (let [grouped (group-by #(.-op ^Flake %) flakes)
-        add     (get grouped true)
-        rem     (get grouped false)]
+  (let [{add false, rem true} (group-by #(.-op ^Flake %) flakes)]
     [add rem]))
 
 (defn predicate-flakes
