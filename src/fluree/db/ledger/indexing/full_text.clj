@@ -13,7 +13,7 @@
 
 (defn separate-by-op
   [flakes]
-  (let [{add false, rem true} (group-by #(.-op ^Flake %) flakes)]
+  (let [{add true, rem false} (group-by #(.-op ^Flake %) flakes)]
     [add rem]))
 
 (defn predicate-flakes
@@ -139,7 +139,7 @@
   [writer init-stats subj-chan]
   (process-subjects (fn [stats subj pred-map]
                       (try
-                        (full-text/purge-subject)
+                        (full-text/purge-subject writer subj pred-map)
                         (log/trace "Purged stale full text predicates for "
                                    "subject " subj)
                         (update stats :purged inc)
