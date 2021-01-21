@@ -17,27 +17,11 @@ FLUREE_SERVER=""
 FLUREE_PROPERTIES=""
 FLUREE_LOGBACK_CONFIGURATION_FILE=""
 
-## Check Java Version
-if type -p java; then
-    # echo found java executable in PATH
-    JAVA_X=java
-elif [[ -n "$JAVA_HOME" ]] && [[ -x "$JAVA_HOME/bin/java" ]];  then
-    # echo found java executable in JAVA_HOME
-    JAVA_X="$JAVA_HOME/bin/java"
-else
-    echo "Java is not installed or cannot be found. FlureeDB requires Java 1.8. If installed, check JAVA_X_HOME environment."
-    exit 1
-fi
+## Find Java executable
+JAVA_X=$(./find_java.sh)
 
-if [[ "$JAVA_X" ]]; then
-    JAVA_VERSION=$("$JAVA_X" -version 2>&1 | awk -F '"' '/version/ {print $2}')
-    if [[ "$JAVA_VERSION" != *"."* ]] && (( "$JAVA_VERSION" < "8" )); then
-        echo "FlureeDB requires minimum Java 8 (v1.8). Your version is: $JAVA_VERSION. Exiting."
-        exit 1
-    else
-        echo "Java version $JAVA_VERSION."
-    fi
-fi
+## Check Java Version
+./java_version.sh "$JAVA_X"
 
 ## decide if we're using local JAR or system-wide JAR
 if [ -f ${THIS_DIR}/${FLUREE_LEDGER_JAR} ]; then

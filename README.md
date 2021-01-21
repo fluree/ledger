@@ -2,6 +2,8 @@
 
 ## Usage
 
+Fluree ledger requires Java 11 or later.
+
 Download the latest or stable release from https://flur.ee/getstarted/ and
 follow the instructions there.
 
@@ -60,6 +62,11 @@ like this: `make install DESTDIR=/other/path`. Fluree will then be installed to 
 `/other/path/etc`, & `/other/path/share/java`.
 
 ### Releasing
+
+NB: Releases should be built with the minimum-supported Java version
+(11 for 1.0.x). You can do this with [jenv](https://github.com/jenv/jenv),
+Docker (`script/run-in-docker.sh make release`), or manually by pointing your
+PATH and JAVA_HOME at a Java 11 installation.
 
 By default releases will be uploaded to the `fluree-releases-public` S3 bucket.
 You can override this with `make release RELEASE_BUCKET=fluree-releases-test`
