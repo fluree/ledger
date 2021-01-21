@@ -1,6 +1,6 @@
 (ns fluree.db.ledger.consensus.dbsync2
   (:require [fluree.db.storage.core :as storage]
-            [clojure.core.async :as async :refer [go go-loop <! >!]]
+            [clojure.core.async :as async :refer [go <! >!]]
             [clojure.tools.logging :as log]
             [fluree.db.ledger.storage.filestore :as filestore]
             [fluree.db.ledger.util :as util :refer [go-try <?]]
@@ -328,15 +328,12 @@
   "Takes an array of arrays.
   [ [nw/ledger block] [nw/ledger block] [nw/ledger block] ]"
   [conn storage-dir ledger-block-arr]
-  (go
+  (go-try
     (loop [[[ledger block] & r] ledger-block-arr]
       (if ledger
         (do (when (> block 1)
-              (let [[network dbid] (str/split ledger #"/")
-                    db             (util/<? (fdb/db conn ledger))
-                    indexer        (:full-text/indexer conn)]
+              (let [db      (util/<? (fdb/db conn ledger))
+                    indexer (:full-text/indexer conn)]
                 (<! (indexer {:action :sync, :db db}))))
-
             (recur r))
-
         true))))
