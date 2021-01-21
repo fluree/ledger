@@ -276,9 +276,9 @@
 
               (if result
                 (async/put! resp-ch result)
-                (async/close! resp-ch))))))
+                (async/close! resp-ch)))))
 
-      (recur))
+        (recur)))
 
     {:close   closer
      :process runner}))
