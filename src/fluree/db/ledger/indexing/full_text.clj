@@ -259,8 +259,8 @@
 
     (go-loop []
       (when-let [[msg resp-ch] (<! write-q)]
-        (let [{:keys [db]}  msg
-              lang          (-> db :settings :language (or :default))]
+        (let [{:keys [db]} msg
+              lang         (-> db :settings :language (or :default))]
 
           (with-open [store  (full-text/storage db)
                       writer (full-text/writer store lang)]
