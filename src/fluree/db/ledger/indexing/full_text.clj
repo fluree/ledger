@@ -251,9 +251,7 @@
                   (async/close! write-q))
         runner  (fn [msg]
                   (let [resp-ch (chan)]
-                    (async/put! write-q [msg resp-ch] (fn [val]
-                                                        (when val
-                                                          (async/close! resp-ch))))
+                    (async/put! write-q [msg resp-ch])
                     resp-ch))]
     (log/info "Starting Full Text Indexer")
 
@@ -275,7 +273,9 @@
                             ::unrecognized-action)]
 
               (if result
-                (async/put! resp-ch result)
+                (async/put! resp-ch result (fn [val]
+                                             (when val
+                                               (async/close! resp-ch))))
                 (async/close! resp-ch)))))
 
         (recur)))
