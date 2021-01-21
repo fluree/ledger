@@ -262,9 +262,7 @@
     (log/info "Starting Full Text Indexer")
 
     (go-loop []
-
       (when-let [[msg resp-ch] (<! write-q)]
-
         (let [{:keys [db]}  msg
               lang          (-> db :settings :language (or :default))]
 
