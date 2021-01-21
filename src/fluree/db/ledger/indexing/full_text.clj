@@ -219,17 +219,13 @@
   [writer {:keys [network dbid] :as db} start-block end-block]
   (let [block-chan (-> db
                        (fdb/block-range start-block end-block)
-                       (async/pipe (chan nil (mapcat seq))))
-        out-chan   (chan)]
+                       (async/pipe (chan nil (mapcat seq))))]
 
-    (go-loop []
+    (go-loop [results []]
       (if-let [block (<! block-chan)]
         (let [write-status (<! (write-block writer db block))]
-          (>! out-chan write-status)
-          (recur))
-        (async/close! out-chan)))
-
-    out-chan))
+          (recur (conj results write-status)))
+        results))))
 
 
 (defn sync-index
