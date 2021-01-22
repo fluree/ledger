@@ -217,7 +217,7 @@
   [writer {:keys [network dbid] :as db} start-block end-block]
   (let [block-chan (-> db
                        (fdb/block-range start-block end-block)
-                       (async/pipe (chan nil (mapcat seq))))]
+                       (async/pipe (chan 1 (mapcat seq))))]
 
     (go-loop [results []]
       (if-let [block (<! block-chan)]
