@@ -73,12 +73,12 @@
   (stop)
   (refresh-all :after 'user/re-start))
 
-(defn read-edn-data
+(defn read-edn-resource
   [resource-path]
   (with-open [r (-> resource-path io/resource io/reader PushbackReader.)]
     (edn/read r)))
 
-(defn read-json-data
+(defn read-json-resource
   [resource-path]
   (-> resource-path io/resource slurp json/parse))
 
