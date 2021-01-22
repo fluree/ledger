@@ -184,10 +184,11 @@
 (defn write-block
   [writer {:keys [network dbid] :as db} {:keys [flakes] :as block}]
   (let [start-time  (Instant/now)
-        coordinates {:network network, :dbid dbid, :block (:block block)}]
+        block-num   (:block block)
+        coordinates {:network network, :dbid dbid, :block block-num}]
 
-    (log/info (str "Full-Text Search Index began processing new block at: "
-                   start-time)
+    (log/info (str "Full-Text Search Index began processing block " block-num
+                   " at: " start-time)
               coordinates)
 
     (go
@@ -206,8 +207,8 @@
 
         (full-text/register-block writer status)
 
-        (log/info (str "Full-Text Search Index ended processing new block at: "
-                       end-time)
+        (log/info (str "Full-Text Search Index ended processing block " block-num
+                       " at: " end-time)
                   status)
 
         status))))
