@@ -229,8 +229,7 @@
 (defn sync-index
   [writer {:keys [network dbid block] :as db}]
   (let [last-indexed (-> writer
-                         full-text/writer->storage-path
-                         (full-text/read-block-registry [network dbid])
+                         full-text/read-block-registry
                          :block
                          (or 0))
         first-block  (inc last-indexed)
