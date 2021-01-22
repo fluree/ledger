@@ -241,6 +241,14 @@
                    dbid))
     (write-range writer db (inc last-indexed) block)))
 
+(defn full-reset
+  [writer db]
+  (go
+    (let [stats (<! (reset-index writer db))
+          status (assoc stats :block (:block db))]
+      (full-text/register-block writer status)
+      status)))
+
 
 (defn start-indexer
   "Manage full-text indexing processes in the background. Initializes an index
@@ -274,7 +282,7 @@
                                      (<! (write-block writer db block)))
                             :range (let [{:keys [start end]} msg]
                                      (<! (write-range writer db start end)))
-                            :reset (<! (reset-index writer db))
+                            :reset (<! (full-reset writer db))
                             :sync  (<! (sync-index writer db))
                             ::unrecognized-action)]
 
