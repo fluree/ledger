@@ -159,6 +159,7 @@
 
 (defn reset-index
   [writer {:keys [network dbid] :as db}]
+  (log/info "Resetting full text index for ledger " network "/" dbid)
   (let [cur-idx-preds (current-index-predicates db)
         idx-queue     (predicate-flakes db cur-idx-preds)
         initial-stats {:indexed 0, :errors 0}]
@@ -185,10 +186,10 @@
   [writer {:keys [network dbid] :as db} {:keys [flakes] :as block}]
   (let [start-time  (Instant/now)
         block-num   (:block block)
-        coordinates {:network network, :dbid dbid, :block block-num}]
+        coordinates {:network network, :dbid dbid, :block (:block block)}]
 
-    (log/info (str "Full-Text Search Index began processing block " block-num
-                   " at: " start-time)
+    (log/info (str "Full-Text Search Index began processing new block at: "
+                   start-time)
               coordinates)
 
     (go
@@ -207,8 +208,8 @@
 
         (full-text/register-block writer status)
 
-        (log/info (str "Full-Text Search Index ended processing block " block-num
-                       " at: " end-time)
+        (log/info (str "Full-Text Search Index ended processing new block at: "
+                       end-time)
                   status)
 
         status))))
@@ -236,7 +237,8 @@
         first-block  (inc last-indexed)
         last-block   block]
     (log/info (str "Syncing full text index from block: " first-block
-                   " to block " last-block))
+                   " to block " last-block " for ledger " network "/"
+                   dbid))
     (write-range writer db (inc last-indexed) block)))
 
 
