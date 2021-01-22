@@ -1,5 +1,6 @@
 (ns fluree.db.peer.http-api
   (:require [clojure.tools.logging :as log]
+            [clojure.walk :as walk]
             [clojure.string :as str]
             [clojure.core.async :as async]
             [aleph.http :as http]
@@ -31,7 +32,6 @@
             [fluree.db.permissions-validate :as permissions-validate]
             [fluree.db.peer.password-auth :as pw-auth]
             [fluree.db.ledger.reindex :as reindex]
-            [fluree.db.ledger.full-text-index :as full-text]
             [fluree.db.ledger.mutable :as mutable]
             [fluree.db.auth :as auth]
             [fluree.db.ledger.delete :as delete])
@@ -391,12 +391,12 @@
   [_ system _ _ ledger _]
   ;; For now, does not require authentication
   (go-try
-    (let [conn           (:conn system)
-          [network dbid] (graphdb/validate-ledger-ident ledger)
-          db             (fdb/db conn ledger)
-          storage-dir    (-> conn :meta :file-storage-path)
-          reindexed      (<? (full-text/reset-full-text-index db storage-dir network dbid))]
-      [{:status 200} {:reindex-count reindexed}])))
+   (let [conn           (:conn system)
+         indexer        (-> conn :full-text/indexer :process)
+         [network dbid] (graphdb/validate-ledger-ident ledger)
+         db             (fdb/db conn ledger)
+         reindex-status (<? (indexer {:action :reset, :db db}))]
+     [{:status 200} reindex-status])))
 
 (defmethod action-handler :export
   [_ system param auth-map ledger _]
@@ -612,69 +612,73 @@
       :login (password-login system ledger request)
       :generate (password-generate system ledger request))))
 
+(defn- remove-deep
+  [key-set data]
+  (walk/prewalk (fn [node] (if (map? node)
+                                     (apply dissoc node key-set)
+                                     node))
+                        data))
 
 (defn nw-state
   [system request]
-  (let [open-api? (open-api? system)
-        raft      (-> system :group :state-atom deref (dissoc :private-key))
-        {:keys [cmd-queue new-db-queue networks leases]} raft
-        instant   (System/currentTimeMillis)
-        cmd-q     (loop [[cq & r] cmd-queue
-                         acc []]
-                    (if cq
-                      (let [[k v] cq
-                            acc* (into acc [{(keyword k) (count v)}])]
-                        (recur r acc*))
-                      acc))
-        new-db-q  (loop [[nq & r] new-db-queue
-                         acc []]
-                    (if nq
-                      (let [[k v] nq
-                            acc* (into acc [{(keyword k) (count v)}])]
-                        (recur r acc*))
-                      acc))
-        nw-data   (loop [[nw & r] networks
-                         acc []]
-                    (if nw
-                      (let [[k v] nw
-                            acc* (into acc [{(keyword k) (dissoc v :private-key)}])]
-                        (recur r acc*))
-                      acc))
-        svr-state (when-let [servers (into [] (:servers leases))]
-                    (loop [[server & r] servers
-                           acc []]
-                      (if-let [item (second server)]
-                        (recur r (into acc [{:id      (:id item)
-                                             :active? (> (:expire item) instant)}]))
-                        acc)))
-        raft'     (-> raft
-                      (dissoc :cmd-queue :new-db-queue :networks)
-                      (assoc :cmd-queue cmd-q
-                             :new-db-queue new-db-q
-                             :networks nw-data))
-        state     (-> (txproto/-state (:group system))
-                      (select-keys [:snapshot-term
-                                    :latest-index
-                                    :snapshot-index
-                                    :other-servers
-                                    :index
-                                    :snapshot-pending
-                                    :term
-                                    :leader
-                                    :timeout-at
-                                    :this-server
-                                    :status
-                                    :id
-                                    :commit
-                                    :servers
-                                    :voted-for
-                                    :timeout-ms])
-                      (assoc :open-api open-api?)
-                      (assoc :raft raft')
-                      (assoc :svr-state svr-state))]
-    {:status  200
-     :headers {"Content-Type" "application/json; charset=utf-8"}
-     :body    (json/stringify-UTF8 state)}))
+  (let [deferred (d/deferred)]
+    (async/go
+      (try
+        (let [open-api? (open-api? system)
+              raft      (-> system :group :state-atom deref (dissoc :private-key))
+              {:keys [cmd-queue new-db-queue networks leases]} raft
+              instant   (System/currentTimeMillis)
+              cmd-q     (loop [[cq & r] cmd-queue
+                               acc []]
+                          (if cq
+                            (let [[k v] cq
+                                  acc* (into acc [{(keyword k) (count v)}])]
+                              (recur r acc*))
+                            acc))
+              new-db-q  (loop [[nq & r] new-db-queue
+                               acc []]
+                          (if nq
+                            (let [[k v] nq
+                                  acc* (into acc [{(keyword k) (count v)}])]
+                              (recur r acc*))
+                            acc))
+              nw-data   (remove-deep [:private-key] networks)
+              svr-state (when-let [servers (into [] (:servers leases))]
+                          (loop [[server & r] servers
+                                 acc []]
+                            (if-let [item (second server)]
+                              (recur r (into acc [{:id      (:id item)
+                                                   :active? (> (:expire item) instant)}]))
+                              acc)))
+              raft'     (-> raft
+                            (assoc :cmd-queue cmd-q
+                                   :new-db-queue new-db-q
+                                   :networks nw-data))
+              state     (-> (txproto/-state (:group system))
+                            (select-keys [:snapshot-term
+                                          :latest-index
+                                          :snapshot-index
+                                          :other-servers
+                                          :index
+                                          :snapshot-pending
+                                          :term
+                                          :leader
+                                          :timeout-at
+                                          :this-server
+                                          :status
+                                          :id
+                                          :commit
+                                          :servers
+                                          :voted-for
+                                          :timeout-ms])
+                            (assoc :open-api open-api?)
+                            (assoc :raft raft')
+                            (assoc :svr-state svr-state))]
+          (d/success! deferred {:status  200
+                                :headers {"Content-Type" "application/json; charset=utf-8"}
+                                :body    (json/stringify-UTF8 state)}))
+        (catch Exception e
+          (d/error! deferred e)))) deferred))
 
 
 (defn add-server

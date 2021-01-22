@@ -3,7 +3,7 @@
   <modelVersion>4.0.0</modelVersion>
   <groupId>com.fluree</groupId>
   <artifactId>ledger</artifactId>
-  <version>1.0.0-beta1</version>
+  <version>1.0.0-beta2</version>
   <name>ledger</name>
   <dependencies>
     <dependency>
@@ -44,7 +44,7 @@
     <dependency>
       <groupId>com.fluree</groupId>
       <artifactId>crypto</artifactId>
-      <version>0.3.4</version>
+      <version>0.3.5</version>
     </dependency>
     <dependency>
       <groupId>org.clojure</groupId>
@@ -79,7 +79,7 @@
     <dependency>
       <groupId>com.fluree</groupId>
       <artifactId>db</artifactId>
-      <version>1.0.0-rc4</version>
+      <version>1.0.0-rc6</version>
     </dependency>
   </dependencies>
   <build>
