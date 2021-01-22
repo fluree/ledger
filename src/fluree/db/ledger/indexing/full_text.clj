@@ -230,7 +230,13 @@
   [writer {:keys [network dbid block] :as db}]
   (let [last-indexed (-> writer
                          full-text/writer->storage-path
-                         (full-text/read-block-registry [network dbid]))]
+                         (full-text/read-block-registry [network dbid])
+                         :block
+                         (or 0))
+        first-block  (inc last-indexed)
+        last-block   block]
+    (log/info (str "Syncing full text index from block: " first-block
+                   " to block " last-block))
     (write-range writer db (inc last-indexed) block)))
 
 
