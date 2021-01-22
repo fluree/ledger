@@ -73,9 +73,14 @@
   (stop)
   (refresh-all :after 'user/re-start))
 
-(defn read-data [resource-path]
+(defn read-edn-resource
+  [resource-path]
   (with-open [r (-> resource-path io/resource io/reader PushbackReader.)]
     (edn/read r)))
+
+(defn read-json-resource
+  [resource-path]
+  (-> resource-path io/resource slurp json/parse))
 
 (defn create-db [db-name]
   @(-> system
@@ -87,15 +92,20 @@
        :conn
        (fdb/transact db-name txns)))
 
-(defn load-sample-db [db-name resource-path]
-  (let [{:db/keys [collections predicates data]} (read-data resource-path)]
-    (create-db db-name)
-    (Thread/sleep 1000)
-    (transact-db db-name collections)
-    (Thread/sleep 1000)
-    (transact-db db-name predicates)
-    (Thread/sleep 1000)
-    (transact-db db-name data)))
+(defn load-ledger-resources [db-name loader resource-paths]
+  (loop [[p & rst] resource-paths]
+    (when p
+      (log/info "Loading resource " p " into ledger " db-name)
+      (->> p
+           loader
+           (transact-db db-name))
+      (Thread/sleep 1000)
+      (recur rst))))
+
+(defn load-sample-db [db-name loader resource-paths]
+  (create-db db-name)
+  (Thread/sleep 1000)
+  (load-ledger-resources db-name loader resource-paths))
 
 (defn query-db [db-name query]
   @(-> system
@@ -397,5 +407,3 @@
 ;; https://network.flur.ee/fdb/storage/network/dbid-or-name/block/time
 ;; https://network.flur.ee/fdb/storage/network/dbid-or-name/block/time-start/time-end
 ;; https://network.flur.ee/fdb/storage/network/dbid-or-name/idx-type/id
-
-
