@@ -170,6 +170,14 @@ if [ "$1" == "test" ]; then
   exit 0
 fi
 
+# This needs to stay down here so that all of the checks above run first.
+# Basically the purpose of this is get right up to the point of starting Fluree
+# and then exit successfully iff we got that far.
+if [ "$1" == "test" ]; then
+    echo "Fluree successfully installed and ready to run"
+    exit 0
+fi
+
 echo "Fluree ledger starting with properties file: ${FLUREE_PROPERTIES}"
 echo "Fluree ledger starting with java options: ${XMS} ${XMX} ${JAVA_OPTS}"
 
