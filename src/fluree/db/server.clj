@@ -98,6 +98,13 @@
             (future
               (upgrade/upgrade conn data-version current-version))))))
 
+(defn assoc-some
+  "Assoc k -> v in m if v is not nil. Returns m unaltered otherwise."
+  [m k v]
+  (if (nil? v)
+    (assoc m k v)
+    m))
+
 (defn startup
   ([] (startup (settings/build-env environ/env)))
   ([settings]
@@ -127,13 +134,15 @@
                                                   :memory memorystore/connection-storage-write)
                               producer-chan     (async/chan (async/sliding-buffer 100))
                               publish-fn        (local-message-process {:config config :group group} producer-chan)
-                              full-text-indexer (full-text/start-indexer)
+                              full-text-indexer (when (= storage-type :file) (full-text/start-indexer))
                               conn-impl         (if transactor?
                                                   (connection/connect nil (assoc conn-opts :storage-write storage-write-fn :publish publish-fn :memory? memory?))
                                                   (connection/connect (:fdb-group-servers-ports settings) (assoc conn-opts :memory? memory?)))]
                           ;; launch message consumer, handles messages back from ledger
                           (local-message-response conn-impl producer-chan)
-                          (assoc conn-impl :group group, :full-text/indexer full-text-indexer))
+                          (-> conn-impl
+                              (assoc :group group)
+                              (assoc-some :full-text/indexer full-text-indexer)))
          system         {:config    config
                          :conn      conn
                          :webserver nil
