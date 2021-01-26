@@ -51,8 +51,13 @@
   [conn ws-id msg]
   (util/go-try (let [[type [network dbid] data] msg
                      auth   (get-in @messages/subscription-auth [ws-id network dbid])
-                     auth'  (if (string? auth) ["_auth/id" auth] auth)
-                     db     (util/<? (fdb/db conn (str network "/" dbid) {:auth auth'}))
+                     db     (->> (cond
+                                   (= 0 auth) {}
+                                   (string? auth) {:auth ["_auth/id" auth]}
+                                   :else
+                                   {:auth auth})
+                                 (fdb/db conn (str network "/" dbid))
+                                 util/<?)
                      ;; short-circuit flake check when :root? permissions
                      flakes (if (true? (-> db :permissions :root?))
                               (:flakes data)
