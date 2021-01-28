@@ -394,7 +394,7 @@
    (let [conn           (:conn system)
          indexer        (-> conn :full-text/indexer :process)
          [network dbid] (graphdb/validate-ledger-ident ledger)
-         db             (fdb/db conn ledger)
+         db             (<? (fdb/db conn ledger))
          reindex-status (<? (indexer {:action :reset, :db db}))]
      [{:status 200} reindex-status])))
 
