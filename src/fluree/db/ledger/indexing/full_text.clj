@@ -259,42 +259,45 @@
   indexing jobs based on the `:action` key of the message map, and will return a
   channel that will eventually contain the result of the index operation. The
   recognized actions are `:block`, `:range`, and `:reset`."
-  []
-  (let [write-q (chan)
-        closer  (fn []
-                  (async/close! write-q))
-        runner  (fn [msg]
-                  (let [resp-ch (chan)]
-                    (async/put! write-q [msg resp-ch])
-                    resp-ch))]
-    (log/info "Starting Full Text Indexer")
+  [conn]
+  (when-let [base-path (-> conn :meta :file-storage-path)]
+    (let [write-q (chan)
+          closer  (fn []
+                    (async/close! write-q))
+          runner  (fn [msg]
+                    (let [resp-ch (chan)]
+                      (async/put! write-q [msg resp-ch])
+                      resp-ch))]
+      (log/info "Starting Full Text Indexer")
 
-    (go-loop []
-      (if-let [[msg resp-ch] (<! write-q)]
-        (let [{:keys [db]} msg
-              lang         (-> db :settings :language (or :default))]
+      (go-loop []
+        (if-let [[msg resp-ch] (<! write-q)]
+          (let [{:keys [db]} msg
+                lang         (-> db :settings :language (or :default))]
 
-          (with-open [store  (full-text/storage db)
-                      writer (full-text/writer store lang)]
+            (with-open [store  (-> base-path
+                                   (full-text/storage-path db)
+                                   full-text/storage)
+                        writer (full-text/writer store lang)]
 
-            (let [result  (case (:action msg)
-                            :block (let [{:keys [block]} msg]
-                                     (<! (write-block writer db block)))
-                            :range (let [{:keys [start end]} msg]
-                                     (<! (write-range writer db start end)))
-                            :reset (<! (full-reset writer db))
-                            :sync  (<! (sync-index writer db))
-                            ::unrecognized-action)]
+              (let [result  (case (:action msg)
+                              :block (let [{:keys [block]} msg]
+                                       (<! (write-block writer db block)))
+                              :range (let [{:keys [start end]} msg]
+                                       (<! (write-range writer db start end)))
+                              :reset (<! (full-reset writer db))
+                              :sync  (<! (sync-index writer db))
+                              ::unrecognized-action)]
 
-              (if result
-                (async/put! resp-ch result (fn [val]
-                                             (when val
-                                               (async/close! resp-ch))))
-                (async/close! resp-ch))))
+                (if result
+                  (async/put! resp-ch result (fn [val]
+                                               (when val
+                                                 (async/close! resp-ch))))
+                  (async/close! resp-ch))))
 
-          (recur))
+            (recur))
 
-        (log/info "Stopping Full Text Indexer")))
+          (log/info "Stopping Full Text Indexer")))
 
-    {:close   closer
-     :process runner}))
+      {:close   closer
+       :process runner})))

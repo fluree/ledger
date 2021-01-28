@@ -101,7 +101,7 @@
 (defn assoc-some
   "Assoc k -> v in m if v is not nil. Returns m unaltered otherwise."
   [m k v]
-  (if (nil? v)
+  (if-not (nil? v)
     (assoc m k v)
     m))
 
@@ -134,10 +134,10 @@
                                                   :memory memorystore/connection-storage-write)
                               producer-chan     (async/chan (async/sliding-buffer 100))
                               publish-fn        (local-message-process {:config config :group group} producer-chan)
-                              full-text-indexer (when (= storage-type :file) (full-text/start-indexer))
                               conn-impl         (if transactor?
                                                   (connection/connect nil (assoc conn-opts :storage-write storage-write-fn :publish publish-fn :memory? memory?))
-                                                  (connection/connect (:fdb-group-servers-ports settings) (assoc conn-opts :memory? memory?)))]
+                                                  (connection/connect (:fdb-group-servers-ports settings) (assoc conn-opts :memory? memory?)))
+                              full-text-indexer (full-text/start-indexer conn-impl)]
                           ;; launch message consumer, handles messages back from ledger
                           (local-message-response conn-impl producer-chan)
                           (-> conn-impl
