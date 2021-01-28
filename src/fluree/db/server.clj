@@ -140,7 +140,9 @@
                                                   (connection/connect (:fdb-group-servers-ports settings) (assoc conn-opts :memory? memory?)))]
                           ;; launch message consumer, handles messages back from ledger
                           (local-message-response conn-impl producer-chan)
-                          (assoc conn-impl :group group, :full-text/indexer full-text-indexer))
+                          (-> conn-impl
+                              (assoc :group group)
+                              (assoc-some :full-text/indexer full-text-indexer)))
          system         {:config    config
                          :conn      conn
                          :webserver nil
