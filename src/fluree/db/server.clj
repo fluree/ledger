@@ -101,7 +101,7 @@
 (defn assoc-some
   "Assoc k -> v in m if v is not nil. Returns m unaltered otherwise."
   [m k v]
-  (if (nil? v)
+  (if-not (nil? v)
     (assoc m k v)
     m))
 
