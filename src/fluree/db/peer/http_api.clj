@@ -642,7 +642,7 @@
                                   acc* (into acc [{(keyword k) (count v)}])]
                               (recur r acc*))
                             acc))
-              nw-data   (remove-deep [:private-key] networks)
+              nw-data   (->> networks (remove-deep [:private-key]) vector)
               svr-state (when-let [servers (into [] (:servers leases))]
                           (loop [[server & r] servers
                                  acc []]
@@ -951,6 +951,9 @@
                                  (compojure/GET "/schema" [] (resp/resource-response "index.html" {:root "adminUI"}))
                                  (compojure/GET "/import" [] (resp/resource-response "index.html" {:root "adminUI"}))
                                  (compojure/GET "/permissions" [] (resp/resource-response "index.html" {:root "adminUI"}))
+                                 (compojure/GET "/exploredb" [] (resp/resource-response "index.html" {:root "adminUI"}))
+                                 (compojure/GET "/networkdashboard" [] (resp/resource-response "index.html" {:root "adminUI"}))
+                                 (compojure/GET "/transact" [] (resp/resource-response "index.html" {:root "adminUI"}))
                                  (constantly not-found))))
 
                            :access-control-allow-origin [#".+"]
