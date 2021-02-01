@@ -642,7 +642,7 @@
                                   acc* (into acc [{(keyword k) (count v)}])]
                               (recur r acc*))
                             acc))
-              nw-data   (-> (remove-deep [:private-key] networks) vector)
+              nw-data   (->> networks (remove-deep [:private-key]) vector)
               svr-state (when-let [servers (into [] (:servers leases))]
                           (loop [[server & r] servers
                                  acc []]
