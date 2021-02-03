@@ -13,3 +13,4 @@ default-private-key.txt
 default_private_key.txt
 /.cpcache
 /data
+.dir-locals.el
