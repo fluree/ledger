@@ -16,15 +16,15 @@ RESOURCES := $(shell find resources)
 DESTDIR ?= /usr/local
 
 build/fluree-$(VERSION).zip: stage-release
-	cd build && zip -r fluree-$(VERSION).zip * -x 'data/' 'data/**'
+	cd build && zip -r fluree-$(VERSION).zip * -x 'data/' 'data/**' 'release-staging/' 'release-staging/**'
 
-stage-release: build/release-staging build/fluree-ledger.standalone.jar build/fluree_start.sh build/java_version.sh build/find_java.sh build/logback.xml build/fluree_sample.properties build/LICENSE build/CHANGELOG.md
+stage-release: build/release-staging build/fluree-ledger.standalone.jar build/fluree_start.sh build/logback.xml build/fluree_sample.properties build/LICENSE build/CHANGELOG.md
 
 run: stage-release
 	build/fluree_start.sh
 
 check-release-jdk-version:
-	resources/java_version.sh $$(resources/find_java.sh) $(JAVA_VERSION_FOR_RELEASE_BUILDS)
+	resources/fluree_start.sh java_version $(JAVA_VERSION_FOR_RELEASE_BUILDS)
 
 prep-release: check-release-jdk-version clean build/fluree-$(VERSION).zip build/release-staging
 	cp build/fluree-$(VERSION).zip build/release-staging/
@@ -53,20 +53,20 @@ build:
 build/release-staging:
 	mkdir -p build/release-staging
 
-build/fluree-ledger.standalone.jar: target/fluree-ledger.standalone.jar
-	cp $< build/
+build/fluree-ledger.standalone.jar: target/fluree-ledger.standalone.jar | build
+	cp $< $(@D)/
 
-build/LICENSE: LICENSE
-	cp $< build/
+build/LICENSE: LICENSE | build
+	cp $< $(@D)/
 
-build/CHANGELOG.md: CHANGELOG.md
-	cp $< build/
+build/CHANGELOG.md: CHANGELOG.md | build
+	cp $< $(@D)/
 
-build/logback.xml: dev/logback.xml
-	cp $< build/
+build/logback.xml: dev/logback.xml | build
+	cp $< $(@D)/
 
-build/%: resources/%
-	cp $< build/
+build/%: resources/% | build
+	cp $< $(@D)/
 
 target/fluree-ledger.jar: pom.xml $(SOURCES) $(RESOURCES)
 	clojure -X:jar
