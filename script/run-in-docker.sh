@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 
+set -e
+
 image=fluree/${PWD##*/}
 
 builder_image=${image}:builder
