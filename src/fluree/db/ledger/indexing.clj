@@ -3,6 +3,7 @@
             [clojure.tools.logging :as log]
             [fluree.db.dbproto :as dbproto]
             [fluree.db.flake :as flake]
+            [fluree.db.index :as index]
             [fluree.db.storage.core :as storage]
             [fluree.db.session :as session]
             [clojure.core.async :as async]
@@ -324,14 +325,14 @@
 
 
 (defn index-root
-  "Indexes an index-type root (:spot, :psot, :post, or :opst).
+  "Indexes an index-type root (one of fluree.db.index/types).
 
   Progress atom tracks progress and retains list of garbage indexes."
   ([db progress-atom idx-type]
    (index-root db progress-atom idx-type #{}))
   ([db progress-atom idx-type remove-preds]
    (go-try
-     (assert (#{:spot :psot :post :opst} idx-type) (str "Reindex attempt on unknown index type: " idx-type))
+    (assert (contains? index/types idx-type) (str "Reindex attempt on unknown index type: " idx-type))
      (let [{:keys [conn novelty block t network dbid]} db
            idx-novelty (get novelty idx-type)
            dirty?      (or (not (empty? idx-novelty)) remove-preds)
@@ -354,7 +355,7 @@
   ([db {:keys [status message ecount remove-preds]}]
    (go-try
      (let [{:keys [novelty block t network dbid]} db
-           db-dirty?    (or (some #(not-empty (get novelty %)) [:spot :psot :post :opst])
+           db-dirty?    (or (some #(not-empty (get novelty %)) index/types)
                             remove-preds)
            novelty-size (:size novelty)
            progress     (atom {:garbage   []                ;; hold keys of old index segments we can garbage collect

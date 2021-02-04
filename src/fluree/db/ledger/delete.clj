@@ -2,6 +2,7 @@
   (:require [fluree.db.ledger.garbage-collect :as gc]
             [fluree.db.storage.core :as storage]
             [fluree.db.dbproto :as dbproto]
+            [fluree.db.index :as index]
             [fluree.db.session :as session]
             [fluree.db.util.async :refer [go-try <?]]
             [fluree.db.ledger.txgroup.txgroup-proto :as txproto]))
@@ -34,9 +35,8 @@
   (go-try
     (let [session  (session/session conn (str network "/" dbid))
           blank-db (:blank-db session)
-          db       (<? (storage/reify-db conn network dbid blank-db idx-point))
-          idxs     [:spot :psot :post :opst]]
-      (doseq [idx idxs]
+          db       (<? (storage/reify-db conn network dbid blank-db idx-point))]
+      (doseq [idx index/types]
         (<? (delete-all-index-children conn (get db idx)))))))
 
 (defn all-versions
