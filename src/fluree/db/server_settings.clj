@@ -27,6 +27,7 @@
    :fdb-consensus-type           "raft"                     ;; raft
    :fdb-encryption-secret        nil                        ;; Text encryption secret for encrypting data at rest and in transit
 
+   :fdb-group-config-path        "./"
    :fdb-group-private-key        nil
    :fdb-group-private-key-file   nil                        ;; optional location of file that contains group private key
 
@@ -287,13 +288,13 @@
   (or (when-let [priv (:fdb-group-private-key env)] (str/trim priv))
       (let [priv-key-file (or (:fdb-group-private-key-file env)
                               "default-private-key.txt")
-            file          (io/file priv-key-file)
+            file          (io/file (:fdb-group-config-path env) priv-key-file)
             exists?       (.exists file)]
         (if exists?
-          (str/trim (slurp priv-key-file))
+          (str/trim (slurp file))
           ;; make sure private key generated is 64 characters
           (let [key-pair (some #(when (= 64 (count (:private %))) %) (repeatedly crypto/generate-key-pair))]
-            (spit priv-key-file (:private key-pair))
+            (spit file (:private key-pair))
             (:private key-pair))))))
 
 
