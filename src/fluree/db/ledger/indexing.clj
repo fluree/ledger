@@ -373,15 +373,18 @@
                psot-ch    (index-root db progress :psot)
                post-ch    (index-root db progress :post remove-preds)
                opst-ch    (index-root db progress :opst)
+               tspo-ch    (index-root db progress :tspo)
                indexed-db (-> db
                               (assoc :spot (<? spot-ch)
                                      :psot (<? psot-ch)
                                      :post (<? post-ch)
-                                     :opst (<? opst-ch))
+                                     :opst (<? opst-ch)
+                                     :tspo (<? tspo-ch))
                               (update-in [:novelty :spot] empty) ;; retain sort order of indexes
                               (update-in [:novelty :psot] empty)
                               (update-in [:novelty :post] empty)
                               (update-in [:novelty :opst] empty)
+                              (update-in [:novelty :tspo] empty)
                               (assoc-in [:novelty :size] 0)
                               (assoc-in [:stats :indexed] block))]
            ;; wait until confirmed writes before returning
@@ -508,11 +511,13 @@
     (let [spot-comp (.comparator (-> db :novelty :spot))
           post-comp (.comparator (-> db :novelty :post))
           psot-comp (.comparator (-> db :novelty :psot))
-          opst-comp (.comparator (-> db :novelty :opst))]
+          opst-comp (.comparator (-> db :novelty :opst))
+          opst-comp (.comparator (-> db :novelty :tspo))]
       (do (validate-idx-continuity (:spot db) true spot-comp)
           (validate-idx-continuity (:post db) true post-comp)
           (validate-idx-continuity (:psot db) true psot-comp)
-          (validate-idx-continuity (:opst db) true opst-comp))))
+          (validate-idx-continuity (:opst db) true opst-comp)
+          (validate-idx-continuity (:tspo db) true tspo-comp))))
 
   (check-ctnty db)
 

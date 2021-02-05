@@ -204,7 +204,7 @@
                             (flake/new-flake block-t (get pred->id "_block/ledgers") auth-subid block-t true)]
           flakes+block     (into flakes* block-flakes)
 
-          {:keys [spot psot post opst]} novelty
+          {:keys [spot psot post opst tspo]} novelty
           new-db           (assoc db :block block
                                      :t block-t
                                      :ecount genesis-ecount
@@ -212,6 +212,7 @@
                                                              :psot (into psot flakes+block)
                                                              :post (into post (filter #(index-pred (.-p ^Flake %)) flakes+block))
                                                              :opst (into opst (filter #(ref-pred (.-p ^Flake %)) flakes+block))
+                                                             :tspo (into tspo flakes+block)
                                                              :size (flake/size-bytes flakes+block))
                                      :stats (assoc stats :flakes (count flakes+block)
                                                          :size (flake/size-bytes flakes+block)))
@@ -833,4 +834,3 @@
     :name "_shard/mutable"
     :doc  "Whether this shard is mutable. If not specified, defaults to 'false', meaning the data is immutable."
     :type "boolean"}])
-
