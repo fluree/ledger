@@ -162,78 +162,80 @@
 
 (defn bootstrap-db
   "Bootstraps a new db from a signed new-db message."
-  [system command]
+  [{:keys [conn] :as system} {:keys [cmd sig] :as command}]
   (go-try
-    (let [conn             (:conn system)
-          {:keys [cmd sig]} command
-          txid             (crypto/sha3-256 cmd)
-          new-db-name      (-> cmd
-                               (json/parse)
-                               :db)
-          [network dbid] (if (sequential? new-db-name)
-                           new-db-name
-                           (str/split new-db-name #"/"))
-          db               (session/blank-db conn [network dbid])
-          master-authid    (crypto/account-id-from-message cmd sig)
-          auth-subid       (flake/->sid 6 0)
-          timestamp        (System/currentTimeMillis)
-          {:keys [dbid network novelty stats]} db
-          _                (when (or (txproto/ledger-exists? (:group system) network dbid)
-                                     ;; also check for block 1 on disk as a precaution
-                                     (<? (storage/block conn network dbid 1)))
-                             (throw (ex-info (str "Ledger " network "/$" dbid " already exists! Create unsuccessful.")
-                                             {:status 500
-                                              :error  :db/unexpected-error})))
-          block            1
-          t                -1
-          block-t          -2
-          {:keys [fparts index-pred ref-pred pred->id ident->id]} (bootstrap-data->fparts bootstrap-txn)
-          flakes           (reduce (fn [acc [s p o]]
-                                     (conj acc (flake/new-flake s p o t true)))
-                                   (flake/sorted-set-by flake/cmp-flakes-spot-novelty) fparts)
-          authority-flakes (master-auth-flake t pred->id ident->id auth-subid master-authid)
-          flakes*          (-> (into flakes authority-flakes)
-                               (conj (flake/new-flake t (get pred->id "_tx/id") txid t true)
-                                     (flake/new-flake t (get pred->id "_tx/nonce") timestamp t true)
-                                     (flake/new-flake block-t (get pred->id "_block/number") 1 block-t true)
-                                     (flake/new-flake block-t (get pred->id "_block/instant") timestamp block-t true)
-                                     (flake/new-flake block-t (get pred->id "_block/transactions") -1 block-t true)
-                                     (flake/new-flake block-t (get pred->id "_block/transactions") -2 block-t true)))
-          hash             (get-block-hash flakes*)
-          block-flakes     [(flake/new-flake block-t (get pred->id "_block/hash") hash block-t true)
-                            (flake/new-flake block-t (get pred->id "_block/ledgers") auth-subid block-t true)]
-          flakes+block     (into flakes* block-flakes)
+   (let [txid           (crypto/sha3-256 cmd)
+         new-db-name    (-> cmd json/parse :db)
+         [network dbid] (session/resolve-ledger conn new-db-name)
 
-          {:keys [spot psot post opst tspo]} novelty
-          new-db           (assoc db :block block
-                                     :t block-t
-                                     :ecount genesis-ecount
-                                     :novelty (assoc novelty :spot (into spot flakes+block)
-                                                             :psot (into psot flakes+block)
-                                                             :post (into post (filter #(index-pred (.-p ^Flake %)) flakes+block))
-                                                             :opst (into opst (filter #(ref-pred (.-p ^Flake %)) flakes+block))
-                                                             :tspo (into tspo flakes+block)
-                                                             :size (flake/size-bytes flakes+block))
-                                     :stats (assoc stats :flakes (count flakes+block)
-                                                         :size (flake/size-bytes flakes+block)))
+         {:keys [dbid network novelty stats] :as db}
+         (session/blank-db conn [network dbid])
 
-          block-data       {:block  block
-                            :t      block-t
-                            :flakes flakes+block
-                            :hash   hash
-                            :txns   {txid {:t   t
-                                           :cmd cmd
-                                           :sig sig}}}
-          _                (<? (storage/write-block conn network dbid block-data))
-          ;; todo - should create a new command to register new DB that first checks raft
-          _                (<? (txproto/register-genesis-block-async (:group conn) network dbid))
-          ;block-point-success? (async/<! (txproto/propose-new-block-async (:group conn) network dbid block-data))
-          indexed-db       (<? (indexing/index new-db))]
-      ;; write out new index point
-      (<? (txproto/initialized-ledger-async (-> indexed-db :conn :group) txid (:network indexed-db) (:dbid indexed-db)
-                                            (:block indexed-db) (:fork indexed-db) (get-in indexed-db [:stats :indexed])))
+         master-authid (crypto/account-id-from-message cmd sig)
+         auth-subid    (flake/->sid const/$_auth 0)
+         timestamp     (System/currentTimeMillis)
 
-      indexed-db)))
+         _             (when (or (txproto/ledger-exists? (:group system) network dbid)
+                                 ;; also check for block 1 on disk as a precaution
+                                 (<? (storage/block conn network dbid 1)))
+                         (throw (ex-info (str "Ledger " network "/$" dbid
+                                              " already exists! Create unsuccessful.")
+                                         {:status 500
+                                          :error  :db/unexpected-error})))
+         block         1
+         t             -1
+         block-t       -2
+
+         {:keys [fparts index-pred ref-pred pred->id ident->id]}
+         (bootstrap-data->fparts bootstrap-txn)
+
+         flakes           (reduce (fn [acc [s p o]]
+                                    (conj acc (flake/new-flake s p o t true)))
+                                  (flake/sorted-set-by flake/cmp-flakes-spot-novelty) fparts)
+         authority-flakes (master-auth-flake t pred->id ident->id auth-subid master-authid)
+         flakes*          (-> (into flakes authority-flakes)
+                              (conj (flake/new-flake t (get pred->id "_tx/id") txid t true)
+                                    (flake/new-flake t (get pred->id "_tx/nonce") timestamp t true)
+                                    (flake/new-flake block-t (get pred->id "_block/number") 1 block-t true)
+                                    (flake/new-flake block-t (get pred->id "_block/instant") timestamp block-t true)
+                                    (flake/new-flake block-t (get pred->id "_block/transactions") -1 block-t true)
+                                    (flake/new-flake block-t (get pred->id "_block/transactions") -2 block-t true)))
+         hash             (get-block-hash flakes*)
+         block-flakes     [(flake/new-flake block-t (get pred->id "_block/hash") hash block-t true)
+                           (flake/new-flake block-t (get pred->id "_block/ledgers") auth-subid block-t true)]
+         flakes+block     (into flakes* block-flakes)
+
+         {:keys [spot psot post opst tspo]} novelty
+         new-db           (assoc db
+                                 :block block
+                                 :t block-t
+                                 :ecount genesis-ecount
+                                 :novelty (assoc novelty :spot (into spot flakes+block)
+                                                 :psot (into psot flakes+block)
+                                                 :post (into post (filter #(index-pred (.-p ^Flake %)) flakes+block))
+                                                 :opst (into opst (filter #(ref-pred (.-p ^Flake %)) flakes+block))
+                                                 :tspo (into tspo flakes+block)
+                                                 :size (flake/size-bytes flakes+block))
+                                 :stats (assoc stats :flakes (count flakes+block)
+                                               :size (flake/size-bytes flakes+block)))
+
+         block-data       {:block  block
+                           :t      block-t
+                           :flakes flakes+block
+                           :hash   hash
+                           :txns   {txid {:t   t
+                                          :cmd cmd
+                                          :sig sig}}}
+         _                (<? (storage/write-block conn network dbid block-data))
+         ;; todo - should create a new command to register new DB that first checks raft
+         _                (<? (txproto/register-genesis-block-async (:group conn) network dbid))
+                                        ;block-point-success? (async/<! (txproto/propose-new-block-async (:group conn) network dbid block-data))
+         indexed-db       (<? (indexing/index new-db))]
+     ;; write out new index point
+     (<? (txproto/initialized-ledger-async (-> indexed-db :conn :group) txid (:network indexed-db) (:dbid indexed-db)
+                                           (:block indexed-db) (:fork indexed-db) (get-in indexed-db [:stats :indexed])))
+
+     indexed-db)))
 
 
 (defn create-network-bootstrap-command
