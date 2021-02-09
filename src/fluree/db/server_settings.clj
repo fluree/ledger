@@ -294,11 +294,11 @@
             exists?       (.exists file)]
         (if exists?
           (do
-            (log/debug "Using private key from file" file)
+            (log/debug "Using private key from file" (.toString file))
             (-> file slurp str/trim))
           ;; make sure private key generated is 64 characters
           (let [{:keys [private]} (some #(when (= 64 (count (:private %))) %) (repeatedly crypto/generate-key-pair))]
-            (log/debug "Generating new private key and storing in" file)
+            (log/debug "Generating new private key and storing in" (.toString file))
             (spit file private)
             private)))))
 
