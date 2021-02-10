@@ -65,7 +65,7 @@
              ;; 3- Query
              (test/print-banner "Query Tests")
              ;; This never returns for some reason
-             ;(basic-query/basic-query-test)
+             (basic-query/basic-query-test)
              (block-query/block-query-test)
              (history-query/history-query-test)
              (advanced-query/advanced-query-test)
