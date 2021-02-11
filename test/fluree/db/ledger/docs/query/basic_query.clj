@@ -167,10 +167,10 @@
              chat-query {:select ["*"] :from "chat" :block block-or-t-or-time}
              ex (ex-info (str "Invalid block key provided: " (pr-str block-or-t-or-time))
                          {:status 400
-                          :error  :db/invalid-time})
-             db  (basic/get-db test/ledger-chat)
-             ret (async/go (fdb/query-async db chat-query))]
-         (async/<!! ret)
+                          :error  :db/invalid-time})]
+         (-> (basic/get-db test/ledger-chat)
+             (as-> db (async/go (fdb/query-async db chat-query)))
+             async/<!!)
          (is (= (-> ex test/safe-Throwable->map :cause)
                 (-> @log root-cause test/safe-Throwable->map :cause)))))))
 
@@ -183,10 +183,10 @@
              chat-query {:select ["*"] :from "chat" :block block-or-t-or-time }
              ex (ex-info (str "There is no data as of" )
                          {:status 400
-                          :error  :db/invalid-block})
-             db  (basic/get-db test/ledger-chat)
-             ret (async/go (fdb/query-async db chat-query))]
-         (async/<!! ret)
+                          :error  :db/invalid-block})]
+         (-> (basic/get-db test/ledger-chat)
+             (as-> db (async/go (fdb/query-async db chat-query)))
+             async/<!!)
          (is (str/includes?
                (-> @log root-cause test/safe-Throwable->map :cause)
                (-> ex test/safe-Throwable->map :cause)))))))
@@ -196,18 +196,13 @@
   (let [log (promise)]
     (test/clojure-core-with-default-uncaught-exception-handler
       (fn [_ throwable] (deliver log throwable))
-      #(let [time-str "PT1M"
-             ;epoch-as-of (time-travel/duration-parse time-str)
-             chat-query {:select ["*"] :from "chat" :block time-str }
-             ex (ex-info (str "There is no data as of" )
-                         {:status 400
-                          :error  :db/invalid-block})
-             db  (basic/get-db test/ledger-chat)
-             ret (async/go (fdb/query-async db chat-query))]
-         (async/<!! ret)
+      #(let [chat-query {:select ["*"] :from "chat" :block "PT1M" }]
+         (-> (basic/get-db test/ledger-chat)
+             (as-> db (async/go (fdb/query-async db chat-query)))
+             async/<!!)
          (is (str/includes?
                (-> @log root-cause test/safe-Throwable->map :cause)
-               (-> ex test/safe-Throwable->map :cause)))))))
+               "There is no data as of"))))))
 
 (deftest select-with-limit-and-offset
   (testing "Select with limit and offset")
