@@ -75,21 +75,21 @@
 
 (defn resolve-collection-id+name
   [db _id]
-  (let [cid   (cond (int? _id)
+  (let [partition   (cond (int? _id)
                     (flake/sid->cid _id)
 
                     (vector? _id)
                     (let [predicate-name (first _id)
                           cname          (re-find #"^[a-zA-Z0-9_][a-zA-Z0-9\.\-_]{0,254}" predicate-name)]
-                      (dbproto/-c-prop db :id cname))
+                      (dbproto/-c-prop db :partition cname))
 
                     :else
                     (let [cname (re-find #"^[a-zA-Z0-9_][a-zA-Z0-9\.\-_]{0,254}" _id)]
-                      (dbproto/-c-prop db :id cname)))
-        _     (when-not cid (throw (ex-info (str "Invalid _id, no corresponding collection exists: " (pr-str _id))
+                      (dbproto/-c-prop db :partition cname)))
+        _     (when-not partition (throw (ex-info (str "Invalid _id, no corresponding collection exists: " (pr-str _id))
                                             {:status 400 :error :db/invalid-collection})))
-        cname (dbproto/-c-prop db :name cid)]
-    [cid cname]))
+        cname (dbproto/-c-prop db :name partition)]
+    [partition cname]))
 
 (defn- predicate-name-illegal-chars
   "Checks and throws if any illegal characters exist in the predicate name,
@@ -361,7 +361,7 @@
 (defn create-tag
   [db ecount tag-cache t tag]
   (let [tag*     (validate-internal-predicate "_tag" "_tag/id" tag)
-        tag-cid  (dbproto/-c-prop db :id "_tag")
+        tag-cid  (dbproto/-c-prop db :partition "_tag")
         next-sid (if-let [last-tag-id (get ecount tag-cid)]
                    (inc last-tag-id)
                    (flake/->sid tag-cid 1))
