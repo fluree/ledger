@@ -158,51 +158,6 @@
 
     (is (= 3 (count res-4)))))
 
-(deftest select-exception-invalid-block
-  (testing "Select as of an ISO-8601 formatted string - expect exception")
-  (let [log (promise)]
-    (test/clojure-core-with-default-uncaught-exception-handler
-      (fn [_ throwable] (deliver log throwable))
-      #(let [block-or-t-or-time [1 2]
-             chat-query {:select ["*"] :from "chat" :block block-or-t-or-time}
-             ex (ex-info (str "Invalid block key provided: " (pr-str block-or-t-or-time))
-                         {:status 400
-                          :error  :db/invalid-time})]
-         (-> (basic/get-db test/ledger-chat)
-             (as-> db (async/go (fdb/query-async db chat-query)))
-             async/<!!)
-         (is (= (-> ex test/safe-Throwable->map :cause)
-                (-> @log root-cause test/safe-Throwable->map :cause)))))))
-
-(deftest select-as-of-ISO-string
-  (testing "Select as of an ISO-8601 formatted string - expect exception")
-  (let [log (promise)]
-    (test/clojure-core-with-default-uncaught-exception-handler
-      (fn [_ throwable] (deliver log throwable))
-      #(let [block-or-t-or-time "2017-11-14T20:59:36.097Z"
-             chat-query {:select ["*"] :from "chat" :block block-or-t-or-time }
-             ex (ex-info (str "There is no data as of" )
-                         {:status 400
-                          :error  :db/invalid-block})]
-         (-> (basic/get-db test/ledger-chat)
-             (as-> db (async/go (fdb/query-async db chat-query)))
-             async/<!!)
-         (is (str/includes?
-               (-> @log root-cause test/safe-Throwable->map :cause)
-               (-> ex test/safe-Throwable->map :cause)))))))
-
-(deftest select-as-of-1-minute-ago
-  (testing "Select as of 10 seconds ago - expect exception")
-  (let [log (promise)]
-    (test/clojure-core-with-default-uncaught-exception-handler
-      (fn [_ throwable] (deliver log throwable))
-      #(let [chat-query {:select ["*"] :from "chat" :block "PT1M" }]
-         (-> (basic/get-db test/ledger-chat)
-             (as-> db (async/go (fdb/query-async db chat-query)))
-             async/<!!)
-         (is (str/includes?
-               (-> @log root-cause test/safe-Throwable->map :cause)
-               "There is no data as of"))))))
 
 (deftest select-with-limit-and-offset
   (testing "Select with limit and offset")
@@ -321,9 +276,6 @@
   (select-certain-predicates)
   (select-with-where)
   (select-as-of-block)
-  (select-exception-invalid-block)
-  (select-as-of-ISO-string)
-  (select-as-of-1-minute-ago)
   (select-with-limit-and-offset)
   (select-with-groupBy))
 
