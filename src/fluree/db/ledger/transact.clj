@@ -667,7 +667,9 @@
         ;; go through each statement and check
         (loop [[^Flake flake & r] flakes]
           (when (> (.-s flake) const/$maxSystemPredicates)
-            (when-not (<? (perm-validate/allow-flake? candidate-db flake tx-permissions))
+            (when-not (if (.-op flake)
+                        (<? (perm-validate/allow-flake? candidate-db flake tx-permissions))
+                        (<? (perm-validate/allow-flake? db-before flake tx-permissions)))
               (throw (ex-info (format "Insufficient permissions for predicate: %s within collection: %s."
                                       (dbproto/-p-prop db-before :name (.-p flake))
                                       (dbproto/-c-prop db-before :name (flake/sid->cid (.-s flake))))

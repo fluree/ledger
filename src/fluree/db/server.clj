@@ -13,6 +13,7 @@
             [fluree.db.peer.http-api :as http-api]
             [fluree.db.peer.messages :as messages]
 
+            [fluree.db.ledger.indexing.full-text :as full-text]
             [fluree.db.ledger.stats :as stats]
             [fluree.db.ledger.storage.memorystore :as memorystore]
             [fluree.db.ledger.txgroup.core :as txgroup]
@@ -56,6 +57,7 @@
   "Perform a shutdown of system created with 'startup'"
   [system]
   (let [{:keys [conn webserver group stats]} system
+        full-text-indexer (:full-text/indexer conn)
         try-continue (fn [f]
                        (try (f)
                             (catch Exception e
@@ -65,6 +67,8 @@
     (try-continue (fn [] (async/close! stats)))
     (when (fn? (:close group))
       (try-continue (:close group)))
+    (when (fn? (:close full-text-indexer))
+      (try-continue (:close full-text-indexer)))
     (when (fn? (:close conn))
       (try-continue (:close conn)))
     (ftcp/shutdown-client-event-loop)))
@@ -94,6 +98,13 @@
             (future
               (upgrade/upgrade conn data-version current-version))))))
 
+(defn assoc-some
+  "Assoc k -> v in m if v is not nil. Returns m unaltered otherwise."
+  [m k v]
+  (if-not (nil? v)
+    (assoc m k v)
+    m))
+
 (defn startup
   ([] (startup (settings/build-env environ/env)))
   ([settings]
@@ -116,19 +127,22 @@
 
          remote-writer  (fn [k data]
                           (txproto/storage-write-async group k data))
-         conn           (let [conn-opts        (get-in config [:conn :options])
-                              storage-write-fn (case storage-type
-                                                 :file remote-writer
-                                                 :s3 remote-writer
-                                                 :memory memorystore/connection-storage-write)
-                              producer-chan    (async/chan (async/sliding-buffer 100))
-                              publish-fn       (local-message-process {:config config :group group} producer-chan)
-                              conn-impl        (if transactor?
-                                                 (connection/connect nil (assoc conn-opts :storage-write storage-write-fn :publish publish-fn :memory? memory?))
-                                                 (connection/connect (:fdb-group-servers-ports settings) (assoc conn-opts :memory? memory?)))]
+         conn           (let [conn-opts         (get-in config [:conn :options])
+                              storage-write-fn  (case storage-type
+                                                  :file remote-writer
+                                                  :s3 remote-writer
+                                                  :memory memorystore/connection-storage-write)
+                              producer-chan     (async/chan (async/sliding-buffer 100))
+                              publish-fn        (local-message-process {:config config :group group} producer-chan)
+                              conn-impl         (if transactor?
+                                                  (connection/connect nil (assoc conn-opts :storage-write storage-write-fn :publish publish-fn :memory? memory?))
+                                                  (connection/connect (:fdb-group-servers-ports settings) (assoc conn-opts :memory? memory?)))
+                              full-text-indexer (full-text/start-indexer conn-impl)]
                           ;; launch message consumer, handles messages back from ledger
                           (local-message-response conn-impl producer-chan)
-                          (assoc conn-impl :group group))
+                          (-> conn-impl
+                              (assoc :group group)
+                              (assoc-some :full-text/indexer full-text-indexer)))
          system         {:config    config
                          :conn      conn
                          :webserver nil

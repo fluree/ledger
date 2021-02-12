@@ -1,5 +1,6 @@
 (ns fluree.db.peer.http-api
   (:require [clojure.tools.logging :as log]
+            [clojure.walk :as walk]
             [clojure.string :as str]
             [clojure.core.async :as async]
             [aleph.http :as http]
@@ -386,6 +387,16 @@
                       :t     (:t reindexed)
                       :stats (:stats reindexed)}])))
 
+(defmethod action-handler :reindex-fulltext
+  [_ system _ _ ledger _]
+  ;; For now, does not require authentication
+  (go-try
+   (let [conn           (:conn system)
+         indexer        (-> conn :full-text/indexer :process)
+         [network dbid] (graphdb/validate-ledger-ident ledger)
+         db             (<? (fdb/db conn ledger))
+         reindex-status (<? (indexer {:action :reset, :db db}))]
+     [{:status 200} reindex-status])))
 
 (defmethod action-handler :export
   [_ system param auth-map ledger _]
@@ -601,69 +612,73 @@
       :login (password-login system ledger request)
       :generate (password-generate system ledger request))))
 
+(defn- remove-deep
+  [key-set data]
+  (walk/prewalk (fn [node] (if (map? node)
+                                     (apply dissoc node key-set)
+                                     node))
+                        data))
 
 (defn nw-state
   [system request]
-  (let [open-api? (open-api? system)
-        raft      (-> system :group :state-atom deref (dissoc :private-key))
-        {:keys [cmd-queue new-db-queue networks leases]} raft
-        instant   (System/currentTimeMillis)
-        cmd-q     (loop [[cq & r] cmd-queue
-                         acc []]
-                    (if cq
-                      (let [[k v] cq
-                            acc* (into acc [{(keyword k) (count v)}])]
-                        (recur r acc*))
-                      acc))
-        new-db-q  (loop [[nq & r] new-db-queue
-                         acc []]
-                    (if nq
-                      (let [[k v] nq
-                            acc* (into acc [{(keyword k) (count v)}])]
-                        (recur r acc*))
-                      acc))
-        nw-data   (loop [[nw & r] networks
-                         acc []]
-                    (if nw
-                      (let [[k v] nw
-                            acc* (into acc [{(keyword k) (dissoc v :private-key)}])]
-                        (recur r acc*))
-                      acc))
-        svr-state (when-let [servers (into [] (:servers leases))]
-                    (loop [[server & r] servers
-                           acc []]
-                      (if-let [item (second server)]
-                        (recur r (into acc [{:id      (:id item)
-                                             :active? (> (:expire item) instant)}]))
-                        acc)))
-        raft'     (-> raft
-                      (dissoc :cmd-queue :new-db-queue :networks)
-                      (assoc :cmd-queue cmd-q
-                             :new-db-queue new-db-q
-                             :networks nw-data))
-        state     (-> (txproto/-state (:group system))
-                      (select-keys [:snapshot-term
-                                    :latest-index
-                                    :snapshot-index
-                                    :other-servers
-                                    :index
-                                    :snapshot-pending
-                                    :term
-                                    :leader
-                                    :timeout-at
-                                    :this-server
-                                    :status
-                                    :id
-                                    :commit
-                                    :servers
-                                    :voted-for
-                                    :timeout-ms])
-                      (assoc :open-api open-api?)
-                      (assoc :raft raft')
-                      (assoc :svr-state svr-state))]
-    {:status  200
-     :headers {"Content-Type" "application/json; charset=utf-8"}
-     :body    (json/stringify-UTF8 state)}))
+  (let [deferred (d/deferred)]
+    (async/go
+      (try
+        (let [open-api? (open-api? system)
+              raft      (-> system :group :state-atom deref (dissoc :private-key))
+              {:keys [cmd-queue new-db-queue networks leases]} raft
+              instant   (System/currentTimeMillis)
+              cmd-q     (loop [[cq & r] cmd-queue
+                               acc []]
+                          (if cq
+                            (let [[k v] cq
+                                  acc* (into acc [{(keyword k) (count v)}])]
+                              (recur r acc*))
+                            acc))
+              new-db-q  (loop [[nq & r] new-db-queue
+                               acc []]
+                          (if nq
+                            (let [[k v] nq
+                                  acc* (into acc [{(keyword k) (count v)}])]
+                              (recur r acc*))
+                            acc))
+              nw-data   (->> networks (remove-deep [:private-key]) vector)
+              svr-state (when-let [servers (into [] (:servers leases))]
+                          (loop [[server & r] servers
+                                 acc []]
+                            (if-let [item (second server)]
+                              (recur r (into acc [{:id      (:id item)
+                                                   :active? (> (:expire item) instant)}]))
+                              acc)))
+              raft'     (-> raft
+                            (assoc :cmd-queue cmd-q
+                                   :new-db-queue new-db-q
+                                   :networks nw-data))
+              state     (-> (txproto/-state (:group system))
+                            (select-keys [:snapshot-term
+                                          :latest-index
+                                          :snapshot-index
+                                          :other-servers
+                                          :index
+                                          :snapshot-pending
+                                          :term
+                                          :leader
+                                          :timeout-at
+                                          :this-server
+                                          :status
+                                          :id
+                                          :commit
+                                          :servers
+                                          :voted-for
+                                          :timeout-ms])
+                            (assoc :open-api open-api?)
+                            (assoc :raft raft')
+                            (assoc :svr-state svr-state))]
+          (d/success! deferred {:status  200
+                                :headers {"Content-Type" "application/json; charset=utf-8"}
+                                :body    (json/stringify-UTF8 state)}))
+        (catch Exception e
+          (d/error! deferred e)))) deferred))
 
 
 (defn add-server
@@ -801,8 +816,9 @@
                  accept-encodings (or (get headers "accept")
                                       "application/json")
                  signature        (return-signature request)
+                 jwt              (return-token request)    ;may not be signed if client is using password auth
                  open-api?        (open-api? system)
-                 _                (if (and (not open-api?) (not signature))
+                 _                (if (and (not open-api?) (not signature) (not jwt))
                                     (throw (ex-info (str "To request an item from storage, open-api must be true or your request must be signed.") {:status 401
                                                                                                                                                     :error  :db/invalid-transaction})))
                  response-type    (if (str/includes? accept-encodings "application/json")
@@ -816,7 +832,9 @@
                  _                (when-not (and network db type)
                                     (throw (ex-info (str "Incomplete request. At least a network, db and type are required. Provided network: " network " db: " db " type: " type " key: " key)
                                                     {:status 400 :error :db/invalid-request})))
-                 auth-id          (when signature
+                 auth-id          (cond
+
+                                    signature
                                     (let [this-server (get-in system [:group :this-server])
                                           servers     (get-in system [:config :group :server-configs])
                                           host        (-> (filter (fn [n] (= (:server-id n) this-server)) servers)
@@ -827,7 +845,19 @@
                                                                                                          (if type (str "/" type))
                                                                                                          (if key (str "/" key))) host)
                                           db          (<? (fdb/db (:conn system) db-name))]
-                                      (<? (verify-auth db auth authority))))
+                                      (<? (verify-auth db auth authority)))
+
+                                    jwt
+                                    (let [jwt-auth (-> system
+                                                       :conn
+                                                       (pw-auth/fluree-auth-map jwt)
+                                                       :auth)
+                                          db'      (<? (fdb/db (:conn system) db-name))
+                                          auth-id' (<? (dbproto/-subid db' ["_auth/id" jwt-auth] true))
+                 _                                 (when (util/exception? auth-id')
+                                                     (throw (ex-info (str "Auth id for request does not exist in the database: " jwt-auth)
+                                                                     {:status 403 :error :db/invalid-auth})))]
+                                      jwt-auth))
                  formatted-key    (cond-> (str network "_" db "_" type)
                                           key (str "_" key))
                  avro-data        (<? (storage-read-fn formatted-key))
@@ -921,6 +951,9 @@
                                  (compojure/GET "/schema" [] (resp/resource-response "index.html" {:root "adminUI"}))
                                  (compojure/GET "/import" [] (resp/resource-response "index.html" {:root "adminUI"}))
                                  (compojure/GET "/permissions" [] (resp/resource-response "index.html" {:root "adminUI"}))
+                                 (compojure/GET "/exploredb" [] (resp/resource-response "index.html" {:root "adminUI"}))
+                                 (compojure/GET "/networkdashboard" [] (resp/resource-response "index.html" {:root "adminUI"}))
+                                 (compojure/GET "/transact" [] (resp/resource-response "index.html" {:root "adminUI"}))
                                  (constantly not-found))))
 
                            :access-control-allow-origin [#".+"]

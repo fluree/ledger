@@ -3,23 +3,23 @@
   <modelVersion>4.0.0</modelVersion>
   <groupId>com.fluree</groupId>
   <artifactId>ledger</artifactId>
-  <version>0.17.0-SNAPSHOT</version>
+  <version>1.0.0-beta3</version>
   <name>ledger</name>
   <dependencies>
     <dependency>
       <groupId>org.clojure</groupId>
       <artifactId>clojure</artifactId>
-      <version>1.10.1</version>
+      <version>1.10.2</version>
     </dependency>
     <dependency>
       <groupId>com.cognitect.aws</groupId>
       <artifactId>api</artifactId>
-      <version>0.8.474</version>
+      <version>0.8.484</version>
     </dependency>
     <dependency>
       <groupId>com.cognitect.aws</groupId>
       <artifactId>endpoints</artifactId>
-      <version>1.1.11.842</version>
+      <version>1.1.11.926</version>
     </dependency>
     <dependency>
       <groupId>compojure</groupId>
@@ -44,7 +44,7 @@
     <dependency>
       <groupId>com.fluree</groupId>
       <artifactId>crypto</artifactId>
-      <version>0.3.4</version>
+      <version>0.3.5</version>
     </dependency>
     <dependency>
       <groupId>org.clojure</groupId>
@@ -64,7 +64,7 @@
     <dependency>
       <groupId>com.cognitect.aws</groupId>
       <artifactId>s3</artifactId>
-      <version>809.2.734.0</version>
+      <version>810.2.817.0</version>
     </dependency>
     <dependency>
       <groupId>ch.qos.logback</groupId>
@@ -74,12 +74,12 @@
     <dependency>
       <groupId>ring</groupId>
       <artifactId>ring-core</artifactId>
-      <version>1.8.1</version>
+      <version>1.8.2</version>
     </dependency>
     <dependency>
       <groupId>com.fluree</groupId>
       <artifactId>db</artifactId>
-      <version>0.17.0-SNAPSHOT</version>
+      <version>1.0.0-rc8</version>
     </dependency>
   </dependencies>
   <build>
