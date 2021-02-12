@@ -163,25 +163,23 @@
      ;; add default prefix values
      ;; rdf
      (flake/new-flake (flake/->sid const/$_prefix 0) (get pred->id "_prefix/prefix") "rdf" t true)
-     (flake/new-flake (flake/->sid const/$_prefix 0) (get pred->id "_prefix/uri") "http://www.w3.org/1999/02/22-rdf-syntax-ns#" t true)
+     (flake/new-flake (flake/->sid const/$_prefix 0) (get pred->id "_prefix/iri") "http://www.w3.org/1999/02/22-rdf-syntax-ns#" t true)
      ;; rdfs
      (flake/new-flake (flake/->sid const/$_prefix 1) (get pred->id "_prefix/prefix") "rdfs" t true)
-     (flake/new-flake (flake/->sid const/$_prefix 1) (get pred->id "_prefix/uri") "http://www.w3.org/2000/01/rdf-schema#" t true)
+     (flake/new-flake (flake/->sid const/$_prefix 1) (get pred->id "_prefix/iri") "http://www.w3.org/2000/01/rdf-schema#" t true)
      ;; xsd
      (flake/new-flake (flake/->sid const/$_prefix 2) (get pred->id "_prefix/prefix") "xsd" t true)
-     (flake/new-flake (flake/->sid const/$_prefix 2) (get pred->id "_prefix/uri") "http://www.w3.org/2001/XMLSchema#" t true)
+     (flake/new-flake (flake/->sid const/$_prefix 2) (get pred->id "_prefix/iri") "http://www.w3.org/2001/XMLSchema#" t true)
      ;; owl
      (flake/new-flake (flake/->sid const/$_prefix 3) (get pred->id "_prefix/prefix") "owl" t true)
-     (flake/new-flake (flake/->sid const/$_prefix 3) (get pred->id "_prefix/uri") "http://www.w3.org/2002/07/owl#" t true)
+     (flake/new-flake (flake/->sid const/$_prefix 3) (get pred->id "_prefix/iri") "http://www.w3.org/2002/07/owl#" t true)
      ;; shacl
      (flake/new-flake (flake/->sid const/$_prefix 4) (get pred->id "_prefix/prefix") "sh" t true)
-     (flake/new-flake (flake/->sid const/$_prefix 4) (get pred->id "_prefix/uri") "http://www.w3.org/ns/shacl#" t true)
+     (flake/new-flake (flake/->sid const/$_prefix 4) (get pred->id "_prefix/iri") "http://www.w3.org/ns/shacl#" t true)
      ;; fluree examples
      (flake/new-flake (flake/->sid const/$_prefix 5) (get pred->id "_prefix/prefix") "fluree" t true)
-     (flake/new-flake (flake/->sid const/$_prefix 5) (get pred->id "_prefix/uri") "http://www.flur.ee/ns/example#" t true)
+     (flake/new-flake (flake/->sid const/$_prefix 5) (get pred->id "_prefix/iri") "http://www.flur.ee/ns/example#" t true)
      ]))
-
-
 
 (defn bootstrap-db
   "Bootstraps a new db from a signed new-db message."
@@ -454,8 +452,15 @@
    ; _predicate/name
    {:_id    ["_predicate" const/$_predicate:name]
     :name   "_predicate/name"
-    :doc    "Predicate name"
+    :doc    "Predicate name. Prefer use of IRI (prefixed or full), but will support any string name."
     :type   "string"
+    :unique true}
+   ; _predicate/equivalentProperty
+   {:_id    ["_predicate" const/$_predicate:equivalentProperty]
+    :name   "_predicate/equivalentProperty"
+    :doc    "Any number of unique alias' for predicate that conforms to _predicate/name rules."
+    :type   "string"
+    :multi  true
     :unique true}
    ; _predicate/doc
    {:_id  ["_predicate" const/$_predicate:doc]
@@ -561,6 +566,16 @@
     :doc    "Schema collection name"
     :type   "string"
     :unique true}
+   {:_id    ["_predicate" const/$_collection:equivalentClass]
+    :name   "_collection/equivalentClass"
+    :doc    "Any number of unique alias' for collection that conforms to _collection/name rules."
+    :type   "string"
+    :multi  true
+    :unique true}
+   {:_id  ["_predicate" const/$_collection:partition]
+    :name "_collection/partition"
+    :doc  "Partition integer used for new items in this collection, max of 524,287. If not included it inherits from parent, or uses collection's internal counter if no parent."
+    :type "int"}
    {:_id  ["_predicate" const/$_collection:doc]
     :name "_collection/doc"
     :doc  "Optional docstring for collection."
@@ -861,15 +876,58 @@
     :doc  "Whether this shard is mutable. If not specified, defaults to 'false', meaning the data is immutable."
     :type "boolean"}
 
+
+   ; rdfs:Class
+   ;{:_id    ["_predicate" const/$rdfs:Class]
+   ; :name   "rdfs:Class"
+   ; :doc    "RDF Schema Class."
+   ; :type   "string"
+   ; :unique true
+   ; :upsert true}
+
+   ; rdf:type
+   {:_id                ["_predicate" const/$rdf:type]
+    :name               "rdf:type"
+    :equivalentProperty ["a"]
+    :doc                "RDF type designation."
+    :type               "ref"}
+   ;; SHACL
+   {:_id  ["_predicate" const/$sh:path]
+    :name "sh:path"
+    :doc  "SHACL path."
+    :type "ref"}
+   {:_id  ["_predicate" const/$sh:minCount]
+    :name "sh:minCount"
+    :doc  "SHACL minCount."
+    :type "int"}
+   {:_id  ["_predicate" const/$sh:maxCount]
+    :name "sh:maxCount"
+    :doc  "SHACL maxCount."
+    :type "int"}
+   {:_id   ["_predicate" const/$sh:property]
+    :name  "sh:property"
+    :doc   "SHACL property."
+    :multi true
+    :type  "ref"}
+   {:_id  ["_predicate" const/$sh:datatype]
+    :name "sh:datatype"
+    :doc  "SHACL datatype."
+    :type "ref"}
+   {:_id  ["_predicate" const/$sh:pattern]
+    :name "sh:pattern"
+    :doc  "SHACL pattern."
+    :type "string"}
+
+
    ; _prefix
    {:_id    ["_predicate" const/$_prefix:prefix]
     :name   "_prefix/prefix"
     :doc    "Prefix name, a blank string is used as the default prefix."
     :type   "string"
     :unique true}
-   {:_id   ["_predicate" const/$_prefix:uri]
-    :name  "_prefix/uri"
-    :doc   "Full URI value of the prefix"
+   {:_id   ["_predicate" const/$_prefix:iri]
+    :name  "_prefix/iri"
+    :doc   "Full IRI value of the prefix"
     :type  "string"
     :index true}])
 
