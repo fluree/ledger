@@ -562,6 +562,11 @@
     :name "_predicate/fullText"
     :doc  "If true, full text search is enabled on this predicate."
     :type "boolean"}
+   {:_id  ["_predicate" const/$_predicate:retractDuplicates]
+    :name "_predicate/retractDuplicates"
+    :doc  "If false (default), when a transaction creates a new flake that already exists it does not update the existing data. When true, it will always force a retraction/insertion."
+    :type "boolean"}
+
 
 
    ;; tag records
