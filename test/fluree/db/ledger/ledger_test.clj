@@ -28,7 +28,8 @@
 
             [fluree.db.ledger.docs.examples.cryptocurrency :as cryptocurrency]
             [fluree.db.ledger.docs.examples.supply-chain :as supply-chain]
-            [fluree.db.ledger.docs.examples.voting :as voting]))
+            [fluree.db.ledger.docs.examples.voting :as voting]
+            [fluree.db.ledger.general.todo-permissions :as todo-perm]))
 
 ;; TODO - tests fail - commented out for convenience:
 ;; API - (test-gen-flakes-query-transact-with)
@@ -64,8 +65,7 @@
 
              ;; 3- Query
              (test/print-banner "Query Tests")
-             ;; This never returns for some reason
-             ;(basic-query/basic-query-test)
+             (basic-query/basic-query-test)
              (block-query/block-query-test)
              (history-query/history-query-test)
              (advanced-query/advanced-query-test)
@@ -96,7 +96,11 @@
              (test/print-banner "Example Tests")
              (cryptocurrency/cryptocurrency-test)
              (supply-chain/supply-chain-test)
-             (voting/voting-test))))))
+             (voting/voting-test)
+
+             ;; 9- General
+             (test/print-banner "General Tests")
+             (todo-perm/todo-auth-tests))))))
 
 (comment
 

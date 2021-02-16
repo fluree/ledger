@@ -31,6 +31,7 @@
 (def ledger-crypto "fluree/crypto")
 (def ledger-voting "fluree/voting")
 (def ledger-supplychain "fluree/supplychain")
+(def ledger-todo "fluree/todo")
 
 (defn print-banner [msg]
   (println "\n*************************************\n\n"
@@ -62,6 +63,7 @@
          @(fdb/new-ledger (:conn system) ledger-crypto)
          @(fdb/new-ledger (:conn system) ledger-voting)
          @(fdb/new-ledger (:conn system) ledger-supplychain)
+         @(fdb/new-ledger (:conn system) ledger-todo)
          (async/<!! (async/timeout 15000))
          (f))
      :success

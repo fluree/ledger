@@ -27,6 +27,7 @@
    :fdb-consensus-type           "raft"                     ;; raft
    :fdb-encryption-secret        nil                        ;; Text encryption secret for encrypting data at rest and in transit
 
+   :fdb-group-config-path        "./"
    :fdb-group-private-key        nil
    :fdb-group-private-key-file   nil                        ;; optional location of file that contains group private key
 
@@ -284,17 +285,22 @@
 
 (defn- get-or-generate-tx-private-key
   [env]
-  (or (when-let [priv (:fdb-group-private-key env)] (str/trim priv))
+  (or (when-let [priv (:fdb-group-private-key env)]
+        (log/debug "Using private key from fdb-group-private-key config string")
+        (str/trim priv))
       (let [priv-key-file (or (:fdb-group-private-key-file env)
                               "default-private-key.txt")
-            file          (io/file priv-key-file)
+            file          (io/file (:fdb-group-config-path env) priv-key-file)
             exists?       (.exists file)]
         (if exists?
-          (str/trim (slurp priv-key-file))
+          (do
+            (log/debug "Using private key from file" (.toString file))
+            (-> file slurp str/trim))
           ;; make sure private key generated is 64 characters
-          (let [key-pair (some #(when (= 64 (count (:private %))) %) (repeatedly crypto/generate-key-pair))]
-            (spit priv-key-file (:private key-pair))
-            (:private key-pair))))))
+          (let [{:keys [private]} (some #(when (= 64 (count (:private %))) %) (repeatedly crypto/generate-key-pair))]
+            (log/debug "Generating new private key and storing in" (.toString file))
+            (spit file private)
+            private)))))
 
 
 (defn- get-cache-size
