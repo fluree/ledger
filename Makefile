@@ -62,9 +62,6 @@ build/LICENSE: LICENSE | build
 build/CHANGELOG.md: CHANGELOG.md | build
 	cp $< $(@D)/
 
-build/logback.xml: dev/logback.xml | build
-	cp $< $(@D)/
-
 build/%: resources/% | build
 	cp $< $(@D)/
 
