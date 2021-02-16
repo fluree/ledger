@@ -21,7 +21,7 @@ build/fluree-$(VERSION).zip: stage-release
 stage-release: build/release-staging build/fluree-ledger.standalone.jar build/fluree_start.sh build/logback.xml build/fluree_sample.properties build/LICENSE build/CHANGELOG.md
 
 run: stage-release
-	build/fluree_start.sh
+	cd build && ./fluree_start.sh
 
 check-release-jdk-version:
 	resources/fluree_start.sh java_version $(JAVA_VERSION_FOR_RELEASE_BUILDS)
