@@ -6,7 +6,7 @@ jobs:
     runs-on: ubuntu-latest
     name: Send release notifications
     steps:
-      - uses: fluree/release-notifications-github-action@master
+      - uses: fluree/release-notifications-github-action@main
         with:
           repos-to-notify: '["homebrew-flureedb"]'
           token: ${{ secrets.RELEASE_NOTIFICATIONS_TOKEN }}
