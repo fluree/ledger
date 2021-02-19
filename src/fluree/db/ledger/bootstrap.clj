@@ -199,7 +199,7 @@
                                (flake/new-flake block-t (get pred->id "_block/ledgers") auth-subid block-t true)]
          flakes+block         (into flakes* block-flakes)
 
-         {:keys [spot psot post opst]} novelty
+         {:keys [spot psot post opst tspo]} novelty
          db                   (assoc blank-db :block block
                                               :t block-t
                                               :ecount genesis-ecount
@@ -207,6 +207,7 @@
                                                                       :psot (into psot flakes+block)
                                                                       :post (into post (filter #(index-pred (.-p ^Flake %)) flakes+block))
                                                                       :opst (into opst (filter #(ref-pred (.-p ^Flake %)) flakes+block))
+                                                                      :tspo (into tspo flakes+block)
                                                                       :size (flake/size-bytes flakes+block))
                                               :stats (assoc stats :flakes (count flakes+block)
                                                                   :size (flake/size-bytes flakes+block)))]
