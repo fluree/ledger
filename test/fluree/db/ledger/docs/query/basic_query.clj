@@ -6,8 +6,7 @@
             [fluree.db.api :as fdb]
             [fluree.db.util.core :as utils]
             [clojure.core.async :as async]
-            [clojure.set :refer [subset?]]
-            [clojure.string :as str]))
+            [clojure.set :refer [subset?]]))
 
 (use-fixtures :once test/test-system)
 
@@ -45,7 +44,7 @@
 
     ;; the keys for every chat should be _id, message, person, instant, or comments
     (is (every? (fn [chat]
-                     (every? #(boolean (#{"_id" "chat/message" :_id "chat/person"
+                  (every? #(boolean (#{"_id" "chat/message" :_id "chat/person"
                                           "chat/instant" "chat/comments"} %)) (keys chat))) chats))))
 
 
@@ -93,7 +92,7 @@
   (testing "Select from a group of subjects")
   (let [chat-query {:select ["*"]
                     :from [369435906932737, ["person/handle", "jdoe"],
-                           387028092977153,  ["person/handle", "zsmith"] ]}
+                           387028092977153,  ["person/handle", "zsmith"]]}
         db  (basic/get-db test/ledger-chat)
         res (async/<!! (fdb/query-async db chat-query))]
 
@@ -119,7 +118,7 @@
   (testing "Select certain predicates")
   (let [chat-query {:select ["chat/message", "chat/person"]
                     :from "chat"
-                    :limit 100 }
+                    :limit 100}
         db  (basic/get-db test/ledger-chat)
         res  (async/<!! (fdb/query-async db chat-query))]
 
@@ -130,7 +129,7 @@
 (deftest select-with-where
   (testing "Select with where")
   (let [chat-query {:select ["chat/message" "chat/instant"]
-                    :where "chat/instant > 1517437000000" }
+                    :where "chat/instant > 1517437000000"}
         db  (basic/get-db test/ledger-chat)
         res        (async/<!! (fdb/query-async db chat-query))]
 
@@ -145,13 +144,13 @@
   (testing "Select as of block")
   (let [chat-query {:select ["*"]
                     :from "chat"
-                    :block 2 }
+                    :block 2}
         db  (basic/get-db test/ledger-chat)
         res        (async/<!! (fdb/query-async db chat-query))
         chat-query-4 {:select ["*"]
-                    :from "chat"
-                    :block 4 }
-        res-4        (async/<!! (fdb/query-async db chat-query-4 ))]
+                      :from "chat"
+                      :block 4}
+        res-4        (async/<!! (fdb/query-async db chat-query-4))]
 
 
     (is (empty? res))
@@ -162,14 +161,14 @@
 (deftest select-with-limit-and-offset
   (testing "Select with limit and offset")
   (let [limit-query {:select ["*"]
-                    :from "chat"
-                    :limit 2 }
-        offset-query {:select ["*"]
                      :from "chat"
-                     :offset 1 }
+                     :limit 2}
+        offset-query {:select ["*"]
+                      :from "chat"
+                      :offset 1}
         limit-and-offset-query {:select ["*"]
-                      :from "chat" :limit 1
-                      :offset 1 }
+                                :from "chat" :limit 1
+                                :offset 1}
         all-res (async/<!! (issue-consecutive-queries test/ledger-chat [limit-query offset-query limit-and-offset-query]))]
 
     (is (= (-> (map count all-res) sort vec) [1 2 2]))))
@@ -202,16 +201,17 @@
                                                         :count (count favNums)
                                                         :avg (average favNums)
                                                         :avg-dec (average-decimal favNums)}))
-                                       m                    ;skip entry
-                                       )) {}))
+                                       m))
+                                   {}))
         groupBy-res  (async/<!! (fdb/query-async db groupBy-query))
         groupBy-res' (async/<!! (fdb/query-async db groupBy-query'))]
 
     ; validate string groupBy
     (is (not= clojure.lang.ExceptionInfo (type groupBy-res)))
-    (is (= (-> groupBy-res keys count) (-> base-res keys count) )) ;validate # of handles - groupBy is a subset
+    (is (= (-> groupBy-res keys count) (-> base-res keys count))) ;validate # of handles - groupBy is a subset
     (is (empty?
-          (-> (loop [[k & r-k] (keys base-res)
+          (utils/without-nils
+            (loop [[k & r-k] (keys base-res)
                      [v & r-v] (vals base-res)
                      errs {}]
                 (if (or (nil? k) (empty k))
@@ -233,40 +233,55 @@
                                  (not (subset? obs-vals exp-vals))
                                  (conj (str "One or more observed average(s) did not match acceptable values"
                                             "; accepted: " exp-vals
-                                            "; observed: " obs-vals))))))))
-                  utils/without-nils)))
+                                            "; observed: " obs-vals)))))))))))
+
 
     ;validate vector groupBy
     (is (not= clojure.lang.ExceptionInfo (type groupBy-res')))
-    (is (= (-> groupBy-res' keys count) (-> base-res keys count) )) ;validate # of handles - groupBy is a subset
+    (is (= (-> groupBy-res' keys count) (-> base-res keys count))) ;validate # of handles - groupBy is a subset
     (is (empty?
-          (-> (loop [[k & r-k] (keys base-res)
-                     [v & r-v] (vals base-res)
-                     errs {}]
-                (if (or (nil? k) (empty k))
-                  errs
-                  (let [exp-vals (-> v (select-keys [:avg :avg-dec]) vals set)
-                        gbe      (get groupBy-res' [k])
-                        obs-vals (-> gbe
-                                     (as-> z (map val (filter (comp #{"avg"} key) (apply concat z))))
-                                     set)]
-                    (recur
-                      r-k
-                      r-v
-                      (assoc errs k
-                         (cond-> []
-                                 (not= (get v :count) (count gbe))
-                                 (conj (str "Invalid number of entries"
-                                            "; expected: " (get v :count)
-                                            "; observed: " (count gbe)))
-                                 (not (subset? obs-vals exp-vals))
-                                 (conj (str "One or more observed average(s) did not match acceptable values"
-                                            "; accepted: " exp-vals
-                                            "; observed: " obs-vals))))))))
-              utils/without-nils)))))
+          (utils/without-nils
+            (loop [[k & r-k] (keys base-res)
+                   [v & r-v] (vals base-res)
+                   errs {}]
+              (if (or (nil? k) (empty k))
+                errs
+                (let [exp-vals (-> v (select-keys [:avg :avg-dec]) vals set)
+                      gbe      (get groupBy-res' [k])
+                      obs-vals (-> gbe
+                                   (as-> z (map val (filter (comp #{"avg"} key) (apply concat z))))
+                                   set)]
+                  (recur
+                    r-k
+                    r-v
+                    (assoc errs k
+                       (cond-> []
+                               (not= (get v :count) (count gbe))
+                               (conj (str "Invalid number of entries"
+                                          "; expected: " (get v :count)
+                                          "; observed: " (count gbe)))
+                               (not (subset? obs-vals exp-vals))
+                               (conj (str "One or more observed average(s) did not match acceptable values"
+                                          "; accepted: " exp-vals
+                                          "; observed: " obs-vals)))))))))))))
 
 
+(deftest select-boolean-predicates
+  (testing "with true predicate"
+    (let [query {:select ["?person"] :from "person"
+                 :where  [["?person" "person/active" true]]}
+          db (basic/get-db test/ledger-chat)
+          res (async/<!! (fdb/query-async db query))]
+      (is (= 3 (count res)))))
+  (testing "with false predicate"
+    (let [query {:select ["?person"] :from "person"
+                 :where  [["?person" "person/active" false]]}
+          db (basic/get-db test/ledger-chat)
+          res (async/<!! (fdb/query-async db query))]
+      (is (= 1 (count res))))))
 
+
+;; TODO: Make this work like typical test suites w/ only one later of deftests.
 (deftest basic-query-test
   (select-chats)
   (select-from-subject-id)
@@ -277,7 +292,8 @@
   (select-with-where)
   (select-as-of-block)
   (select-with-limit-and-offset)
-  (select-with-groupBy))
+  (select-with-groupBy)
+  (select-boolean-predicates))
 
 (deftest tests-independent
   (basic/add-collections*)
