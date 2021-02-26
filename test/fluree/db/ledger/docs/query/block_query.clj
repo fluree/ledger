@@ -15,7 +15,7 @@
 
     (is (= (-> res keys set) #{:block :hash :instant :txns :block-bytes :cmd-types :t :sigs :flakes}))
 
-    (is (= 79 (count (:flakes res))))))
+    (is (= 82 (count (:flakes res))))))
 
 (deftest query-single-block-with-ISO-string
   (testing "Select single block with ISO-8601 wall clock time")

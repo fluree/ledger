@@ -30,7 +30,7 @@
         res           @(fdb/history-query db history-query)
         _             (when (util/exception? res) (throw res))
         flakes        (-> res first :flakes)]
-    (is (= 12 (count flakes)))
+    (is (= 13 (count flakes)))
 
     (is (= (-> (map first flakes) set) #{351843720888321}))))
 
@@ -46,7 +46,7 @@
 
     (is (= #{:block :t :flakes} (-> res first keys set)))
 
-    (is (= (-> flakes first (flake/Flake->parts)) [351843720888321 1003 351843720888320 -7 true nil]))))
+    (is (= [351843720888321 1004 351843720888320 -7 true nil] (-> flakes first (flake/Flake->parts))))))
 
 
 (deftest history-with-flake-format-pretty-print
