@@ -38,6 +38,11 @@
     </dependency>
     <dependency>
       <groupId>com.fluree</groupId>
+      <artifactId>raft</artifactId>
+      <version>0.12.1</version>
+    </dependency>
+    <dependency>
+      <groupId>com.fluree</groupId>
       <artifactId>crypto</artifactId>
       <version>0.3.5</version>
     </dependency>
