@@ -62,6 +62,16 @@ release-version-latest: prep-release
 deps: deps.edn
 	clojure -Stree
 
+package-lock.json: package.json
+	npm install
+
+node_modules node_modules/%: package.json package-lock.json
+	npm install && touch $@
+
+resources/adminUI: node_modules
+	ln -nsf ../node_modules/@fluree/admin-ui/build $@
+	cd node_modules/@fluree/admin-ui && npm run build
+
 build:
 	mkdir -p build
 
@@ -80,7 +90,7 @@ build/CHANGELOG.md: CHANGELOG.md | build
 build/%: resources/% | build
 	cp $< $(@D)/
 
-target/fluree-ledger.jar: pom.xml $(SOURCES) $(RESOURCES)
+target/fluree-ledger.jar: pom.xml resources/adminUI $(SOURCES) $(RESOURCES)
 	clojure -X:jar
 
 jar: target/fluree-ledger.jar
@@ -91,7 +101,7 @@ pom.xml: deps.edn
 test:
 	clojure -M:test
 
-target/fluree-ledger.standalone.jar: pom.xml $(SOURCES) $(RESOURCES)
+target/fluree-ledger.standalone.jar: pom.xml resources/adminUI $(SOURCES) $(RESOURCES)
 	clojure -X:uberjar
 
 uberjar: target/fluree-ledger.standalone.jar
@@ -140,3 +150,5 @@ clean:
 	@# only delete contents of build dir if full delete fails (e.g. b/c we're mounting it as a Docker volume)
 	rm -rf build 2>/dev/null || rm -rf build/*
 	rm -rf target
+	rm -rf resources/adminUI
+	rm -rf node_modules
