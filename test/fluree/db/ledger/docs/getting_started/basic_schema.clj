@@ -71,7 +71,7 @@
     (is (= 3 (:block collection-resp)))
 
     ;; there should be 16 tempids
-    (is (= 16 (count (:tempids collection-resp))))))
+    (is (= 17 (count (:tempids collection-resp))))))
 
 ;; Add sample data
 

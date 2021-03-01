@@ -33,7 +33,7 @@ RUN chown -R fluree.fluree .
 USER fluree
 
 # Expose HTTP API
-EXPOSE 8080
+EXPOSE 8090
 
 # Point runtime data paths at volume
 ENV FLUREE_ARGS="-Dfdb-storage-file-root=/var/lib/fluree/"
