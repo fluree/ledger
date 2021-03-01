@@ -24,7 +24,7 @@ spec:
         - name: master
           image: fluree/ledger:sha-ad923af5
           ports:
-            - containerPort: 8080
+            - containerPort: 8090
           volumeMounts:
             - mountPath: /var/lib/fluree
               name: fluree-data
