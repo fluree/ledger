@@ -4,7 +4,8 @@
             [fluree.db.query.schema :as schema]
             [fluree.db.util.async :refer [go-try <?]]
             [fluree.db.dbproto :as dbproto]
-            [fluree.db.flake :as flake]))
+            [fluree.db.flake :as flake]
+            [fluree.db.util.async :as async-util]))
 
 ;; One-off in-memory dbs, eventually move to fluree/db repository so local in-memory dbs can be launched
 ;; inside application servers, web browsers, ?? - to maintain local state but have all of the other benefits
@@ -38,11 +39,14 @@
 
   Does zero validation that tuples are accurate"
   [db tuples]
-  (let [t     (dec (:t db))
+  (let [db*    (if (async-util/channel? db)
+                 (async/<!! db)
+                 db)
+        t      (dec (:t db*))
         flakes (->> tuples
                     (map (fn [[s p o op]]
                            (flake/->Flake s p o t (if (false? op) false true) nil))))]
-    (transact-flakes db flakes)))
+    (transact-flakes db* flakes)))
 
 
 (defn transact
