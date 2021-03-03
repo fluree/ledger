@@ -283,6 +283,7 @@
               (let [result  (case (:action msg)
                               :block (let [{:keys [block]} msg]
                                        (<! (write-block writer db block)))
+                              :forget (full-text/forget writer)
                               :range (let [{:keys [start end]} msg]
                                        (<! (write-range writer db start end)))
                               :reset (<! (full-reset writer db))

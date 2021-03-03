@@ -287,7 +287,7 @@
   (txproto/-local-state (:group system))
 
   (async/<!! (raft/leader-async (:group system)))
-  (raft/view-raft-state (:group system))
+  (raft/get-raft-state (:group system))
 
 
   (raft/monitor-raft (:group system))

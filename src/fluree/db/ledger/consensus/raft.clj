@@ -14,7 +14,8 @@
             [fluree.db.ledger.consensus.update-state :as update-state]
             [fluree.db.ledger.txgroup.monitor :as group-monitor]
             [fluree.db.ledger.consensus.dbsync2 :as dbsync2]
-            [fluree.crypto :as crypto])
+            [fluree.crypto :as crypto]
+            [fluree.raft.log :as raft-log])
   (:import (java.util UUID)))
 
 
@@ -108,11 +109,16 @@
         (storage-delete file)))))
 
 
-(defn view-raft-state
+(defn get-raft-state
   "Returns current raft state to callback."
-  ([raft] (view-raft-state raft (fn [x] (clojure.pprint/pprint (dissoc x :config)))))
-  ([raft callback]
-   (raft/view-raft-state (:raft raft) callback)))
+  [raft callback]
+  (raft/get-raft-state (:raft raft) callback))
+
+
+(defn view-raft-state
+  "Pretty prints current raft state."
+  [raft]
+  (get-raft-state raft (fn [x] (clojure.pprint/pprint (dissoc x :config)))))
 
 
 (defn leader-async
@@ -123,10 +129,10 @@
    (let [timeout-time (+ (System/currentTimeMillis) timeout)]
      (async/go-loop [retries 0]
        (let [resp-chan (async/promise-chan)
-             _         (view-raft-state raft (fn [state]
-                                               (if-let [leader (:leader state)]
-                                                 (async/put! resp-chan leader)
-                                                 (async/close! resp-chan))))
+             _         (get-raft-state raft (fn [state]
+                                              (if-let [leader (:leader state)]
+                                                (async/put! resp-chan leader)
+                                                (async/close! resp-chan))))
              resp      (async/<! resp-chan)]
          (cond
            resp resp
@@ -188,6 +194,25 @@
         (when (is-leader? config)
           (writer index callback))
         (writer index callback)))))
+
+
+(defn snapshot-list-indexes
+  "Lists all stored snapshot indexes, sorted ascending. Used for bootstrapping a
+  raft network from a previously made snapshot."
+  [{:keys [path storage-list] :as config}]
+  (log/debug "Initialized snapshot-list-indexes with path" path "and storage-list" storage-list)
+  (fn []
+    (log/debug "Listing snapshot indexes in" path)
+    (let [files (try
+                  (<?? (storage-list path))
+                  (catch Exception e (log/error e "Error listing stored snapshots in" path)))]
+      (log/debug "Got snapshot candidate files:" files)
+      (->> files
+           (map :name)
+           (keep #(when-let [match (re-find #"^([0-9]+)\.snapshot$" %)]
+                    (Long/parseLong (second match))))
+           sort
+           vec))))
 
 
 ;; Holds state change functions that are registered
@@ -478,7 +503,8 @@
                                  :snapshot-write (snapshot-writer snapshot-config)
                                  :snapshot-reify (snapshot-reify snapshot-config)
                                  :snapshot-xfer (snapshot-xfer snapshot-config)
-                                 :snapshot-install (snapshot-installer snapshot-config))
+                                 :snapshot-install (snapshot-installer snapshot-config)
+                                 :snapshot-list-indexes (snapshot-list-indexes snapshot-config))
         _                      (log/debug "Starting Raft with config:" (pr-str raft-config*))
         raft                   (raft/start raft-config*)
         client-message-handler (partial message-consume raft storage-ledger-read) ; Or should it be group?
@@ -503,17 +529,14 @@
      :open-api        open-api}))
 
 
-
-
-
-(defn view-raft-state-async
+(defn get-raft-state-async
   "Returns current raft state as a core async channel."
   [raft]
   (let [resp-chan (async/promise-chan)]
-    (raft/view-raft-state (:raft raft)
-                          (fn [rs]
-                            (async/put! resp-chan rs)
-                            (async/close! resp-chan)))
+    (raft/get-raft-state (:raft raft)
+                         (fn [rs]
+                           (async/put! resp-chan rs)
+                           (async/close! resp-chan)))
     resp-chan))
 
 
@@ -530,10 +553,9 @@
   (raft/monitor-raft (:raft raft) nil))
 
 
-
 (defn state
   [raft]
-  (let [state (async/<!! (view-raft-state-async raft))]
+  (let [state (async/<!! (get-raft-state-async raft))]
     (if (instance? Throwable state)
       (throw state)
       state)))
@@ -676,7 +698,7 @@
   ([raft] (index-fully-committed? raft false))
   ([raft leader-only?]
    (async/go-loop [retries 0]
-     (let [rs (async/<! (view-raft-state-async raft))
+     (let [rs (async/<! (get-raft-state-async raft))
            {:keys [commit index status latest-index]} rs]
        (cond
 
@@ -695,6 +717,7 @@
          (do
            (async/<! (async/timeout 100))
            (recur (inc retries))))))))
+
 
 (defn register-server-lease-async
   "Registers a server as available with provided lease expiration.
@@ -724,7 +747,7 @@
                  group-raft     (:group conn)
                  current-state  @(:state-atom group-raft)
                  ledgers-info   (txproto/all-ledger-block current-state)]
-             (when-not (nil? storage-path) ; TODO: Support full-text indexes on s3 storage too
+             (when-not (nil? storage-path)                  ; TODO: Support full-text indexes on s3 storage too
                (async/<! (dbsync2/check-full-text-synced conn storage-path ledgers-info)))
              (if (instance? Exception sync-finished?)
                (dbsync2/terminate! conn
@@ -773,7 +796,8 @@
            (System/exit 1)))))
 
 
-(defrecord RaftGroup [state-atom event-chan command-chan server this-server port close raft raft-initialized open-api private-keys]
+(defrecord RaftGroup [state-atom event-chan command-chan server this-server port
+                      close raft raft-initialized open-api private-keys]
   TxGroup
   (-add-server-async [group server] (add-server-async group server))
   (-remove-server-async [group server] (remove-server-async group server))
