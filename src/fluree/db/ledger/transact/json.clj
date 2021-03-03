@@ -3,106 +3,34 @@
             [fluree.db.util.async :refer [<? <?? go-try merge-into? channel?]]
             [fluree.db.util.core :as util]
             [fluree.db.util.log :as log]
-            [clojure.string :as str]
             [fluree.db.dbproto :as dbproto]
             [fluree.db.flake :as flake]
             [clojure.core.async :as async]
-            [fluree.db.constants :as const]
             [fluree.db.query.range :as query-range]
             [fluree.db.util.json :as json]
             [fluree.db.spec :as fspec]
             [fluree.db.dbfunctions.core :as dbfunctions]
-            [fluree.db.session :as session]
-            [fluree.db.ledger.bootstrap :as bootstrap])
+            [fluree.db.util.tx :as tx-util]
+            [fluree.db.util.schema :as schema-util]
+            [fluree.db.query.schema :as schema]
+            [fluree.db.ledger.transact.retract :as tx-retract]
+            [fluree.db.ledger.transact.tempid :as tempid]
+            [fluree.db.ledger.transact.tags :as tags]
+            [fluree.db.ledger.transact.txfunction :as txfunction]
+            [fluree.db.ledger.transact.permissions :as tx-permissions]
+            [fluree.db.ledger.transact.tx-meta :as tx-meta]
+            [fluree.db.dbfunctions.internal :as fdb])
   (:import (fluree.db.flake Flake)))
 
 ;; TODO - add ^:const
 (def parallelism 10)
 
-(defrecord SubjectJSON [json subject tempid? action flakes]
-  ITxSubject
-  (-flakes [_])
-  (-iri [_] :none)
-  (-flatten [_] nil))
-
-
-(defn new-subject
-  [subject tx-state db]
-  (map->SubjectJSON {:subject  subject
-                     :tx-state tx-state
-                     :db       db
-                     :cache    (atom nil)}))
-
-(defrecord TempId [user-string collection unique])
-
-(defn TempId?
-  [x]
-  (instance? TempId x))
-
-(defn to-tempid*
-  [tempid]
-  (let [[collection id] (str/split tempid #"[^\._a-zA-Z0-9]" 2)
-        key (if id
-              (keyword collection id)
-              (keyword collection (str (util/random-uuid))))]
-    (->TempId tempid collection key)))
-
-(defn to-tempid
-  "Generates a new tempid record from tempid string. Registers tempid in :tempids atom within
-  tx-state to track all tempids in tx, and also their final resolution value.
-
-  defrecord equality will consider tempids with identical values the same, even if constructed separately.
-  We therefore construct a tempid regardless if it has already been created, but are careful not to
-  update any existing subject id that might have already been mapped to the tempid."
-  [tempid {:keys [tempids] :as tx-state}]
-  (let [tempid* (to-tempid* tempid)]
-    (swap! tempids update tempid* identity)                 ;; don't touch any set value, otherwise nil
-    tempid*))
-
-(defn use-tempid
-  "Returns a tempid that will be used for a Flake object value, but only returns it if
-  it already exists. If it does not exist, it means it is a tempid used as a value, but it was never used
-  as a subject."
-  [tempid {:keys [tempids] :as tx-state}]
-  (let [tempid* (to-tempid* tempid)]
-    (if (contains? @tempids tempid*)
-      tempid*
-      (throw (ex-info (str "Tempid " tempid " used as a value, but there is no corresponding subject in the transaction")
-                      {:status 400
-                       :error  :db/invalid-tx})))))
-
-(defn to-tag-tempid
-  "Generates a _tag tempid"
-  [tag {:keys [tempids] :as tx-state}]
-  (let [tempid (->TempId tag "_tag" (keyword tag))]
-    (swap! tempids update tempid identity)
-    tempid))
-
-(defn set-tempid
-  "Sets a tempid value into the cache. If the tempid was already set by another :upsert
-  predicate that matched a different subject, throws an error. Returns set subject-id on success."
-  [tempid subject-id {:keys [tempids] :as tx-state}]
-  (swap! tempids update tempid
-         (fn [existing-sid]
-           (cond
-             (nil? existing-sid) subject-id                 ;; hasn't been set yet, success.
-             (= existing-sid subject-id) subject-id         ;; resolved, but to the same id - ok
-             :else (throw (ex-info (str "Temp-id " (:user-string tempid)
-                                        " matches two (or more) subjects based on predicate upserts: "
-                                        existing-sid " and " subject-id ".")
-                                   {:status 400
-                                    :error  :db/invalid-tx})))))
-  subject-id)
-
-
-;; TODO - can probably parse function string to final 'lisp form' when generating TxFunction
-(defrecord TxFunction [fn-str])
-
-(defn tx-fn?
-  "Returns true if a transaction function"
-  [x]
-  (instance? TxFunction x))
-
+(defn register-validate-fn
+  [f async? {:keys [validate-fn] :as tx-state}]
+  (swap! validate-fn (fn [f-map]
+                       (if async?
+                         (update f-map :async conj f)
+                         (update f-map :sync conj f)))))
 
 (defn- txi?
   "Returns true if a transaction item - must be a map and have _id as one of the keys"
@@ -124,11 +52,11 @@
    we must make them unique so they point to the correct subjects once flattened."
   [predicate-value tx-state]
   (cond (txi-list? predicate-value)
-        (let [txis (map #(assoc % :_id (to-tempid (:_id %) tx-state)) predicate-value)]
+        (let [txis (map #(assoc % :_id (tempid/new (:_id %) tx-state)) predicate-value)]
           [(map :_id txis) txis])
 
         (txi? predicate-value)
-        (let [tempid (to-tempid (:_id predicate-value) tx-state)]
+        (let [tempid (tempid/new (:_id predicate-value) tx-state)]
           [tempid (assoc predicate-value :_id tempid)])
 
         :else nil))
@@ -151,17 +79,16 @@
 
 (defn- resolve-collection-name
   "Resolves collection name from _id"
-  [{:keys [_id] :as txi} {:keys [db] :as tx-state}]
-  (assoc txi :_collection
-             (cond (TempId? _id)
-                   (:collection _id)
+  [_id tx-state]
+  (cond (tempid/TempId? _id)
+        (:collection _id)
 
-                   (neg-int? _id)
-                   "_tx"
+        (neg-int? _id)
+        "_tx"
 
-                   (int? _id)
-                   (->> (flake/sid->cid _id)
-                        (dbproto/-c-prop db :name)))))
+        (int? _id)
+        (->> (flake/sid->cid _id)
+             (dbproto/-c-prop (:db tx-state) :name))))
 
 (defn- resolve-collection-id
   "Resolves collection id from collection name"
@@ -184,57 +111,6 @@
       :else (throw (raise action)))))
 
 
-(defn register-flakes
-  "Registers a transaction's flakes that are ready for final permission/smartfunction validation"
-  [{:keys [flakes] :as tx-state} registration-flakes]
-  (swap! flakes into registration-flakes))
-
-(defn register-flake
-  "Registers a transaction's flake that are ready for final permission/smartfunction validation"
-  [{:keys [flakes] :as tx-state} registration-flake]
-  (swap! flakes conj registration-flake))
-
-(defn register-temp-flake
-  "Registers a transaction's flake that are ready for final permission/smartfunction validation"
-  [{:keys [temp-flakes] :as tx-state} registration-flake]
-  (swap! temp-flakes conj registration-flake))
-
-
-(defn retract-subject
-  "Returns retraction flakes for an entire subject. Also returns retraction
-  flakes for any refs to that subject."
-  [subject-id {:keys [db t] :as tx-state}]
-  (go-try
-    (let [flakes (query-range/index-range db :spot = [subject-id])
-          refs   (query-range/index-range db :opst = [subject-id])]
-      (->> (<? flakes)
-           (concat (<? refs))
-           (map #(flake/flip-flake % t))
-           (into [])))))
-
-
-(defn retract-flake
-  "Retracts one or more flakes given a subject, predicate, and optionally an object value."
-  [subject-id predicate-id object {:keys [db t] :as tx-state}]
-  (go-try
-    (let [flakes (query-range/index-range db :spot = [subject-id predicate-id object])]
-      (->> (<? flakes)
-           (map #(flake/flip-flake % t))))))
-
-
-;; TODO - below, instead of async/into,could use a transducer to return a single clean channel that concats, and not need to use go-try here
-(defn retract-multi
-  "Like retract flake, but takes a list of objects that must be retracted"
-  [subject-id predicate-id objects tx-state]
-  (go-try
-    (->> objects
-         (map #(retract-flake subject-id predicate-id % tx-state))
-         async/merge
-         (async/into [])
-         <?
-         (apply concat))))
-
-
 (defn predicate-details
   "Returns function for predicate to retrieve any predicate details"
   [predicate collection db]
@@ -249,7 +125,6 @@
 (defn conform-object-value
   "Attempts to coerce any value to internal form."
   [object type]
-  (log/info "conform-object-value:" type object)
   ;; note type :ref and :tag are not sent to this function, so
   (case type
     :string (if (string? object)
@@ -264,50 +139,9 @@
     :ref object                                             ;; will have already been conformed
     :tag object                                             ;; will have already been conformed
     ;; else
-    (fspec/type-check object type)                          ;; TODO - type-check creates an atom to hold errors, we really just need to throw exception if error exists
+    ;; TODO - type-check creates an atom to hold errors, we really just need to throw exception if error exists
+    (fspec/type-check object type)
     ))
-
-(defn execute-tx-fn
-  "Returns a core async channel with response"
-  [tx-fn _id pred-info {:keys [auth db instant fuel] :as tx-state}]
-  (dbfunctions/execute-tx-fn db auth nil _id (pred-info :id) (:fn-str tx-fn) fuel instant))
-
-
-(defn new-tag
-  [tag-name tx-state]
-  (to-tempid tag-name tx-state))
-
-
-(defn generate-new-tag
-  [tag {:keys [tags db] :as tx-state}]
-  (to-tempid tag tx-state))
-
-(defn resolve-tag
-  "Returns the subject id of the tag if it exists, or a tempid for a new tag."
-  [tag pred-info {:keys [tags db] :as tx-state}]
-  (go-try
-    (let [pred-name (or (pred-info :name)
-                        (throw (ex-info (str "Trying to resolve predicate name for tag resolution but name is unknown for pred: " (pred-info :id))
-                                        {:status 400
-                                         :error  :db/invalid-tx
-                                         :tags   tag})))
-          tag-name  (if (.contains tag "/") tag (str pred-name ":" tag))
-          resolved  (-> (get @tags tag) (or (when-let [tag-sid (<? (dbproto/-tag-id db tag-name))]
-                                              (swap! tags assoc tag-name tag-sid)
-                                              tag-sid)))]
-
-      (cond
-        ;; don't generate new tags for :restrictTag
-        (and (pred-info :restrictTag)
-             (or (nil? resolved) (TempId? resolved)))
-        (throw (ex-info (str tag " is not a valid tag. The restrictTag property for: " pred-name " is true. Therefore, a tag with the id " pred-name ":" tag " must already exist.")
-                        {:status 400
-                         :error  :db/invalid-tx
-                         :tags   tag}))
-
-        (nil? resolved) (to-tag-tempid tag-name tx-state)
-
-        :else resolved))))
 
 (defn register-unique
   "Registers unique value in the tx-state and return true if successful.
@@ -330,55 +164,76 @@
   resolve it to a different subject!)
 
   If error is not thrown, returns the provided object argument."
-  [object-ch _id pred-info {:keys [db] :as tx-state}]
+  [object-ch _id pred-info {:keys [db t] :as tx-state}]
   (go-try
-    (log/warn "IN UNIQE!")
     (let [object       (<? object-ch)
           pred-id      (pred-info :id)
           ;; create a two-tuple of [object-value async-chan-with-found-subjects]
           ;; to iterate over. Kicks off queries (if multi) in parallel.
           obj+subj-chs (->> (if (pred-info :multi) object [object])
                             (map #(vector % (query-range/index-range db :post = [pred-id %]))))]
+      ;; use a loop here so we can use async to full extent
       (loop [[[obj subject-ch] & r] obj+subj-chs]
         (if-not obj
           ;; finished, return original object - no errors
           object
           ;; check out next ident
-          (let [subject-id (some-> (<? subject-ch)
-                                   ^Flake (first)
-                                   (.-s))]
+          (let [existing-flake ^Flake (first (<? subject-ch))]
             (when (false? (register-unique [pred-id obj] tx-state))
               (throw (ex-info (str "Unique predicate " (pred-info :name) " was used more than once "
                                    "in the transaction with the value of: " object ".")
                               {:status 400 :error :db/invalid-tx})))
-            ;; either nil subject-id, or doesn't match _id ... need to see if upsertable
-            (when (not= subject-id _id)
-              (if (and (pred-info :upsert) (TempId? _id))
-                (set-tempid _id subject-id tx-state)        ;; will throw if tempid was already set to a different subject
-                ;; not upsertable, throw/exit
-                (throw (ex-info (str "Unique predicate " (pred-info :name) " with value: "
-                                     object " matched an existing subject: " subject-id ".")
-                                {:status 400 :error :db/invalid-tx}))))
-            (recur r)))))))
+            (cond
+              ;; no matching existing flake, move on
+              (nil? existing-flake) (recur r)
+
+              ;; lookup subject matches subject, will end up ignoring insert downstream unless :retractDuplicates is true
+              (= (.-s existing-flake) _id) (recur r)
+
+              ;; found existing subject and tempid, so set tempid value (or throw if already set to different subject)
+              (and (tempid/TempId? _id) (pred-info :upsert))
+              (do
+                (tempid/set _id (.-s existing-flake) tx-state) ;; will throw if tempid was already set to a different subject
+                (recur r))
+
+              ;; tempid, but not upsert - throw
+              (tempid/TempId? _id)
+              (throw (ex-info (str "Unique predicate " (pred-info :name) " with value: "
+                                   object " matched an existing subject: " (.-s existing-flake) ".")
+                              {:status 400 :error :db/invalid-tx :tempid _id}))
+
+              ;; not a tempid, but subjects don't match
+              ;; this can be OK assuming a different txi is retracting the existing flake
+              ;; register a validating fn for post-processing to check this and throw if not the case
+              (not= (.-s existing-flake) _id)
+              (let [validating-fn (fn [{:keys [flakes] :as tx-state}]
+                                    (let [check-flake (flake/flip-flake existing-flake t)
+                                          retracted?  (contains? @flakes check-flake)]
+                                      (when-not retracted?
+                                        (throw (ex-info (str "Unique predicate " (pred-info :name) " with value: "
+                                                             object " matched an existing subject: " (.-s existing-flake) ".")
+                                                        {:status 400 :error :db/invalid-tx :tempid _id})))))]
+                (register-validate-fn validating-fn false tx-state)
+                (recur r)))))))))
 
 (defn resolve-object-item
   "Resolves object into its final state so can be used for consistent comparisons with existing data."
   [object _id pred-info tx-state]
   (go-try
     (let [type    (pred-info :type)
-          object* (if (tx-fn? object)                       ;; should only happen for multi-cardinality objects
-                    (<? (execute-tx-fn object _id pred-info tx-state))
+          object* (if (txfunction/tx-fn? object)            ;; should only happen for multi-cardinality objects
+                    (<? (txfunction/execute object _id pred-info tx-state))
                     object)]
       (cond
         (nil? object*) (throw (ex-info (str "Multi-cardinality values cannot be null/nil: " (pred-info :name))
                                        {:status 400 :error :db/invalid-tx}))
 
         (= :ref type) (cond
-                        (TempId? object*) object*
-                        (string? object*) (use-tempid object* tx-state)
+                        (tempid/TempId? object*) object*
+                        (string? object*) (tempid/use object* tx-state)
                         (util/pred-ident? object*) (<? (resolve-ident-strict object* tx-state)))
 
-        (= :tag type) (<? (resolve-tag object* pred-info tx-state))
+        (= :tag type) (<? (tags/resolve object* pred-info tx-state))
 
         :else (conform-object-value object* type)))))
 
@@ -388,63 +243,110 @@
   (let [multi? (pred-info :multi)]
     (cond-> object
             (nil? object) (async/go ::delete)
-            (tx-fn? object) (execute-tx-fn _id pred-info tx-state)
+            (txfunction/tx-fn? object) (txfunction/execute _id pred-info tx-state)
             (not multi?) (resolve-object-item _id pred-info tx-state)
             multi? (->> (mapv #(resolve-object-item % _id pred-info tx-state))
                         async/merge
-                        (async/into [])))))
+                        (async/into []))
+            (pred-info :unique) (resolve-unique _id pred-info tx-state))))
+
+(defn add-flake-to-txi
+  "Used to add one or more proposed flakes to either temp-flakes or lookup-flakes"
+  [txi [s p o t]]
+  (let [flake (flake/->Flake s p o t true nil)]
+    (if (or (tempid/TempId? s) (tempid/TempId? o))
+      (update txi :_temp-flakes conj flake)
+      (update txi :_lookup-flakes conj flake))))
+
+
+(defn add-singleton-flake
+  "Adds a new final flake, new-flake. A retract-flake (if not nil)
+  is a matching flake in the existing db (i.e. a single-cardinality
+  flake must retract an existing single-cardinality value if it already
+  exists).
+
+  Performs some logic to determine if the new flake should get added at
+  all (i.e. if retract-flake is identical to the new flake)."
+  [flakes ^Flake new-flake ^Flake retract-flake pred-info]
+  (cond
+    (nil? retract-flake)
+    (conj flakes new-flake)
+
+    ;; an existing flake is identical to this one, ignore unless :retractDuplicates is true
+    (= (.-o new-flake) (.-o retract-flake))
+    (if (pred-info :retractDuplicates)
+      (conj flakes new-flake retract-flake)
+      flakes)
+
+    :else
+    (conj flakes new-flake retract-flake)))
+
 
 (defn generate-statements
-  [{:keys [_id _action _collection] :as txi} {:keys [db t] :as tx-state}]
+  "Returns processed flakes into one of 3 buckets:
+  - _final-flakes - Final, no need for additional processing
+  - _temp-flakes - Single-cardinality flakes using a tempid. Must still resolve tempid and
+                   if the tempid is resolved via a ':unique true' predicate
+                   need to look up and retract any existing flakes with same subject+predicate
+  - _temp-multi-flakes - multi-flakes that need permanent ids yet, but then act like _multi-flakes"
+  [{:keys [_id _action _meta] :as txi} {:keys [db t] :as tx-state}]
   (go-try
-    (let [_p-o-pairs (dissoc txi :_id :_action :_meta :_collection)
-          tempid?    (TempId? _id)
-          action     (resolve-action _action (empty? _p-o-pairs) tempid?)]
-      (log/info "action:" action)
+    (let [_p-o-pairs (dissoc txi :_id :_action :_meta)
+          _id*       (cond
+                       (util/temp-ident? _id) (tempid/new (:_id txi) tx-state)
+                       (util/pred-ident? _id) (<? (resolve-ident-strict _id tx-state))
+                       :else _id)
+          tempid?    (tempid/TempId? _id*)
+          action     (resolve-action _action (empty? _p-o-pairs) tempid?)
+          collection (resolve-collection-name _id* tx-state)]
       (if (and (= :delete action) (empty? _p-o-pairs))
-        [(<? (retract-subject _id tx-state)) nil]
-        (doseq [[pred obj] _p-o-pairs]
-          (let [pred-info (predicate-details pred _collection db)
-                pid       (pred-info :id)
-                obj*      (<? (resolve-object obj _id pred-info tx-state))]
-            (log/info "obj*:" pred (pr-str obj*))
-            (cond
-              ;; delete should have no tempids, so can register the final flakes in tx-state
-              (= :delete action) (register-flakes tx-state
-                                                  (if (pred-info :multi)
-                                                    (<? (retract-multi _id pid obj* tx-state))
-                                                    (<? (retract-flake _id pid obj* tx-state))))
-              (= ::delete obj*) (register-flakes tx-state
-                                                 (<? (retract-flake _id pid nil tx-state)))
+        {:_final-flakes (<? (tx-retract/subject _id* tx-state))}
+        (loop [acc {}
+               [[pred obj] & r] _p-o-pairs]
+          (if (nil? pred)                                   ;; finished
+            acc
+            (let [pred-info (predicate-details pred collection db)
+                  pid       (pred-info :id)
+                  obj*      (<? (resolve-object obj _id* pred-info tx-state))]
+              (cond
+                ;; delete should have no tempids, so can register the final flakes in tx-state
+                (= :delete action)
+                (-> acc
+                    (update :_final-flakes into (if (pred-info :multi)
+                                                  (<? (tx-retract/multi _id* pid obj* tx-state))
+                                                  (<? (tx-retract/flake _id* pid obj* tx-state))))
+                    (recur r))
 
-              ;; multi could have a tempid as one of the values, need to look at each independently
-              (pred-info :multi) (doseq [o obj*]
-                                   (if (or tempid? (TempId? o))
-                                     (register-temp-flake tx-state (flake/->Flake _id pid obj t true nil))
-                                     (register-flake tx-state (flake/->Flake _id pid obj t true nil))))
+                ;; multi could have a tempid as one of the values, need to look at each independently
+                (pred-info :multi)
+                (let [acc** (loop [acc* acc
+                                   [o & r] obj*]
+                              (if (nil? o)
+                                acc*
+                                (let [new-flake (flake/->Flake _id* pid o t true nil)]
+                                  (if (or tempid? (tempid/TempId? o))
+                                    (-> acc*
+                                        (update :_temp-multi-flakes conj new-flake)
+                                        (recur r))
+                                    ;; multi-cardinality we only care if a flake matches exactly
+                                    (let [retract-flake (first (<? (tx-retract/flake _id* pid obj tx-state)))
+                                          final-flakes  (add-singleton-flake (:_final-flakes acc*) new-flake retract-flake pred-info)]
+                                      (recur (assoc acc* :_final-flakes final-flakes) r))))))]
+                  (recur acc** r))
 
-              :else (let [new-flake (flake/->Flake _id pid obj t true nil)]
-                      (if (or tempid? (TempId? obj*))
-                        (register-temp-flake tx-state new-flake)
-                        (do                                 ;; need to add flake and retract existing flake
-                          (register-flake tx-state new-flake)
-                          (->> (<? (retract-flake _id pid nil tx-state))
-                               (register-flakes tx-state))))))))))))
+                (or tempid? (tempid/TempId? obj*))
+                (-> acc
+                    (update :_temp-flakes conj (flake/->Flake _id* pid obj t true nil))
+                    (recur r))
 
-
-(defn assign-tempids
-  [txi tx-state]
-  (if (util/temp-ident? (:_id txi))
-    (assoc txi :_id (to-tempid (:_id txi) tx-state))
-    txi))
-
-(defn resolve-subject
-  [{:keys [_id] :as txi} tx-state]
-  (go-try
-    (if (util/pred-ident? _id)
-      (assoc txi :_id
-                 (<? (resolve-ident-strict _id tx-state)))
-      txi)))
+                ;; single-cardinality, and no tempid - we can make final and also do the lookup here
+                ;; for a retraction flake, if present
+                :else
+                (let [new-flake     (flake/->Flake _id* pid obj t true nil)
+                      ;; need to see if an existing flake exists that needs to get retracted
+                      retract-flake (first (<? (tx-retract/flake _id* pid nil tx-state)))
+                      final-flakes  (add-singleton-flake (:_final-flakes acc) new-flake retract-flake pred-info)]
+                  (recur (assoc acc :_final-flakes final-flakes) r))))))))))
 
 
 (defn- extract-children*
@@ -453,7 +355,7 @@
   If none found, will return [txi nil] where txi will be unaltered."
   [txi tx-state]
   (let [txi+tempid (if (util/temp-ident? (:_id txi))
-                     (assoc txi :_id (to-tempid (:_id txi) tx-state))
+                     (assoc txi :_id (tempid/new (:_id txi) tx-state))
                      txi)]
     (reduce-kv
       (fn [acc k v]
@@ -461,7 +363,7 @@
           (string? v)
           (if (dbfunctions/tx-fn? v)
             (let [[txi+tempid* found-txis] acc]
-              [(assoc txi+tempid* k (->TxFunction v)) found-txis])
+              [(assoc txi+tempid* k (txfunction/->TxFunction v)) found-txis])
             acc)
 
           (or (txi-list? v) (txi? v))
@@ -491,107 +393,287 @@
 
 
 (defn ->tx-state
-  [db-before t auth block-instant]
-  {:db          db-before
-   :db-root     (dbproto/-rootdb db-before)
-   :auth        auth
-   :t           t
-   :instant     block-instant
-   :tempids     (atom {})
-   :fuel        (atom {:stack   []
-                       :credits 1000000
-                       :spent   0})
-   :tags        (atom {:tag->sid {}
-                       :new      []})
-   :idents      (atom {})                                   ;; cache of resolved identities
-   :uniques     (atom #{})                                  ;; holds all unique predicate values found in tx to validate they are not duplicated
-   :flakes      (atom (flake/sorted-set-by flake/cmp-flakes-spot-novelty)) ;; final flakes
-   :temp-flakes (atom #{})
+  [db-before t auth authority block-instant {:keys [txid cmd sig nonce] :as tx-map}]
+  {:db            db-before
+   :db-root       (dbproto/-rootdb db-before)
+   :db-after      db-before                                 ;; store updated db here
+   :auth          auth
+   :authority     authority
+   :t             t
+   :instant       block-instant
+   :txid          txid
+   :tx-string     cmd
+   :signature     sig
+   :nonce         nonce
+   ;; hold map of all tempids to their permanent ids. After initial processing will use this to fill
+   ;; all tempids with the permanent ids.
+   :tempids       (atom {})
+   ;; if a tempid resolves to existing subject via :upsert predicate, set it here. tempids don't need
+   ;; to check for existing duplicate values, but if a tempid resolves via upsert, we need to check it
+   :upserts       (atom nil)
+   :fuel          (atom {:stack   []
+                         :credits 1000000
+                         :spent   0})
+
+   ;; idents (two-tuples of unique predicate + value) may be used multiple times in same tx
+   ;; we keep the ones we've already resolved here as a cache
+   :idents        (atom {})                                 ;; cache of resolved identities
+   ;; Unique predicate + value used in transaction kept here, to ensure the same unique is not used
+   ;; multiple times within the transaction
+   :uniques       (atom #{})
+   ;; Some predicates may require extra validation after initial processing, we register functions
+   ;; here for that purpose
+   :validate-fn   (atom {:async nil :sync nil})             ;; put two flavors of validating functions in - async and sync
+
+   ;; we may generate new tags as part of the transaction. Holds those new tags, but also a cache
+   ;; of tag lookups to speed transaction by avoiding full lookups of the same tag multiple times in same tx
+   :tags          (atom nil)
+   ;; as data is getting processed, all schema flakes end up in this bucket to allow
+   ;; for additional validation, and then processing prior to the other flakes.
+   :schema-flakes (atom nil)
    })
 
 
-(defn tempids->permanent-ids
-  [{:keys [db]}]
+(defn generate-permanent-ids
+  [{:keys [db tempids upserts db-after t] :as tx-state} tx]
+  (let [ecount (assoc (:ecount db) -1 t)]                   ;; make sure to set current _tx ecount to 't' value, even if no tempids in transaction
+    (loop [[[tempid resolved-id] & r] @tempids
+           tempids* @tempids
+           upserts* #{}
+           ecount*  ecount]
+      (if (nil? tempid)                                     ;; finished
+        (do (reset! tempids tempids*)
+            (when-not (empty? upserts*)
+              (reset! upserts upserts*))
+            ;; return tx-state, don't need to update ecount in db-after, as dbproto/-with will update it
+            tx-state)
+        (if (nil? resolved-id)
+          (let [cid          (dbproto/-c-prop db-after :id (:collection tempid))
+                next-id      (-> ecount* (get cid) inc)
+                resolved-id* (if (= -1 cid)                 ; _tx collection has special handling as we decrement. Current value held in 't'
+                               t                            ;; note this was also set at the top of this function to the same value, this is redundant
+                               (flake/->sid cid next-id))
+                ecount**     (assoc ecount cid next-id)]
+            (recur r (assoc tempids* tempid resolved-id*) upserts ecount**))
+          (recur r tempids* (conj upserts* resolved-id) ecount*))))
+    tx))
 
+(defn resolve-temp-flakes
+  [temp-flakes multi? {:keys [db tempids upserts] :as tx-state}]
+  (go-try
+    (loop [[^Flake tf & r] temp-flakes
+           flakes []]
+      (if (nil? tf)
+        flakes
+        (let [s     (.-s tf)
+              o     (.-o tf)
+              flake (cond-> tf
+                            (tempid/TempId? s) (assoc :s (get @tempids s))
+                            (tempid/TempId? o) (assoc :o (get @tempids o)))]
+          (if (contains? @upserts s)                        ;; means tempid wasn't really a new subject but resolved to existing one somewhere in tx
+            (if-let [retract-flake (first (<? (tx-retract/flake (.-s flake) (.-p tf) (if multi? (.-o flake) nil) tx-state)))]
+              ;; if an existing matching flake exists, depending on equality and :retractDuplicates, may or may not
+              ;; retract it, or might not even add the current flake
+              (recur r (add-singleton-flake flakes flake retract-flake (fn [property] (dbproto/-p-prop db property (.-p flake)))))
+              ;; no existing matching flake exists, always add
+              (recur r (conj flakes flake)))
+            (recur r (conj flakes flake))))))))
+
+
+(defn special-subject?
+  "Returns true if flake is considered a special subject, meaning it requires
+  some extra validation to allow through."
+  [^Flake flake]
+  ;; this will capture any subject that is a collection, predicate, or tx-meta (< 0)
+  (<= (.-s flake) schema-util/schema-sid-end))
+
+;; TODO - predicate changes are handled at end, but what about validating
+;; TODO - tx-functions and other items
+(defn special-subject-handling
+  "Handles additional validation or special treatment of mostly system collection subjects.
+  All flakes must be of the same subject.
+
+  Want to use this sparingly, ideally only validating flakes that we know need it."
+  [tx-state flakes]
+  (let [fflake (first flakes)]
+    (cond
+      (schema-util/is-tx-meta-flake? fflake)
+      (do
+        (doseq [^Flake flake flakes]
+          (when
+            (tx-meta/system-predicates (.-p flake))
+            (throw (ex-info (str "Attempt to write a Fluree reserved predicate with id: " (.-p flake))
+                            {:error  :db/invalid-transaction
+                             :status 400}))))
+        flakes)
+
+      (schema-util/is-schema-flake? fflake)
+      (do (swap! (:schema-flakes tx-state) into flakes)
+          ;; don't return any schema flakes into mix, they will be added in downstream
+          nil)
+
+      :else flakes)))
+
+
+(defn finalize-flakes
+  [tx-state tx]
+  (go-try
+    (loop [[statements & r] tx
+           flakes (flake/sorted-set-by flake/cmp-flakes-spot-novelty)]
+      (if (nil? statements)
+        flakes
+        (let [{:keys [_temp-multi-flakes _temp-flakes _final-flakes]} statements
+              temp       (when _temp-flakes
+                           (<? (resolve-temp-flakes _temp-flakes false tx-state)))
+              temp-multi (when _temp-multi-flakes
+                           (<? (resolve-temp-flakes _temp-multi-flakes true tx-state)))
+              new-flakes (concat _final-flakes temp temp-multi)]
+          (if (special-subject? (first new-flakes))
+            (->> new-flakes
+                 (special-subject-handling tx-state)
+                 (into flakes)
+                 (recur r))
+            (recur r (into flakes new-flakes))))))))
+
+
+(defn validating-fns
+  [tx-state flakes]
+  (log/warn "validating-fns start: " flakes)
+  flakes
 
   )
 
-(defn process-txi
-  [txi tx-state]
-  (go-try
-    (-> txi
-        (assign-tempids tx-state)
-        (#(do (println "tempids: " %) %))
-        (resolve-subject tx-state)
-        (<?)
-        (#(do (println "resolve-subject: " %) %))
-        (resolve-collection-name tx-state)
-        (#(do (println "resolve-collection-name: " %) %))
-        (generate-statements tx-state)
-        (<?)
-        (tempids->permanent-ids)
-
-        )))
-
 (defn do-transact
-  [db-before tx-map tx-permissions auth_id t block-instant]
+  [tx-state tx]
   (go-try
-    (let [{:keys [tx-meta rest-tx sig txid authority auth]} tx-map
-          tx-state (->tx-state db-before t auth block-instant) ;; holds state data for entire transaction
+    (let [
+          ;{:keys [tx-meta rest-tx sig txid authority auth]} tx-map
+          ;tx-state (->tx-state db-before t auth block-instant) ;; holds state data for entire transaction
           ]
-      (->> rest-tx
+      (->> tx
            (mapcat #(extract-children % tx-state))
            ;; TODO - place into async pipeline
-           (map #(process-txi % tx-state))
-           )
+           (map #(generate-statements % tx-state))
+           async/merge
+           (async/into [])
+           <?
+           (generate-permanent-ids tx-state)
+           (finalize-flakes tx-state)
+           <?
+           ;(validating-fns tx-state)
+           ))))
 
-      ))
+
+(defn tempid-return-map
+  "Creates a map of original user tempid strings to the resolved value."
+  [{:keys [tempids] :as tx-state}]
+  (reduce-kv (fn [acc tempid subject-id]
+               (assoc acc (:user-string tempid) subject-id))
+             {} @tempids))
+
+(defn validate-db
+  "Runs validations on permissions, attempts to do as much as possible in parallel."
+  [candidate-db new-flakes tx-permissions {:keys [db tempids schema-flakes instant auth] :as tx-state}]
+  (go-try
+    (let [coll-spec-valid?-ch (tx-util/validate-collection-spec candidate-db new-flakes auth instant)
+          pred-spec-valid?-ch (tx-util/validate-predicate-spec candidate-db new-flakes auth instant)
+          valid-perm?-ch      (tx-util/validate-permissions db candidate-db new-flakes tx-permissions)]
+      (when @schema-flakes
+        ;; verify all schema changes are valid
+        (<? (schema/validate-schema-change candidate-db @tempids @schema-flakes false)))
+      (<? coll-spec-valid?-ch)
+      (<? pred-spec-valid?-ch)
+      (<? valid-perm?-ch)
+
+      ;; return original db provided validation exception not thrown
+      candidate-db)))
+
+(defn build-transaction
+  [_ db cmd-data next-t block-instant]
+  (go-try
+    (let [tx-map           (tx-util/validate-command (:command cmd-data))
+          _                (when (not-empty (:deps tx-map)) ;; transaction has dependencies listed, verify they are satisfied
+                             (or (<? (tx-util/deps-succeeded? db (:deps tx-map)))
+                                 (throw (ex-info (str "One or more of the dependencies for this transaction failed: " (:deps tx-map))
+                                                 {:status 403 :error :db/invalid-auth}))))
+          {:keys [auth authority txid]} tx-map
+          {:keys [auth-id authority-id tx-permissions]} (<? (tx-permissions/resolve db auth authority))
+          db-before        (assoc db :permissions tx-permissions)
+          tx-state         (->tx-state db-before next-t auth-id authority-id block-instant tx-map)
+          tx               (case (keyword (:type tx-map))   ;; command type is either :tx or :new-db
+                             :tx (:tx tx-map)
+                             :new-db (tx-util/create-new-db-tx tx-map))
+          tx-flakes        (<? (do-transact tx-state tx))
+          tx-meta-flakes   (tx-meta/tx-meta-flakes tx-state nil)
+
+          schema-flakes    @(:schema-flakes tx-state)
+          all-flakes       (cond-> (into tx-flakes tx-meta-flakes)
+                                   schema-flakes (into schema-flakes)
+                                   @(:tags tx-state) (into (tags/create-flakes tx-state)))
+
+          ;; kick off hash process in the background, it can take a while
+          hash-flake       (future (tx-meta/generate-hash-flake all-flakes tx-state))
+          fast-forward-db? (:tt-id db-before)
+          ;; final db that can be used for any final testing/spec validation
+          db-after         (-> (if fast-forward-db?
+                                 (<? (dbproto/-forward-time-travel db-before all-flakes))
+                                 (<? (dbproto/-with-t db-before all-flakes)))
+                               dbproto/-rootdb
+                               tx-util/make-candidate-db
+                               (tx-meta/add-tx-hash-flake @hash-flake))
+          tx-bytes         (- (get-in db-after [:stats :size]) (get-in db-before [:stats :size]))]
+
+      ;; run all validations
+      (<? (validate-db db-after all-flakes tx-permissions tx-state))
+
+      ;; note here that db-after does NOT contain the tx-hash flake. The hash generation takes time, so is done in the background
+      ;; This should not matter as
+      {:t            next-t
+       :hash         (.-o @hash-flake)
+       :db-after     db-after
+       :flakes       (conj all-flakes @hash-flake)
+       :tempids      (tempid-return-map tx-state)
+       :bytes        tx-bytes
+       :fuel         (+ (:spent @(:fuel tx-state)) tx-bytes (count all-flakes) 1)
+       :status       200
+       :txid         txid
+       :auth         auth
+       :authority    authority
+       :type         (keyword (:type tx-map))
+       :remove-preds (when schema-flakes
+                       (schema-util/remove-from-post-preds schema-flakes))})))
+
+(comment
+  (def conn (:conn user/system))
+  (def db (async/<!! (fluree.db.api/db conn "prefix/a")))
+  (def last-resp nil)
+
+  (time (let [test-tx (fluree.db.api/tx->command "prefix/a"
+                                                 [{:_id   ["movie/title" "Gran Torino"]
+                                                   :title "Gran Torino2"}]
+                                                 "c457227f6f7ee94c3b2a32fbf055b33df42578d34047c14b2c9fe64273dce957")
+              res     (-> (build-transaction nil db {:command test-tx} -9 (java.time.Instant/now))
+                          (async/<!!))]
+          (alter-var-root #'fluree.db.ledger.transact.json/last-resp (constantly res))
+          res))
+
+  (def test-tx (fluree.db.api/tx->command "prefix/a"
+                                          [{:_id   ["movie/title" "Gran Torino"]
+                                            :title "Gran Torino2"}]
+                                          "c457227f6f7ee94c3b2a32fbf055b33df42578d34047c14b2c9fe64273dce957"))
+  (time (async/<!! (build-transaction nil db {:command test-tx} -9 (java.time.Instant/now))))
+
+  (-> last-resp
+      :db-after
+      (async/go)
+      (fluree.db.api/query {:select [:*] :from "movie"})
+      (deref))
 
   )
 
 
 
 (comment
-
-  (def mydb (bootstrap/testing-db (:conn user/system) "test/db1"))
-  (def mydb2 (dbproto/-with (async/<!! mydb)
-                            (-> (async/<!! mydb) :block inc)
-                            [(flake/->Flake 2000)]
-                            ))
-
-
-
-  (-> mydb
-      async/<!!)
-
-
-  (def conn (:conn user/system))
-  conn
-  (def db (<?? (fluree.db.api/db conn "prefix/a")))
-
-
-
-  (def tx-state (->tx-state db 42 123456 (java.time.Instant/now)))
-
-
-  (-> (process-txi {:_id   ["movie/title" "Gran Torino"]
-                    :title "Gran Torino2"}
-                   tx-state)
-      async/<!!)
-
-  (-> (process-txi {:_id   "movie"
-                    :title "BP Test"}
-                   tx-state)
-      async/<!!)
-
-  (-> tx-state)
-
-
-
-  (-> (do-transact db {:rest-tx sample-tx} nil nil 42 (java.time.Instant/now))
-      async/<!!)
-
-
 
   (require 'clojure.core.async :refer :all)
 
@@ -618,21 +700,5 @@
 
   )
 
-(comment
-
-  (sequence (dedupe) [:a :b :b :c :c :c :d])
-
-  (defn temp-async [v]
-    (async/go
-      (async/timeout 1000)
-      (ex-info "MY ERROR" {})))
-
-  (-> (go-try
-        (cond-> 42
-                true? (-> temp-async <?)))
-      (async/<!!)
-      (#(if (instance? Throwable %) :error %)))
-
-  )
 
 
