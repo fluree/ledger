@@ -377,7 +377,7 @@
 
     (is (= #{["fluree" "api"] ["fluree" "querytransact"]
              ["fluree" "chat"] ["fluree" "voting"] ["fluree" "crypto"]
-             ["test" "three"] ["fluree" "supplychain"]} (set dbBody)))))
+             ["test" "three"] ["fluree" "supplychain"] ["fluree" "todo"]} (set dbBody)))))
 
 
 ;; ENDPOINT TEST: /transact
