@@ -3,7 +3,7 @@
   <modelVersion>4.0.0</modelVersion>
   <groupId>com.fluree</groupId>
   <artifactId>ledger</artifactId>
-  <version>1.0.0-beta3</version>
+  <version>1.0.0-beta4</version>
   <name>ledger</name>
   <dependencies>
     <dependency>
