@@ -537,11 +537,11 @@
                                                    {:status 400
                                                     :error  :db/invalid-configuration})))
         private-keys             (cond-> []
-                                         (:fdb-group-private-keys settings)
-                                         (into (str/split (:fdb-group-private-keys settings) #","))
+                                         (:fdb-group-private-key settings)
+                                         (into (str/split (:fdb-group-private-key settings) #","))
 
-                                         (:fdb-group-private-keys-file settings)
-                                         (into (->> (slurp (:fdb-group-private-keys-file settings))
+                                         (:fdb-group-private-key-file settings)
+                                         (into (->> (slurp (:fdb-group-private-key-file settings))
                                                     (str/split-lines)
                                                     (filter not-empty)
                                                     (reduce #(if (str/includes? %2 ",")

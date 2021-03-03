@@ -5,14 +5,14 @@
         <!-- encoder defaults to ch.qos.logback.classic.encoder.PatternLayoutEncoder -->
         <encoder>
             <!-- ensure logs including exceptions are a single line -->
-            <pattern>%-5level %logger - %message - %replace(%xException){"\n", "\\n"}%nopex%n</pattern>
+            <pattern>%date %-5level %logger{24} - %message - %replace(%xException){"\n", "\\n"}%nopex%n</pattern>
         </encoder>
     </appender>
     <appender name="STDOUT-COLOR" class="ch.qos.logback.core.ConsoleAppender">
         <!-- encoder defaults to ch.qos.logback.classic.encoder.PatternLayoutEncoder -->
         <encoder>
             <!-- ensure logs including exceptions are a single line -->
-            <pattern>%highlight(%-5level) %logger - %message - %replace(%xException){"\n", "\\n"}%nopex%n</pattern>
+            <pattern>%date %highlight(%-5level) %white(%logger{24}) - %message - %replace(%xException){"\n", "\\n"}%nopex%n</pattern>
         </encoder>
     </appender>
 
