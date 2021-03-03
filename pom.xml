@@ -79,7 +79,7 @@
     <dependency>
       <groupId>com.fluree</groupId>
       <artifactId>db</artifactId>
-      <version>1.0.0-rc10</version>
+      <version>1.0.0-rc12</version>
     </dependency>
   </dependencies>
   <build>
