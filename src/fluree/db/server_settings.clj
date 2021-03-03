@@ -540,8 +540,8 @@
                                          (:fdb-group-private-key settings)
                                          (into (str/split (:fdb-group-private-key settings) #","))
 
-                                         (:fdb-group-private-key-file settings)
-                                         (into (->> (slurp (:fdb-group-private-key-file settings))
+                                         :else
+                                         (into (->> (get-or-generate-tx-private-key settings)
                                                     (str/split-lines)
                                                     (filter not-empty)
                                                     (reduce #(if (str/includes? %2 ",")
