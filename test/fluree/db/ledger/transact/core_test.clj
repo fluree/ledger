@@ -1,6 +1,14 @@
 (ns fluree.db.ledger.transact.core-test
   (:require [clojure.test :refer :all]))
 
+;; test these things:
+;; - if unique predicate resolves to a different existing subject, allow transaction to happen only if a different part of tx retracts existing flake
+;; - tempids - add correctly, multiple identical new create just one flake
+;; - incoming transaction cannot have a negative value? - if we allow, need to validate for prior tx, and doesn't overwrite hash, etc.
+;; dependent transactions look like it may not work correct - revisit
+;; check if a new tag is used and we (a) properly auto-generate tag if needed and (b) don't auto-generate it if the transaction has the new tag as a transaction item
+;; check transaction expirations work
+;; check duplicate transactions (txid) won't work
 
 (deftest sql-query-parser-test
   (testing "IRI support"
