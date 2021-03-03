@@ -59,6 +59,14 @@
         (doseq [file to-delete]
           (<? (gc/delete-file-raft conn file)))))))
 
+(defn delete-lucene-indexes
+  "Deletes the full-text (lucene) indexes for a ledger."
+  [conn network dbid]
+  (go-try
+    (let [indexer       (-> conn :full-text/indexer :process)
+          db            (<? (session/db conn (str network "/" dbid) nil))]
+      (<? (indexer {:action :forget, :db db})))))
+
 (defn process
   "Deletes a current DB, deletes block files."
   [conn network dbid]
@@ -72,6 +80,9 @@
 
       ;; do a full garbage collection first. If nothing exists to gc, will throw
       (gc/process conn network dbid)
+
+      ;; delete full-text indexes
+      (<? (delete-lucene-indexes conn network dbid))
 
       ;; need to delete all index segments for the current index.
       (<? (delete-db-indexes conn network dbid idx-point))
