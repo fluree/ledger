@@ -628,6 +628,7 @@
       ;; This should not matter as
       {:t            next-t
        :hash         (.-o @hash-flake)
+       :db-before    db-before
        :db-after     db-after
        :flakes       (conj all-flakes @hash-flake)
        :tempids      (tempid-return-map tx-state)
