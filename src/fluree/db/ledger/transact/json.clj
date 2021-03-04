@@ -447,13 +447,12 @@
             ;; return tx-state, don't need to update ecount in db-after, as dbproto/-with will update it
             tx-state)
         (if (nil? resolved-id)
-          (let [cid          (dbproto/-c-prop db-after :id (:collection tempid))
-                next-id      (-> ecount* (get cid) inc)
-                resolved-id* (if (= -1 cid)                 ; _tx collection has special handling as we decrement. Current value held in 't'
-                               t                            ;; note this was also set at the top of this function to the same value, this is redundant
-                               (flake/->sid cid next-id))
-                ecount**     (assoc ecount cid next-id)]
-            (recur r (assoc tempids* tempid resolved-id*) upserts ecount**))
+          (let [cid      (dbproto/-c-prop db-after :id (:collection tempid))
+                next-id  (if (= -1 cid)
+                           t                                ; _tx collection has special handling as we decrement. Current value held in 't'
+                           (-> ecount* (get cid) inc))
+                ecount** (assoc ecount cid next-id)]
+            (recur r (assoc tempids* tempid next-id) upserts* ecount**))
           (recur r tempids* (conj upserts* resolved-id) ecount*))))
     tx))
 
