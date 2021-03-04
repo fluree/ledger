@@ -17,9 +17,8 @@
             [fluree.db.ledger.transact.tempid :as tempid]
             [fluree.db.ledger.transact.tags :as tags]
             [fluree.db.ledger.transact.txfunction :as txfunction]
-            [fluree.db.ledger.transact.permissions :as tx-permissions]
-            [fluree.db.ledger.transact.tx-meta :as tx-meta]
-            [fluree.db.dbfunctions.internal :as fdb])
+            [fluree.db.ledger.transact.auth :as tx-auth]
+            [fluree.db.ledger.transact.tx-meta :as tx-meta])
   (:import (fluree.db.flake Flake)))
 
 ;; TODO - add ^:const
@@ -597,7 +596,7 @@
                                  (throw (ex-info (str "One or more of the dependencies for this transaction failed: " (:deps tx-map))
                                                  {:status 403 :error :db/invalid-auth}))))
           {:keys [auth authority txid]} tx-map
-          {:keys [auth-id authority-id tx-permissions]} (<? (tx-permissions/resolve db auth authority))
+          {:keys [auth-id authority-id tx-permissions]} (<? (tx-auth/resolve db auth authority))
           db-before        (assoc db :permissions tx-permissions)
           tx-state         (->tx-state db-before next-t auth-id authority-id block-instant tx-map)
           tx               (case (keyword (:type tx-map))   ;; command type is either :tx or :new-db

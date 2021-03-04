@@ -1,4 +1,4 @@
-(ns fluree.db.ledger.transact.permissions
+(ns fluree.db.ledger.transact.auth
   (:refer-clojure :exclude [resolve])
   (:require [clojure.core.async :as async]
             [fluree.db.util.async :refer [<? <?? go-try merge-into? channel?]]
