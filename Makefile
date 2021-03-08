@@ -50,12 +50,11 @@ deps: deps.edn
 package-lock.json: package.json
 	npm install
 
-node_modules node_modules/%: package.json package-lock.json
+node_modules: package.json package-lock.json
 	npm install && touch $@
 
 resources/adminUI: node_modules
 	ln -nsf ../node_modules/@fluree/admin-ui/build $@
-	cd node_modules/@fluree/admin-ui && npm run build
 
 build:
 	mkdir -p build
