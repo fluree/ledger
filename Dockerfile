@@ -1,4 +1,9 @@
-FROM clojure:tools-deps-1.10.2.774-slim-buster AS builder
+FROM clojure:tools-deps-1.10.2.796-slim-buster AS builder
+
+RUN apt-get update && apt-get install -y curl
+
+RUN curl -sL https://deb.nodesource.com/setup_14.x | bash -
+RUN apt-get update && apt-get install -y nodejs
 
 RUN mkdir -p /usr/src/fluree-ledger
 WORKDIR /usr/src/fluree-ledger
@@ -6,6 +11,9 @@ WORKDIR /usr/src/fluree-ledger
 COPY deps.edn ./
 
 RUN clojure -A:test -P
+
+COPY package.json package-lock.json ./
+RUN npm install
 
 COPY . ./
 
