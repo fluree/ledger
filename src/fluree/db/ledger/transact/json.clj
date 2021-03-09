@@ -18,18 +18,18 @@
             [fluree.db.ledger.transact.tags :as tags]
             [fluree.db.ledger.transact.txfunction :as txfunction]
             [fluree.db.ledger.transact.auth :as tx-auth]
-            [fluree.db.ledger.transact.tx-meta :as tx-meta])
+            [fluree.db.ledger.transact.tx-meta :as tx-meta]
+            [fluree.db.ledger.transact.validation :as tx-validate])
   (:import (fluree.db.flake Flake)))
 
-;; TODO - add ^:const
-(def parallelism 10)
+
+(def ^:const parallelism
+  "Processes this many transaction items in parallel."
+  10)
 
 (defn register-validate-fn
-  [f async? {:keys [validate-fn] :as tx-state}]
-  (swap! validate-fn (fn [f-map]
-                       (if async?
-                         (update f-map :async conj f)
-                         (update f-map :sync conj f)))))
+  [f {:keys [validate-fn] :as tx-state}]
+  (swap! validate-fn update :queue conj f))
 
 (defn- txi?
   "Returns true if a transaction item - must be a map and have _id as one of the keys"
@@ -177,7 +177,7 @@
           ;; finished, return original object - no errors
           object
           ;; check out next ident
-          (let [existing-flake ^Flake (first (<? subject-ch))]
+          (let [^Flake existing-flake (first (<? subject-ch))]
             (when (false? (register-unique [pred-id obj] tx-state))
               (throw (ex-info (str "Unique predicate " (pred-info :name) " was used more than once "
                                    "in the transaction with the value of: " object ".")
@@ -205,14 +205,14 @@
               ;; this can be OK assuming a different txi is retracting the existing flake
               ;; register a validating fn for post-processing to check this and throw if not the case
               (not= (.-s existing-flake) _id)
-              (let [validating-fn (fn [{:keys [flakes] :as tx-state}]
-                                    (let [check-flake (flake/flip-flake existing-flake t)
-                                          retracted?  (contains? @flakes check-flake)]
-                                      (when-not retracted?
-                                        (throw (ex-info (str "Unique predicate " (pred-info :name) " with value: "
-                                                             object " matched an existing subject: " (.-s existing-flake) ".")
-                                                        {:status 400 :error :db/invalid-tx :tempid _id})))))]
-                (register-validate-fn validating-fn false tx-state)
+              (let [validate-subject-retracted (fn [{:keys [flakes] :as tx-state}]
+                                                 (let [check-flake (flake/flip-flake existing-flake t)
+                                                       retracted?  (contains? flakes check-flake)]
+                                                   (when-not retracted?
+                                                     (throw (ex-info (str "Unique predicate " (pred-info :name) " with value: "
+                                                                          object " matched an existing subject: " (.-s existing-flake) ".")
+                                                                     {:status 400 :error :db/invalid-tx :tempid _id})))))]
+                (register-validate-fn validate-subject-retracted tx-state)
                 (recur r)))))))))
 
 (defn resolve-object-item
@@ -299,8 +299,8 @@
           action     (resolve-action _action (empty? _p-o-pairs) tempid?)
           collection (resolve-collection-name _id* tx-state)]
       (if (and (= :delete action) (empty? _p-o-pairs))
-        {:_final-flakes (<? (tx-retract/subject _id* tx-state))}
-        (loop [acc {}
+        (assoc txi :_final-flakes (<? (tx-retract/subject _id* tx-state)))
+        (loop [acc txi
                [[pred obj] & r] _p-o-pairs]
           (if (nil? pred)                                   ;; finished
             acc
@@ -395,7 +395,8 @@
   [db-before t auth authority block-instant {:keys [txid cmd sig nonce] :as tx-map}]
   {:db            db-before
    :db-root       (dbproto/-rootdb db-before)
-   :db-after      db-before                                 ;; store updated db here
+   :db-after      (atom nil)                                ;; store updated db here
+   :flakes        nil                                       ;; holds final list of flakes for tx once complete
    :auth          auth
    :authority     authority
    :t             t
@@ -404,37 +405,39 @@
    :tx-string     cmd
    :signature     sig
    :nonce         nonce
-   ;; hold map of all tempids to their permanent ids. After initial processing will use this to fill
-   ;; all tempids with the permanent ids.
-   :tempids       (atom {})
-   ;; if a tempid resolves to existing subject via :upsert predicate, set it here. tempids don't need
-   ;; to check for existing duplicate values, but if a tempid resolves via upsert, we need to check it
-   :upserts       (atom nil)
    :fuel          (atom {:stack   []
                          :credits 1000000
                          :spent   0})
-
+   ;; hold map of all tempids to their permanent ids. After initial processing will use this to fill
+   ;; all tempids with the permanent ids.
+   :tempids       (atom {})
    ;; idents (two-tuples of unique predicate + value) may be used multiple times in same tx
    ;; we keep the ones we've already resolved here as a cache
-   :idents        (atom {})                                 ;; cache of resolved identities
+   :idents        (atom {})
+   ;; if a tempid resolves to existing subject via :upsert predicate, set it here. tempids don't need
+   ;; to check for existing duplicate values, but if a tempid resolves via upsert, we need to check it
+   :upserts       (atom nil)                                ;; cache of resolved identities
    ;; Unique predicate + value used in transaction kept here, to ensure the same unique is not used
    ;; multiple times within the transaction
    :uniques       (atom #{})
-   ;; Some predicates may require extra validation after initial processing, we register functions
-   ;; here for that purpose
-   :validate-fn   (atom {:async nil :sync nil})             ;; put two flavors of validating functions in - async and sync
 
-   ;; we may generate new tags as part of the transaction. Holds those new tags, but also a cache
-   ;; of tag lookups to speed transaction by avoiding full lookups of the same tag multiple times in same tx
-   :tags          (atom nil)
    ;; as data is getting processed, all schema flakes end up in this bucket to allow
    ;; for additional validation, and then processing prior to the other flakes.
    :schema-flakes (atom nil)
-   })
+   ;; we may generate new tags as part of the transaction. Holds those new tags, but also a cache
+   ;; of tag lookups to speed transaction by avoiding full lookups of the same tag multiple times in same tx
+   :tags          (atom nil)
+
+   ;; Some predicates may require extra validation after initial processing, we register functions
+   ;; here for that purpose, 'cache' holds cached functions that are ready to execute
+   :validate-fn   (atom {:queue   [] :cache {}
+                         ;; need to track respective flakes for predicates (for tx-spec) and subject changes (collection-specs)
+                         :tx-spec nil :c-spec nil})})
 
 
-(defn generate-permanent-ids
-  [{:keys [db tempids upserts db-after t] :as tx-state} tx]
+(defn assign-permanent-ids
+  "Assigns any unresolved tempids with a permanent subject id."
+  [{:keys [db tempids upserts db t] :as tx-state} tx]
   (let [ecount (assoc (:ecount db) -1 t)]                   ;; make sure to set current _tx ecount to 't' value, even if no tempids in transaction
     (loop [[[tempid resolved-id] & r] @tempids
            tempids* @tempids
@@ -447,7 +450,7 @@
             ;; return tx-state, don't need to update ecount in db-after, as dbproto/-with will update it
             tx-state)
         (if (nil? resolved-id)
-          (let [cid      (dbproto/-c-prop db-after :id (:collection tempid))
+          (let [cid      (dbproto/-c-prop db :id (:collection tempid))
                 next-id  (if (= -1 cid)
                            t                                ; _tx collection has special handling as we decrement. Current value held in 't'
                            (-> ecount* (get cid) inc))
@@ -456,6 +459,7 @@
           (recur r tempids* (conj upserts* resolved-id) ecount*))))
     tx))
 
+
 (defn resolve-temp-flakes
   [temp-flakes multi? {:keys [db tempids upserts] :as tx-state}]
   (go-try
@@ -463,11 +467,11 @@
            flakes []]
       (if (nil? tf)
         flakes
-        (let [s     (.-s tf)
-              o     (.-o tf)
-              flake (cond-> tf
-                            (tempid/TempId? s) (assoc :s (get @tempids s))
-                            (tempid/TempId? o) (assoc :o (get @tempids o)))]
+        (let [s            (.-s ^Flake tf)
+              o            (.-o ^Flake tf)
+              ^Flake flake (cond-> tf
+                                   (tempid/TempId? s) (assoc :s (get @tempids s))
+                                   (tempid/TempId? o) (assoc :o (get @tempids o)))]
           (if (contains? @upserts s)                        ;; means tempid wasn't really a new subject but resolved to existing one somewhere in tx
             (if-let [retract-flake (first (<? (tx-retract/flake (.-s flake) (.-p tf) (if multi? (.-o flake) nil) tx-state)))]
               ;; if an existing matching flake exists, depending on equality and :retractDuplicates, may or may not
@@ -484,6 +488,7 @@
   [^Flake flake]
   ;; this will capture any subject that is a collection, predicate, or tx-meta (< 0)
   (<= (.-s flake) schema-util/schema-sid-end))
+
 
 ;; TODO - predicate changes are handled at end, but what about validating
 ;; TODO - tx-functions and other items
@@ -520,26 +525,19 @@
            flakes (flake/sorted-set-by flake/cmp-flakes-spot-novelty)]
       (if (nil? statements)
         flakes
-        (let [{:keys [_temp-multi-flakes _temp-flakes _final-flakes]} statements
+        (let [{:keys [_temp-multi-flakes _temp-flakes _final-flakes _collection]} statements
               temp       (when _temp-flakes
                            (<? (resolve-temp-flakes _temp-flakes false tx-state)))
               temp-multi (when _temp-multi-flakes
                            (<? (resolve-temp-flakes _temp-multi-flakes true tx-state)))
               new-flakes (concat _final-flakes temp temp-multi)]
-          (if (special-subject? (first new-flakes))
+          (if (empty? new-flakes)
+            (recur r flakes)
             (->> new-flakes
-                 (special-subject-handling tx-state)
+                 (tx-validate/queue-collection-spec _collection tx-state) ;; returns original flakes, but registers collection spec for execution if applicable
                  (into flakes)
-                 (recur r))
-            (recur r (into flakes new-flakes))))))))
+                 (recur r))))))))
 
-
-(defn validating-fns
-  [tx-state flakes]
-  (log/warn "validating-fns start: " flakes)
-  flakes
-
-  )
 
 (defn do-transact
   [tx-state tx]
@@ -555,11 +553,9 @@
            async/merge
            (async/into [])
            <?
-           (generate-permanent-ids tx-state)
+           (assign-permanent-ids tx-state)
            (finalize-flakes tx-state)
-           <?
-           ;(validating-fns tx-state)
-           ))))
+           <?))))
 
 
 (defn tempid-return-map
@@ -573,18 +569,25 @@
   "Runs validations on permissions, attempts to do as much as possible in parallel."
   [candidate-db new-flakes tx-permissions {:keys [db tempids schema-flakes instant auth] :as tx-state}]
   (go-try
-    (let [coll-spec-valid?-ch (tx-util/validate-collection-spec candidate-db new-flakes auth instant)
-          pred-spec-valid?-ch (tx-util/validate-predicate-spec candidate-db new-flakes auth instant)
-          valid-perm?-ch      (tx-util/validate-permissions db candidate-db new-flakes tx-permissions)]
+    (let [
+          ;coll-spec-valid?-ch (tx-util/validate-collection-spec candidate-db new-flakes auth instant)
+          ;pred-spec-valid?-ch (tx-util/validate-predicate-spec candidate-db new-flakes auth instant)
+          valid-perm?-ch (tx-util/validate-permissions db candidate-db new-flakes tx-permissions)]
       (when @schema-flakes
         ;; verify all schema changes are valid
         (<? (schema/validate-schema-change candidate-db @tempids @schema-flakes false)))
-      (<? coll-spec-valid?-ch)
-      (<? pred-spec-valid?-ch)
+      ;(<? coll-spec-valid?-ch)
+      ;(<? pred-spec-valid?-ch)
       (<? valid-perm?-ch)
 
       ;; return original db provided validation exception not thrown
       candidate-db)))
+
+(defn update-db-after
+  "Updates db-after into tx-state"
+  [db-after tx-state]
+  (reset! (:db-after tx-state) db-after)
+  db-after)
 
 (defn build-transaction
   [_ db cmd-data next-t block-instant]
@@ -618,8 +621,12 @@
                                  (<? (dbproto/-with-t db-before all-flakes)))
                                dbproto/-rootdb
                                tx-util/make-candidate-db
-                               (tx-meta/add-tx-hash-flake @hash-flake))
+                               (tx-meta/add-tx-hash-flake @hash-flake)
+                               (update-db-after tx-state))
           tx-bytes         (- (get-in db-after [:stats :size]) (get-in db-before [:stats :size]))]
+
+      ;; runs all 'spec' validations
+      (<? (tx-validate/run all-flakes tx-state parallelism))
 
       ;; run all validations
       (<? (validate-db db-after all-flakes tx-permissions tx-state))
@@ -627,7 +634,7 @@
       ;; note here that db-after does NOT contain the tx-hash flake. The hash generation takes time, so is done in the background
       ;; This should not matter as
       {:t            next-t
-       :hash         (.-o @hash-flake)
+       :hash         (.-o ^Flake @hash-flake)
        :db-before    db-before
        :db-after     db-after
        :flakes       (conj all-flakes @hash-flake)

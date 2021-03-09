@@ -9,6 +9,8 @@
 ;; check if a new tag is used and we (a) properly auto-generate tag if needed and (b) don't auto-generate it if the transaction has the new tag as a transaction item
 ;; check transaction expirations work
 ;; check duplicate transactions (txid) won't work
+;; test two txi for same subject with single-cardinality value doesn't get added twice (either resolved via unique :true, or just using same pred-ident for _id)
+;; test error and execution stops when fuel runs out
 
 (deftest sql-query-parser-test
   (testing "IRI support"
