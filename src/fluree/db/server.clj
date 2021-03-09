@@ -98,12 +98,14 @@
             (future
               (upgrade/upgrade conn data-version current-version))))))
 
+
 (defn assoc-some
   "Assoc k -> v in m if v is not nil. Returns m unaltered otherwise."
   [m k v]
   (if-not (nil? v)
     (assoc m k v)
     m))
+
 
 (defn startup
   ([] (startup (settings/build-env environ/env)))
