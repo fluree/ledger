@@ -328,20 +328,20 @@
                                         (update :_temp-multi-flakes conj new-flake)
                                         (recur r))
                                     ;; multi-cardinality we only care if a flake matches exactly
-                                    (let [retract-flake (first (<? (tx-retract/flake _id* pid obj tx-state)))
+                                    (let [retract-flake (first (<? (tx-retract/flake _id* pid o tx-state)))
                                           final-flakes  (add-singleton-flake (:_final-flakes acc*) new-flake retract-flake pred-info)]
                                       (recur (assoc acc* :_final-flakes final-flakes) r))))))]
                   (recur acc** r))
 
                 (or tempid? (tempid/TempId? obj*))
                 (-> acc
-                    (update :_temp-flakes conj (flake/->Flake _id* pid obj t true nil))
+                    (update :_temp-flakes conj (flake/->Flake _id* pid obj* t true nil))
                     (recur r))
 
                 ;; single-cardinality, and no tempid - we can make final and also do the lookup here
                 ;; for a retraction flake, if present
                 :else
-                (let [new-flake     (flake/->Flake _id* pid obj t true nil)
+                (let [new-flake     (flake/->Flake _id* pid obj* t true nil)
                       ;; need to see if an existing flake exists that needs to get retracted
                       retract-flake (first (<? (tx-retract/flake _id* pid nil tx-state)))
                       final-flakes  (add-singleton-flake (:_final-flakes acc) new-flake retract-flake pred-info)]
