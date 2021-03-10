@@ -1369,7 +1369,6 @@
       (loop [[cmd-data & r] transactions
              next-t           (dec before-t)
              db               db-before
-             block-bytes      0
              block-fuel       0
              block-flakes     (flake/sorted-set-by flake/cmp-flakes-block)
              cmd-types        #{}
@@ -1378,7 +1377,6 @@
         (let [tx-result     (<? (build-transaction session db cmd-data next-t block-instant))
               {:keys [db-after bytes fuel flakes tempids auth authority status error hash
                       remove-preds]} tx-result
-              block-bytes*  (+ block-bytes bytes)
               block-fuel*   (+ block-fuel fuel)
               block-flakes* (into block-flakes flakes)
               cmd-type      (:type tx-result)
@@ -1397,8 +1395,7 @@
                                                           :type      cmd-type}))
               remove-preds* (into remove-preds-acc remove-preds)]
           (if r
-            (recur r (dec next-t) db-after block-bytes* block-fuel* block-flakes* cmd-types* txns*
-                   remove-preds*)
+            (recur r (dec next-t) db-after block-fuel* block-flakes* cmd-types* txns* remove-preds*)
             (let [block-t             (dec next-t)
                   prevHash-flake      (flake/->Flake block-t const/$_block:prevHash prev-hash block-t true nil)
                   instant-flake       (flake/->Flake block-t const/$_block:instant (.toEpochMilli ^Instant block-instant) block-t true nil)
