@@ -17,12 +17,15 @@ else
   SHACMD := sha256sum
 endif
 
-.PHONY: deps test jar uberjar stage-release run check-release-jdk-version prep-release release release-stable release-latest release-version-latest docker-image install clean
+.PHONY: deps test jar uberjar stage-release run check-release-jdk-version prep-release print-version release release-stable release-latest release-version-latest docker-image install clean
 
 SOURCES := $(shell find src)
 RESOURCES := $(shell find resources)
 
 DESTDIR ?= /usr/local
+
+print-version:
+	@echo $(VERSION)
 
 build/fluree-$(VERSION).zip: stage-release
 	cd build && zip -r fluree-$(VERSION).zip * -x 'data/' 'data/**' 'release-staging/' 'release-staging/**'
