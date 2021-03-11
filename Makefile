@@ -8,6 +8,12 @@ VERSION ?= SNAPSHOT
 MAJOR_VERSION := $(shell echo $(VERSION) | cut -d '.' -f1)
 MINOR_VERSION := $(shell echo $(VERSION) | cut -d '.' -f2)
 
+ifneq ($(strip $(shell which shasum)),)
+  SHACMD := shasum -a 256
+else
+  SHACMD := sha256sum
+endif
+
 .PHONY: deps test jar uberjar stage-release run check-release-jdk-version prep-release release release-stable release-latest release-version-latest docker-image install clean
 
 SOURCES := $(shell find src)
@@ -21,6 +27,9 @@ print-version:
 build/fluree-$(VERSION).zip: stage-release
 	cd build && zip -r fluree-$(VERSION).zip * -x 'data/' 'data/**' 'release-staging/' 'release-staging/**'
 
+build/fluree-$(VERSION).zip.sha256: build/fluree-$(VERSION).zip
+	cd $(@D) && $(SHACMD) $(<F) > $(@F)
+
 stage-release: build/release-staging build/fluree-ledger.standalone.jar build/fluree_start.sh build/logback.xml build/fluree_sample.properties build/LICENSE build/CHANGELOG.md
 
 run: stage-release
@@ -29,8 +38,8 @@ run: stage-release
 check-release-jdk-version:
 	resources/fluree_start.sh java_version $(JAVA_VERSION_FOR_RELEASE_BUILDS)
 
-prep-release: check-release-jdk-version clean build/fluree-$(VERSION).zip build/release-staging
-	cp build/fluree-$(VERSION).zip build/release-staging/
+prep-release: check-release-jdk-version clean build/fluree-$(VERSION).zip build/fluree-$(VERSION).zip.sha256 build/release-staging
+	cp build/fluree-$(VERSION).zip* build/release-staging/
 
 release: prep-release
 	aws s3 sync build/release-staging/ s3://$(RELEASE_BUCKET)/ --size-only --cache-control max-age=300 --acl public-read --profile fluree
