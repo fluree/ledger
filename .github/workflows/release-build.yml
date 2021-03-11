@@ -13,11 +13,13 @@ jobs:
         uses: actions/checkout@v2
       - name: Build project
         run: script/build-in-docker.sh make prep-release
-      - name: debug
-        run: echo ${{ toJson(github) }}
+      - id: get-tag
+        run: |
+          tag=$(echo ${{ github.ref }} | cut -d/ -f3)
+          echo "::set-output name=tag::$tag"
       - id: get-version
         run: |
-          version=$(echo ${{ github.ref }} | cut -c 2-)
+          version=$(echo ${{ steps.get-tag.outputs.tag }} | cut -c 2-)
           echo "::set-output name=version::$version"
       - name: Create GitHub release
         id: create_release
@@ -25,8 +27,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tag_name: ${{ github.ref }}
-          name: ${{ github.ref }}
+          tag_name: ${{ steps.get-tag.outputs.tag }}
           draft: false
           prerelease: ${{ contains(github.ref, '-') }}
           files: |
