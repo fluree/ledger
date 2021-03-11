@@ -5,6 +5,9 @@ RUN apt-get update && apt-get install -y curl git
 RUN curl -sL https://deb.nodesource.com/setup_14.x | bash -
 RUN apt-get update && apt-get install -y nodejs
 
+# mkdir -p /usr/share/man/man1 is a Debian bug workaround
+RUN apt-get update && mkdir -p /usr/share/man/man1 && apt-get install --no-install-recommends --assume-yes zip maven
+
 RUN mkdir -p /usr/src/fluree-ledger
 WORKDIR /usr/src/fluree-ledger
 

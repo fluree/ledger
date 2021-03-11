@@ -12,7 +12,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v2
       - name: Build project
-        run: make prep-release
+        run: script/build-in-docker.sh make prep-release
       - id: get-version
         run: |
           version=$(echo ${{ github.ref }} | cut -c 2-)

@@ -3,7 +3,6 @@ MINIMUM_JAVA_VERSION ?= 11
 JAVA_VERSION_FOR_RELEASE_BUILDS := $(MINIMUM_VERSION)
 
 VERSION := $(shell clojure -M:meta version)
-VERSION ?= SNAPSHOT
 
 MAJOR_VERSION := $(shell echo $(VERSION) | cut -d '.' -f1)
 MINOR_VERSION := $(shell echo $(VERSION) | cut -d '.' -f2)
@@ -147,7 +146,8 @@ $(DESTDIR)/bin/fluree: resources/fluree_start.sh
 install: $(DESTDIR)/bin/fluree $(DESTDIR)/share/java/fluree-ledger.standalone.jar | $(DESTDIR)/etc/fluree.properties $(DESTDIR)/etc/fluree-logback.xml
 
 clean:
-	rm -rf build
+	@# only delete contents of build dir if full delete fails (e.g. b/c we're mounting it as a Docker volume)
+	rm -rf build 2>/dev/null || rm -rf build/*
 	rm -rf target
 	rm -rf resources/adminUI
 	rm -rf node_modules
