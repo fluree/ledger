@@ -1,4 +1,4 @@
-FROM clojure:tools-deps-1.10.2.774-slim-buster AS builder
+FROM clojure:tools-deps-1.10.2.796-slim-buster AS builder
 
 RUN mkdir -p /usr/src/fluree-ledger
 WORKDIR /usr/src/fluree-ledger
