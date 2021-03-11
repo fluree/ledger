@@ -23,7 +23,7 @@ jobs:
           echo "::set-output name=version::$version"
       - id: pom-version
         run: |
-          version=$(make print-version)
+          version=$(script/run-in-docker.sh make print-version)
           echo "::set-output name=version::$version"
       - name: Ensure version consistency
         run: ${{ steps.get-version.outputs.version == steps.pom-version.outputs.version }}
