@@ -21,8 +21,12 @@ jobs:
         run: |
           version=$(echo ${{ steps.get-tag.outputs.tag }} | cut -c 2-)
           echo "::set-output name=version::$version"
+      - id: pom-version
+        run: |
+          version=$(make print-version)
+          echo "::set-output name=version::$version"
       - name: Ensure version consistency
-        run: "[ ${{ steps.get-version.outputs.version }} == $(make print-version) ]"
+        run: ${{ steps.get-version.outputs.version == steps.pom-version.outputs.version }}
       - name: Create GitHub release
         id: create_release
         uses: softprops/action-gh-release@v1
