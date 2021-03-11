@@ -2,6 +2,9 @@ RELEASE_BUCKET ?= fluree-releases-public
 MINIMUM_JAVA_VERSION ?= 11
 JAVA_VERSION_FOR_RELEASE_BUILDS := $(MINIMUM_VERSION)
 
+ifeq ($(strip $(shell which mvn)),)
+  $(error "No mvn command found in PATH; please install maven")
+endif
 VERSION := $(shell mvn org.apache.maven.plugins:maven-help-plugin:3.2.0:evaluate -Dexpression=project.version -q -DforceStdout 2>/dev/null)
 VERSION ?= SNAPSHOT
 
@@ -131,5 +134,6 @@ $(DESTDIR)/bin/fluree: resources/fluree_start.sh
 install: $(DESTDIR)/bin/fluree $(DESTDIR)/share/java/fluree-ledger.standalone.jar | $(DESTDIR)/etc/fluree.properties $(DESTDIR)/etc/fluree-logback.xml
 
 clean:
-	rm -rf build
+	@# only delete contents of build dir if full delete fails (e.g. b/c we're mounting it as a Docker volume)
+	rm -rf build 2>/dev/null || rm -rf build/*
 	rm -rf target
