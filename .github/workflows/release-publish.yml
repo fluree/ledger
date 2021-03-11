@@ -1,0 +1,21 @@
+name: Publish release
+on: release
+
+jobs:
+  publish_release:
+    runs-on: ubuntu-latest
+    name: Publish release to S3
+    steps:
+      - name: Build release & publish to S3
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.RELEASE_AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.RELEASE_AWS_SECRET_ACCESS_KEY }}
+        run: echo ${{ toJson(github.release) }}
+  notify_release:
+    runs-on: ubuntu-latest
+    name: Send release notifications
+    steps:
+      - uses: fluree/release-notifications-github-action@main
+        with:
+          repos-to-notify: '["homebrew-flureedb"]'
+          token: ${{ secrets.RELEASE_NOTIFICATIONS_TOKEN }}

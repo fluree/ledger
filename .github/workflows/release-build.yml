@@ -1,0 +1,32 @@
+name: Create release
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+jobs:
+  build:
+    name: Build release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+      - name: Build project
+        run: make prep-release
+      - id: get-version
+        run: |
+          version=$(echo ${{ github.ref }} | cut -c 2-)
+          echo "::set-output name=version::$version"
+      - name: Create GitHub release
+        id: create_release
+        uses: softprops/action-gh-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref }}
+          release_name: ${{ github.ref }}
+          draft: false
+          prerelease: ${{ contains(github.ref, '-') }}
+          files: |
+            build/fluree-${{ steps.get-version.outputs.version }}.zip
+            build/fluree-${{ steps.get-version.outputs.version }}.zip.sha256
