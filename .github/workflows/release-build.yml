@@ -27,7 +27,9 @@ jobs:
           echo "::set-output name=version::$version"
       - name: Ensure version consistency
         if: ${{ steps.get-version.outputs.version != steps.pom-version.outputs.version }}
-        run: echo "pom.xml version is ${{ steps.pom-version.outputs.version }} but git tag is ${{ steps.get-version.outputs.version }}"
+        run: |
+          echo "pom.xml version is ${{ steps.pom-version.outputs.version }} but git tag is ${{ steps.get-version.outputs.version }}"
+          false
       - name: Create GitHub release
         id: create_release
         uses: softprops/action-gh-release@v1
