@@ -25,7 +25,7 @@
             [clojure.string :as str]
             [fluree.db.ledger.txgroup.txgroup-proto :as txproto]
             [fluree.db.api :as fdb]
-            [fluree.db.ledger.merkle :as merkle])
+            [fluree.db.ledger.transact.json :as tx-json])
   (:import (fluree.db.flake Flake)
            (java.time Instant)
            (java.util UUID)
@@ -1421,7 +1421,9 @@
              cmd-types        #{}
              txns             {}
              remove-preds-acc #{}]
-        (let [tx-result     (<? (build-transaction session db cmd-data next-t block-instant))
+        (let [
+              ;tx-result     (<? (build-transaction session db cmd-data next-t block-instant))
+              tx-result     (<? (tx-json/build-transaction session db cmd-data next-t block-instant))
               {:keys [db-after bytes fuel flakes tempids auth authority status error hash
                       remove-preds]} tx-result
               block-bytes*  (+ block-bytes bytes)

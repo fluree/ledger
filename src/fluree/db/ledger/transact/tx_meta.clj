@@ -3,7 +3,8 @@
             [fluree.db.dbproto :as dbproto]
             [fluree.db.flake :as flake]
             [fluree.db.constants :as const]
-            [fluree.db.util.tx :as tx-util]))
+            [fluree.db.util.tx :as tx-util])
+  (:import (fluree.db.flake Flake)))
 
 ;; to handle transaction-related flakes
 
@@ -71,3 +72,21 @@
       {:t      t
        :hash   (.-o hash-flake)
        :flakes (conj flakes hash-flake)})))
+
+(defn valid-tx-meta?
+  "If a user supplies their own tx-meta we must validate it such that:
+  - they never attempt to set the fluree-only predicates defined by system-predicates above
+  - they never attempt to set a 't' value beyond the current t (historical t values are fine, assuming
+    they have permission to do so which would be handled via smartfunction"
+  [tx-meta-sid {:keys [validate-fn] :as tx-state}]
+  (let [subject-flakes (get-in @validate-fn [:c-spec tx-meta-sid])]
+    (doseq [^Flake flake subject-flakes]
+      (when
+        (system-predicates (.-p flake))
+        (throw (ex-info (str "Attempt to write a Fluree reserved predicate with flake: " flake)
+                        {:error  :db/invalid-transaction
+                         :status 400}))))
+
+    )
+
+  )

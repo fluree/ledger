@@ -6,11 +6,38 @@
             [fluree.db.constants :as const]
             [clojure.core.async :as async]
             [fluree.db.util.core :as util]
-            [fluree.db.flake :as flake]
-            [fluree.db.dbproto :as dbproto])
+            [fluree.db.dbproto :as dbproto]
+            [fluree.db.ledger.transact.schema :as tx-schema]
+            [fluree.db.ledger.transact.tx-meta :as tx-meta])
   (:import (fluree.db.flake Flake)))
 
 ;;; functions to validate transactions
+
+(defn queue-validation-fn
+  "Queues a validation function to be run once we have a db-after completed.
+  There are a few basic types of validations functions, some of which must
+  also queue flakes into tx-state that will be inputs to the function
+  - predicate - no flake queueing necessary as run once per flake
+  - predicate-tx - must queue all the predicate flakes of this type which may be
+                   across multiple transaction items. flake-or-flakes will be a single flake.
+                   As this is executed once per predicate, the function might already be
+                   queued, and if so 'f' will be nil
+  - collection - must queue all the collection flakes per sid, as they may be across
+                 multiple transactions (but usually will not be). flake-or-flakes will be a sequence"
+  [fn-type {:keys [validate-fn] :as tx-state} f flakes pid-or-sid]
+  (case fn-type
+    :predicate (swap! validate-fn update :queue conj f)
+    :predicate-tx (swap! validate-fn (fn [validate-data]
+                                       (cond-> validate-data
+                                               f (update :queue conj f)
+                                               true (update-in [:tx-spec pid-or-sid] into flakes))))
+    :collection (swap! validate-fn (fn [validate-data]
+                                     (let [existing-flakes (get-in validate-data [:c-spec pid-or-sid])]
+                                       (cond-> validate-data
+                                               true (assoc-in [:c-spec pid-or-sid] (into existing-flakes flakes))
+                                               ;; if flakes exist, we already queued a fn for this subject, don't want multiple
+                                               (empty? existing-flakes) (update :queue conj f)))))))
+
 
 ;; TODO - this can be done per schema change, not per transaction, to make even more efficient.
 (defn build-function
@@ -134,13 +161,15 @@
 
 
 (defn queue-pred-spec
-  [flake pred-info {:keys [validate-fn db fuel t auth db-after] :as tx-state}]
+  "Flakes param flows through, queues spec for flake"
+  [flakes flake pred-info {:keys [validate-fn db] :as tx-state}]
   (let [spec           (pred-info :spec)
         specDoc        (pred-info :specDoc)
         predicate-name (pred-info :name)
-        fn-promise     (resolve-function (pred-info :spec) db validate-fn "predSpec")
+        fn-promise     (resolve-function spec db validate-fn "predSpec")
         pred-spec-fn   (partial run-predicate-spec fn-promise flake predicate-name specDoc)]
-    (swap! validate-fn update :queue conj pred-spec-fn)))
+    (queue-validation-fn :predicate tx-state pred-spec-fn nil nil)
+    flakes))
 
 
 ;; predicate tx-spec
@@ -161,6 +190,7 @@
   (ex-info (str "The predicate " pred-name " does not conform to the txSpec. " tx-spec-doc)
            {:status 400
             :error  :db/invalid-tx}))
+
 
 (defn run-predicate-tx-spec
   "This function is designed to be called with a (partial pid pred-name txSpecDoc) and
@@ -189,10 +219,10 @@
     (catch Exception e (pred-tx-spec-response pred-name tx-spec-doc e))))
 
 
-(defn- queue-predicate-tx-spec-fn
+(defn- build-predicate-tx-spec-fn
   "When a predicate-tx-spec function hasn't already been queued for a particular predicate,
   do so and place the function into the validating function queue for processing."
-  [validate-data pred-info db]
+  [pred-info db]
   (let [pred-tx-fn  (promise)
         pred-name   (pred-info :name)
         tx-spec-doc (pred-info :txSpecDoc)
@@ -201,13 +231,15 @@
 
     ;; kick off building function, will put realized function into pred-tx-fn promise
     (build-function (pred-info :txSpec) db pred-tx-fn "predSpec")
-
-    ;; return modified info with
-    (update validate-data :queue conj queue-fn)))
+    ;; return function
+    queue-fn))
 
 
 (defn queue-predicate-tx-spec
-  "Predicates that have a txSpec defined need to run once for all flakes with the
+  "Passes 'flakes' through function untouched, but queues predicate spec for
+  execution once db-after is resolved.
+
+  Predicates that have a txSpec defined need to run once for all flakes with the
   same predicate as inputs.
 
   Queuing a flake here adds it to a map by predicate. We also kick off resolving
@@ -216,16 +248,13 @@
   For each predicate that requires a txSpec function to be run, we store
   a two-tuple of the function (as a promise) and a list of flakes for that predicate
   that must be validated."
-  [^Flake flake pred-info {:keys [validate-fn db] :as tx-state}]
-  (swap! validate-fn
-         (fn [validate-data]
-           (let [pid        (.-p flake)
-                 pid-flakes (get-in validate-data [:tx-spec pid])]
-             (cond-> validate-data
-                     ;; if no existing pred-flakes for this predicate, we need to generate the tx-pred-spec function and place in queue
-                     (empty? pid-flakes) (queue-predicate-tx-spec-fn pred-info db)
-                     ;; add new flake to existing flakes for this predicate
-                     true (assoc-in [:tx-spec pid] (into pid-flakes flake)))))))
+  [flakes predicate-flakes pred-info {:keys [validate-fn db] :as tx-state}]
+  (let [pid        (pred-info :id)
+        tx-spec-fn (when (empty? (get-in @validate-fn [:tx-spec pid]))
+                     ;; first time called (no existing flakes for this tx-spec), generate and queue fn also
+                     (build-predicate-tx-spec-fn pred-info db))]
+    (queue-validation-fn :predicate-tx tx-state tx-spec-fn predicate-flakes pid)
+    flakes))
 
 
 ;; collection specs
@@ -248,6 +277,7 @@
            {:status 400
             :error  :db/invalid-tx
             :flakes flakes}))
+
 
 (defn run-collection-spec
   "Runs a collection spec. Will only execute collection spec if there are still flakes for
@@ -282,23 +312,40 @@
       (catch Exception e (collection-spec-response (get-in @validate-fn [:c-spec sid]) c-spec-doc e)))))
 
 
-;; TODO - if a subject was completely deleted, we can (and possibly should) skip execution
 (defn queue-collection-spec
+  [collection c-spec-fn-ids {:keys [validate-fn db] :as tx-state} subject-flakes]
+  (let [sid        (.-s ^Flake (first subject-flakes))
+        c-spec-fn  (resolve-function c-spec-fn-ids db validate-fn "collectionSpec")
+        c-spec-doc (or (dbproto/-c-prop db :specDoc collection) collection) ;; use collection name as default specDoc
+        execute-fn (partial run-collection-spec sid c-spec-fn c-spec-doc)]
+    (queue-validation-fn :collection tx-state execute-fn subject-flakes sid)))
+
+(defn queue-predicate-collection-spec
+  [tx-state subject-flakes]
+  (let [sid        (.-s ^Flake (first subject-flakes))
+        execute-fn (partial tx-schema/validate-schema-predicate sid)]
+    (queue-validation-fn :collection tx-state execute-fn subject-flakes sid)))
+
+(defn queue-tx-meta-collection-spec
+  [tx-state subject-flakes]
+  (let [sid        (.-s ^Flake (first subject-flakes))
+        execute-fn (partial tx-meta/valid-tx-meta? sid)]
+    (queue-validation-fn :collection tx-state execute-fn subject-flakes sid)))
+
+(defn check-collection-specs
   "If a collection spec is needed, register it for processing the subject's flakes."
-  [collection {:keys [validate-fn db] :as tx-state} subject-flakes]
-  (when-let [c-spec-fn-ids (dbproto/-c-prop db :spec collection)]
-    (swap! validate-fn (fn [validate-data]
-                         (let [sid        (.-s ^Flake (first subject-flakes))
-                               c-spec-fn  (resolve-function c-spec-fn-ids db validate-fn "collectionSpec")
-                               c-spec-doc (or (dbproto/-c-prop db :specDoc collection) collection) ;; use collection name as default specDoc
-                               execute-fn (partial run-collection-spec sid c-spec-fn c-spec-doc)]
-                           (-> validate-data
-                               ;; add subject flakes into atom at :c-spec sid - multiple txi might end up with same
-                               ;; subject, so aggregate with existing ones if needed
-                               (update-in [:c-spec sid] into subject-flakes)
-                               ;; queue validation function to execute once we have a db-after
-                               (update :queue (conj execute-fn)))))))
+  [collection {:keys [db] :as tx-state} subject-flakes]
+  (let [c-spec-fn-ids    (dbproto/-c-prop db :spec collection)
+        pred-collection? (= "_predicate" collection)
+        tx-collection?   (= "_tx" collection)]
+    (when c-spec-fn-ids
+      (queue-collection-spec collection c-spec-fn-ids tx-state subject-flakes))
+    (when pred-collection?
+      (queue-predicate-collection-spec tx-state subject-flakes))
+    (when tx-collection?
+      (queue-tx-meta-collection-spec tx-state subject-flakes)))
   subject-flakes)
+
 
 (defn flush-fn-queue
   "Flushes the validation function queue onto queue-ch."

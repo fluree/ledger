@@ -19,7 +19,8 @@
             [fluree.db.ledger.transact.txfunction :as txfunction]
             [fluree.db.ledger.transact.auth :as tx-auth]
             [fluree.db.ledger.transact.tx-meta :as tx-meta]
-            [fluree.db.ledger.transact.validation :as tx-validate])
+            [fluree.db.ledger.transact.validation :as tx-validate]
+            [fluree.db.ledger.transact.schema :as tx-schema])
   (:import (fluree.db.flake Flake)))
 
 
@@ -139,8 +140,8 @@
     :tag object                                             ;; will have already been conformed
     ;; else
     ;; TODO - type-check creates an atom to hold errors, we really just need to throw exception if error exists
-    (fspec/type-check object type)
-    ))
+    (fspec/type-check object type)))
+
 
 (defn register-unique
   "Registers unique value in the tx-state and return true if successful.
@@ -153,6 +154,7 @@
     false                                                   ;; already registered, should throw downstream
     (do (swap! uniques conj ident)
         true)))
+
 
 (defn resolve-unique
   "If predicate is unique, need to determine if any matching values already exist both
@@ -215,6 +217,7 @@
                 (register-validate-fn validate-subject-retracted tx-state)
                 (recur r)))))))))
 
+
 (defn resolve-object-item
   "Resolves object into its final state so can be used for consistent comparisons with existing data."
   [object _id pred-info tx-state]
@@ -236,6 +239,7 @@
 
         :else (conform-object-value object* type)))))
 
+
 (defn resolve-object
   "Resolves object into its final state so can be used for consistent comparisons with existing data."
   [object _id pred-info tx-state]
@@ -249,6 +253,7 @@
                         (async/into []))
             (pred-info :unique) (resolve-unique _id pred-info tx-state))))
 
+
 (defn add-flake-to-txi
   "Used to add one or more proposed flakes to either temp-flakes or lookup-flakes"
   [txi [s p o t]]
@@ -259,26 +264,35 @@
 
 
 (defn add-singleton-flake
-  "Adds a new final flake, new-flake. A retract-flake (if not nil)
+  "Adds new-flake assuming not a duplicate. A retract-flake (if not nil)
   is a matching flake in the existing db (i.e. a single-cardinality
   flake must retract an existing single-cardinality value if it already
   exists).
 
   Performs some logic to determine if the new flake should get added at
   all (i.e. if retract-flake is identical to the new flake)."
-  [flakes ^Flake new-flake ^Flake retract-flake pred-info]
+  [flakes ^Flake new-flake ^Flake retract-flake pred-info tx-state]
   (cond
+    ;; no retraction flake, always add
     (nil? retract-flake)
-    (conj flakes new-flake)
+    (cond-> (conj flakes new-flake)
+            (pred-info :spec) (tx-validate/queue-pred-spec new-flake pred-info tx-state)
+            (pred-info :txSpec) (tx-validate/queue-predicate-tx-spec [new-flake] pred-info tx-state))
 
-    ;; an existing flake is identical to this one, ignore unless :retractDuplicates is true
+    ;; new and retraction flake are identical
     (= (.-o new-flake) (.-o retract-flake))
     (if (pred-info :retractDuplicates)
-      (conj flakes new-flake retract-flake)
+      ;; no need for predicate spec, new flake is exactly same as old
+      (cond-> (conj flakes new-flake retract-flake)
+              (pred-info :txSpec) (tx-validate/queue-predicate-tx-spec [new-flake retract-flake] pred-info tx-state))
+      ;; don't add new or retract flake
       flakes)
 
+    ;; new and retraction flakes are different
     :else
-    (conj flakes new-flake retract-flake)))
+    (cond-> (conj flakes new-flake retract-flake)
+            (pred-info :spec) (tx-validate/queue-pred-spec new-flake pred-info tx-state)
+            (pred-info :txSpec) (tx-validate/queue-predicate-tx-spec [new-flake retract-flake] pred-info tx-state))))
 
 
 (defn generate-statements
@@ -329,7 +343,7 @@
                                         (recur r))
                                     ;; multi-cardinality we only care if a flake matches exactly
                                     (let [retract-flake (first (<? (tx-retract/flake _id* pid o tx-state)))
-                                          final-flakes  (add-singleton-flake (:_final-flakes acc*) new-flake retract-flake pred-info)]
+                                          final-flakes  (add-singleton-flake (:_final-flakes acc*) new-flake retract-flake pred-info tx-state)]
                                       (recur (assoc acc* :_final-flakes final-flakes) r))))))]
                   (recur acc** r))
 
@@ -344,7 +358,7 @@
                 (let [new-flake     (flake/->Flake _id* pid obj* t true nil)
                       ;; need to see if an existing flake exists that needs to get retracted
                       retract-flake (first (<? (tx-retract/flake _id* pid nil tx-state)))
-                      final-flakes  (add-singleton-flake (:_final-flakes acc) new-flake retract-flake pred-info)]
+                      final-flakes  (add-singleton-flake (:_final-flakes acc) new-flake retract-flake pred-info tx-state)]
                   (recur (assoc acc :_final-flakes final-flakes) r))))))))))
 
 
@@ -437,27 +451,40 @@
 
 (defn assign-permanent-ids
   "Assigns any unresolved tempids with a permanent subject id."
-  [{:keys [db tempids upserts db t] :as tx-state} tx]
-  (let [ecount (assoc (:ecount db) -1 t)]                   ;; make sure to set current _tx ecount to 't' value, even if no tempids in transaction
-    (loop [[[tempid resolved-id] & r] @tempids
-           tempids* @tempids
-           upserts* #{}
-           ecount*  ecount]
-      (if (nil? tempid)                                     ;; finished
-        (do (reset! tempids tempids*)
-            (when-not (empty? upserts*)
-              (reset! upserts upserts*))
-            ;; return tx-state, don't need to update ecount in db-after, as dbproto/-with will update it
-            tx-state)
-        (if (nil? resolved-id)
-          (let [cid      (dbproto/-c-prop db :id (:collection tempid))
-                next-id  (if (= -1 cid)
-                           t                                ; _tx collection has special handling as we decrement. Current value held in 't'
-                           (-> ecount* (get cid) inc))
-                ecount** (assoc ecount cid next-id)]
-            (recur r (assoc tempids* tempid next-id) upserts* ecount**))
-          (recur r tempids* (conj upserts* resolved-id) ecount*))))
-    tx))
+  [{:keys [tempids upserts db t] :as tx-state} tx]
+  (try
+    (let [ecount (assoc (:ecount db) -1 t)]                 ;; make sure to set current _tx ecount to 't' value, even if no tempids in transaction
+      (loop [[[tempid resolved-id] & r] @tempids
+             tempids* @tempids
+             upserts* #{}
+             ecount*  ecount]
+        (if (nil? tempid)                                   ;; finished
+          (do (reset! tempids tempids*)
+              (when-not (empty? upserts*)
+                (reset! upserts upserts*))
+              ;; return tx-state, don't need to update ecount in db-after, as dbproto/-with will update it
+              tx-state)
+          (if (nil? resolved-id)
+            (let [cid      (dbproto/-c-prop db :id (:collection tempid))
+                  next-id  (if (= -1 cid)
+                             t                              ; _tx collection has special handling as we decrement. Current value held in 't'
+                             (if-let [last-sid (get ecount* cid)]
+                               (inc last-sid)
+                               (flake/->sid cid 0)))
+                  ecount** (assoc ecount* cid next-id)]
+              (recur r (assoc tempids* tempid next-id) upserts* ecount**))
+            (recur r tempids* (conj upserts* resolved-id) ecount*))))
+      tx)
+    (catch Exception e
+      (log/error e (str "Unexpected error assigning permanent id to tempids."
+                        "with error: " (.getMessage e))
+                 {:ecount      (:ecount db)
+                  :tempids     @tempids
+                  :schema-coll (get-in db [:schema :coll])})
+      (throw (ex-info (str "Unexpected error assigning permanent id to tempids."
+                           "with error: " (.getMessage e))
+                      {:status 500 :error :db/unexpected-error}
+                      e)))))
 
 
 (defn resolve-temp-flakes
@@ -467,55 +494,16 @@
            flakes []]
       (if (nil? tf)
         flakes
-        (let [s            (.-s ^Flake tf)
-              o            (.-o ^Flake tf)
-              ^Flake flake (cond-> tf
-                                   (tempid/TempId? s) (assoc :s (get @tempids s))
-                                   (tempid/TempId? o) (assoc :o (get @tempids o)))]
-          (if (contains? @upserts s)                        ;; means tempid wasn't really a new subject but resolved to existing one somewhere in tx
-            (if-let [retract-flake (first (<? (tx-retract/flake (.-s flake) (.-p tf) (if multi? (.-o flake) nil) tx-state)))]
-              ;; if an existing matching flake exists, depending on equality and :retractDuplicates, may or may not
-              ;; retract it, or might not even add the current flake
-              (recur r (add-singleton-flake flakes flake retract-flake (fn [property] (dbproto/-p-prop db property (.-p flake)))))
-              ;; no existing matching flake exists, always add
-              (recur r (conj flakes flake)))
-            (recur r (conj flakes flake))))))))
-
-
-(defn special-subject?
-  "Returns true if flake is considered a special subject, meaning it requires
-  some extra validation to allow through."
-  [^Flake flake]
-  ;; this will capture any subject that is a collection, predicate, or tx-meta (< 0)
-  (<= (.-s flake) schema-util/schema-sid-end))
-
-
-;; TODO - predicate changes are handled at end, but what about validating
-;; TODO - tx-functions and other items
-(defn special-subject-handling
-  "Handles additional validation or special treatment of mostly system collection subjects.
-  All flakes must be of the same subject.
-
-  Want to use this sparingly, ideally only validating flakes that we know need it."
-  [tx-state flakes]
-  (let [fflake (first flakes)]
-    (cond
-      (schema-util/is-tx-meta-flake? fflake)
-      (do
-        (doseq [^Flake flake flakes]
-          (when
-            (tx-meta/system-predicates (.-p flake))
-            (throw (ex-info (str "Attempt to write a Fluree reserved predicate with id: " (.-p flake))
-                            {:error  :db/invalid-transaction
-                             :status 400}))))
-        flakes)
-
-      (schema-util/is-schema-flake? fflake)
-      (do (swap! (:schema-flakes tx-state) into flakes)
-          ;; don't return any schema flakes into mix, they will be added in downstream
-          nil)
-
-      :else flakes)))
+        (let [s             (.-s tf)
+              o             (.-o tf)
+              ^Flake flake  (cond-> tf
+                                    (tempid/TempId? s) (assoc :s (get @tempids s))
+                                    (tempid/TempId? o) (assoc :o (get @tempids o)))
+              retract-flake (when (contains? @upserts s)    ;; if was an upsert resolved, could be an existing flake that needs to get retracted
+                              (first (<? (tx-retract/flake (.-s flake) (.-p tf) (if multi? (.-o flake) nil) tx-state))))
+              pred-info     (fn [property] (dbproto/-p-prop db property (.-p flake)))
+              flakes*       (add-singleton-flake flakes flake retract-flake pred-info tx-state)]
+          (recur r flakes*))))))
 
 
 (defn finalize-flakes
@@ -534,7 +522,7 @@
           (if (empty? new-flakes)
             (recur r flakes)
             (->> new-flakes
-                 (tx-validate/queue-collection-spec _collection tx-state) ;; returns original flakes, but registers collection spec for execution if applicable
+                 (tx-validate/check-collection-specs _collection tx-state) ;; returns original flakes, but registers collection spec for execution if applicable
                  (into flakes)
                  (recur r))))))))
 
@@ -565,23 +553,6 @@
                (assoc acc (:user-string tempid) subject-id))
              {} @tempids))
 
-(defn validate-db
-  "Runs validations on permissions, attempts to do as much as possible in parallel."
-  [candidate-db new-flakes tx-permissions {:keys [db tempids schema-flakes instant auth] :as tx-state}]
-  (go-try
-    (let [
-          ;coll-spec-valid?-ch (tx-util/validate-collection-spec candidate-db new-flakes auth instant)
-          ;pred-spec-valid?-ch (tx-util/validate-predicate-spec candidate-db new-flakes auth instant)
-          valid-perm?-ch (tx-util/validate-permissions db candidate-db new-flakes tx-permissions)]
-      (when @schema-flakes
-        ;; verify all schema changes are valid
-        (<? (schema/validate-schema-change candidate-db @tempids @schema-flakes false)))
-      ;(<? coll-spec-valid?-ch)
-      ;(<? pred-spec-valid?-ch)
-      (<? valid-perm?-ch)
-
-      ;; return original db provided validation exception not thrown
-      candidate-db)))
 
 (defn update-db-after
   "Updates db-after into tx-state"
@@ -589,79 +560,206 @@
   (reset! (:db-after tx-state) db-after)
   db-after)
 
+
 (defn build-transaction
   [_ db cmd-data next-t block-instant]
-  (go-try
-    (let [tx-map           (tx-util/validate-command (:command cmd-data))
-          _                (when (not-empty (:deps tx-map)) ;; transaction has dependencies listed, verify they are satisfied
-                             (or (<? (tx-util/deps-succeeded? db (:deps tx-map)))
-                                 (throw (ex-info (str "One or more of the dependencies for this transaction failed: " (:deps tx-map))
-                                                 {:status 403 :error :db/invalid-auth}))))
-          {:keys [auth authority txid]} tx-map
-          {:keys [auth-id authority-id tx-permissions]} (<? (tx-auth/resolve db auth authority))
-          db-before        (assoc db :permissions tx-permissions)
-          tx-state         (->tx-state db-before next-t auth-id authority-id block-instant tx-map)
-          tx               (case (keyword (:type tx-map))   ;; command type is either :tx or :new-db
-                             :tx (:tx tx-map)
-                             :new-db (tx-util/create-new-db-tx tx-map))
-          tx-flakes        (<? (do-transact tx-state tx))
-          tx-meta-flakes   (tx-meta/tx-meta-flakes tx-state nil)
+  (async/go
+    (try
+      (let [tx-map           (tx-util/validate-command (:command cmd-data))
+            _                (when (not-empty (:deps tx-map)) ;; transaction has dependencies listed, verify they are satisfied
+                               (or (<? (tx-util/deps-succeeded? db (:deps tx-map)))
+                                   (throw (ex-info (str "One or more of the dependencies for this transaction failed: " (:deps tx-map))
+                                                   {:status 403 :error :db/invalid-auth}))))
+            {:keys [auth authority txid]} tx-map
+            {:keys [auth-id authority-id tx-permissions]} (<? (tx-auth/resolve db auth authority))
+            db-before        (assoc db :permissions tx-permissions)
+            tx-state         (->tx-state db-before next-t auth-id authority-id block-instant tx-map)
+            tx               (case (keyword (:type tx-map)) ;; command type is either :tx or :new-db
+                               :tx (:tx tx-map)
+                               :new-db (tx-util/create-new-db-tx tx-map))
+            tx-flakes        (<? (do-transact tx-state tx))
+            tx-meta-flakes   (tx-meta/tx-meta-flakes tx-state nil)
 
-          schema-flakes    @(:schema-flakes tx-state)
-          all-flakes       (cond-> (into tx-flakes tx-meta-flakes)
-                                   schema-flakes (into schema-flakes)
-                                   @(:tags tx-state) (into (tags/create-flakes tx-state)))
+            schema-flakes    @(:schema-flakes tx-state)
+            all-flakes       (cond-> (into tx-flakes tx-meta-flakes)
+                                     schema-flakes (into schema-flakes)
+                                     @(:tags tx-state) (into (tags/create-flakes tx-state)))
 
-          ;; kick off hash process in the background, it can take a while
-          hash-flake       (future (tx-meta/generate-hash-flake all-flakes tx-state))
-          fast-forward-db? (:tt-id db-before)
-          ;; final db that can be used for any final testing/spec validation
-          db-after         (-> (if fast-forward-db?
-                                 (<? (dbproto/-forward-time-travel db-before all-flakes))
-                                 (<? (dbproto/-with-t db-before all-flakes)))
-                               dbproto/-rootdb
-                               tx-util/make-candidate-db
-                               (tx-meta/add-tx-hash-flake @hash-flake)
-                               (update-db-after tx-state))
-          tx-bytes         (- (get-in db-after [:stats :size]) (get-in db-before [:stats :size]))]
+            ;; kick off hash process in the background, it can take a while
+            hash-flake       (future (tx-meta/generate-hash-flake all-flakes tx-state))
+            fast-forward-db? (:tt-id db-before)
+            ;; final db that can be used for any final testing/spec validation
+            db-after         (-> (if fast-forward-db?
+                                   (<? (dbproto/-forward-time-travel db-before all-flakes))
+                                   (<? (dbproto/-with-t db-before all-flakes)))
+                                 dbproto/-rootdb
+                                 tx-util/make-candidate-db
+                                 (tx-meta/add-tx-hash-flake @hash-flake)
+                                 (update-db-after tx-state))
+            tx-bytes         (- (get-in db-after [:stats :size]) (get-in db-before [:stats :size]))]
 
-      ;; runs all 'spec' validations
-      (<? (tx-validate/run all-flakes tx-state parallelism))
+        ;; runs all 'spec' validations
+        (<? (tx-validate/run all-flakes tx-state parallelism))
 
-      ;; run all validations
-      (<? (validate-db db-after all-flakes tx-permissions tx-state))
+        (<? (tx-util/validate-permissions db db-after all-flakes tx-permissions))
 
-      ;; note here that db-after does NOT contain the tx-hash flake. The hash generation takes time, so is done in the background
-      ;; This should not matter as
-      {:t            next-t
-       :hash         (.-o ^Flake @hash-flake)
-       :db-before    db-before
-       :db-after     db-after
-       :flakes       (conj all-flakes @hash-flake)
-       :tempids      (tempid-return-map tx-state)
-       :bytes        tx-bytes
-       :fuel         (+ (:spent @(:fuel tx-state)) tx-bytes (count all-flakes) 1)
-       :status       200
-       :txid         txid
-       :auth         auth
-       :authority    authority
-       :type         (keyword (:type tx-map))
-       :remove-preds (when schema-flakes
-                       (schema-util/remove-from-post-preds schema-flakes))})))
+        ;; note here that db-after does NOT contain the tx-hash flake. The hash generation takes time, so is done in the background
+        ;; This should not matter as
+        {:t            next-t
+         :hash         (.-o ^Flake @hash-flake)
+         :db-before    db-before
+         :db-after     db-after
+         :flakes       (conj all-flakes @hash-flake)
+         :tempids      (tempid-return-map tx-state)
+         :bytes        tx-bytes
+         :fuel         (+ (:spent @(:fuel tx-state)) tx-bytes (count all-flakes) 1)
+         :status       200
+         :txid         txid
+         :auth         auth
+         :authority    authority
+         :type         (keyword (:type tx-map))
+         :remove-preds (when schema-flakes
+                         (schema-util/remove-from-post-preds schema-flakes))})
+      (catch Exception e
+        (let [error            (ex-data e)
+              fast-forward-db? (:tt-id db)
+              status           (or (:status error) 500)
+              error-str        (str status " "
+                                    (if (:error error)
+                                      (str (util/keyword->str (:error error)))
+                                      "db/unexpected-error")
+                                    " "
+                                    (.getMessage e))
+              tx-map           (try (tx-util/validate-command (:command cmd-data)) (catch Exception e nil))
+              {:keys [auth authority]} tx-map
+              resp-map         (<? (tx-meta/generate-tx-error-flakes db next-t tx-map (:command cmd-data) error-str))
+              db-after         (if fast-forward-db?
+                                 (<? (dbproto/-forward-time-travel db (:flakes resp-map)))
+                                 (<? (dbproto/-with-t db (:flakes resp-map))))
+              bytes            (- (get-in db-after [:stats :size]) (get-in db [:stats :size]))]
+          (when (= 500 status)
+            (log/error e "Unexpected error processing transaction. Please report issues to Fluree."))
+          (assoc resp-map
+            :status status
+            :error error-str
+            :bytes bytes
+            :db-after db-after
+            ;; TODO - report out fuel in error within ex-info for use here
+            :fuel (or (:fuel (ex-data e)) 0)
+            :auth auth
+            :authority authority
+            :type (keyword (:type tx-map))))))))
 
 (comment
   (def conn (:conn user/system))
-  (def db (async/<!! (fluree.db.api/db conn "prefix/a")))
+  (def db (async/<!! (fluree.db.api/db conn "blank/ledger2")))
   (def last-resp nil)
 
-  (time (let [test-tx (fluree.db.api/tx->command "prefix/a"
-                                                 [{:_id   ["movie/title" "Gran Torino"]
-                                                   :title "Gran Torino2"}]
-                                                 "c457227f6f7ee94c3b2a32fbf055b33df42578d34047c14b2c9fe64273dce957")
-              res     (-> (build-transaction nil db {:command test-tx} -9 (java.time.Instant/now))
+  (-> db
+      :schema
+      :pred
+      keys)
+
+  ;(def newdb (async/<!! (dbproto/-with-t db #{#Flake [17592186044436 40 "person" -3 true nil] #Flake [-3 100 "853204521965754426ebf18ec11cd457ed587f03d1b6d54ef5d82ff58bc1ba45" -3 true nil] #Flake [-3 101 105553116266496 -3 true nil] #Flake [-3 103 1615308222639 -3 true nil] #Flake [-3 106 "{\"type\":\"tx\",\"db\":\"blank/ledger\",\"tx\":[{\"_id\":\"_collection\",\"name\":\"person\"}],\"nonce\":1615308222639,\"auth\":\"TfE9koGjRzWrWD9VbqN3KdyPZor1eDrafmU\",\"expire\":1615308252639}" -3 true nil] #Flake [-3 107 "1b304402207db6c8feb3c26822e4133850ce3425c50124beaf10a907cfffe60574be83c7ce02202a7ab67b66f8d109d97b53f06d4f659b144d1753bf6ae5c983db5abd9c371b0d" -3 true nil]})))
+  newdb
+
+  (time (fluree.db.api/tx->command
+          "blank/ledger2"
+          [{:_id "_collection", :name "person"}
+           {:_id "_collection", :name "chat"}
+           {:_id "_collection", :name "comment"}
+           {:_id "_collection", :name "artist"}
+           {:_id "_collection", :name "movie"}
+           {:_id "_predicate", :name "person/handle", :doc "The person's unique handle", :unique true, :type "string"}
+           {:_id "_predicate", :name "person/fullName", :doc "The person's full name.", :type "string", :index true}
+           {:_id "_predicate", :name "person/age", :doc "The person's age in years", :type "int", :index true}
+           {:_id "_predicate", :name "person/follows", :doc "Any persons this subject follows", :type "ref", :restrictCollection "person"}
+           {:_id "_predicate", :name "person/favNums", :doc "The person's favorite numbers", :type "int", :multi true}
+           {:_id "_predicate", :name "person/favArtists", :doc "The person's favorite artists", :type "ref", :restrictCollection "artist", :multi true}
+           {:_id "_predicate", :name "person/favMovies", :doc "The person's favorite movies", :type "ref", :restrictCollection "movie", :multi true}
+           {:_id "_predicate", :name "person/user", :type "ref", :restrictCollection "_user"}
+           {:_id "_predicate", :name "chat/message", :doc "A chat message", :type "string", :fullText true}
+           {:_id "_predicate", :name "chat/person", :doc "A reference to the person that created the message", :type "ref", :restrictCollection "person"}
+           {:_id "_predicate", :name "chat/instant", :doc "The instant in time when this chat happened.", :type "instant", :index true}
+           {:_id "_predicate", :name "chat/comments", :doc "A reference to comments about this message", :type "ref", :component true, :multi true, :restrictCollection "comment"}
+           {:_id "_predicate", :name "comment/message", :doc "A comment message.", :type "string", :fullText true}
+           {:_id "_predicate", :name "comment/person", :doc "A reference to the person that made the comment", :type "ref", :restrictCollection "person"}
+           {:_id "_predicate", :name "artist/name", :type "string", :unique true}
+           {:_id "_predicate", :name "movie/title", :type "string", :fullText true, :unique true}
+           ]
+          "c457227f6f7ee94c3b2a32fbf055b33df42578d34047c14b2c9fe64273dce957"))
+
+  (time (let [db      db
+              test-tx (fluree.db.api/tx->command
+                        "blank/ledger2"
+                        [{:_id "_collection", :name "person"}
+                         {:_id "_collection", :name "chat"}
+                         {:_id "_collection", :name "comment"}
+                         {:_id "_collection", :name "artist"}
+                         {:_id "_collection", :name "movie"}
+                         {:_id "_predicate", :name "person/handle", :doc "The person's unique handle", :unique true, :type "string"}
+                         {:_id "_predicate", :name "person/fullName", :doc "The person's full name.", :type "string", :index true}
+                         {:_id "_predicate", :name "person/age", :doc "The person's age in years", :type "int", :index true}
+                         {:_id "_predicate", :name "person/follows", :doc "Any persons this subject follows", :type "ref", :restrictCollection "person"}
+                         {:_id "_predicate", :name "person/favNums", :doc "The person's favorite numbers", :type "int", :multi true}
+                         {:_id "_predicate", :name "person/favArtists", :doc "The person's favorite artists", :type "ref", :restrictCollection "artist", :multi true}
+                         {:_id "_predicate", :name "person/favMovies", :doc "The person's favorite movies", :type "ref", :restrictCollection "movie", :multi true}
+                         {:_id "_predicate", :name "person/user", :type "ref", :restrictCollection "_user"}
+                         {:_id "_predicate", :name "chat/message", :doc "A chat message", :type "string", :fullText true}
+                         {:_id "_predicate", :name "chat/person", :doc "A reference to the person that created the message", :type "ref", :restrictCollection "person"}
+                         {:_id "_predicate", :name "chat/instant", :doc "The instant in time when this chat happened.", :type "instant", :index true}
+                         {:_id "_predicate", :name "chat/comments", :doc "A reference to comments about this message", :type "ref", :component true, :multi true, :restrictCollection "comment"}
+                         {:_id "_predicate", :name "comment/message", :doc "A comment message.", :type "string", :fullText true}
+                         {:_id "_predicate", :name "comment/person", :doc "A reference to the person that made the comment", :type "ref", :restrictCollection "person"}
+                         {:_id "_predicate", :name "artist/name", :type "string", :unique true}
+                         {:_id "_predicate", :name "movie/title", :type "string", :fullText true, :unique true}
+                         ]
+                        "c457227f6f7ee94c3b2a32fbf055b33df42578d34047c14b2c9fe64273dce957")
+              res     (-> (build-transaction nil db {:command test-tx} (dec (:t db)) (java.time.Instant/now))
                           (async/<!!))]
           (alter-var-root #'fluree.db.ledger.transact.json/last-resp (constantly res))
           res))
+
+  (-> last-resp
+      :db-after
+      (async/go)
+      (fluree.db.api/query {:select [:*] :from "_predicate"})
+      deref
+      )
+
+  (criterium.core/quick-bench
+    (let [test-tx (fluree.db.api/tx->command "prefix/a"
+                                             [{:_id   ["movie/title" "Gran Torino"]
+                                               :title "Gran Torino2"}
+                                              {:_id   "movie"
+                                               :title "New Movie"}
+                                              {:_id   "movie"
+                                               :title "New Movie2"}
+                                              {:_id  "artist"
+                                               :name "Brian"}]
+                                             "c457227f6f7ee94c3b2a32fbf055b33df42578d34047c14b2c9fe64273dce957")
+          res     (-> (build-transaction nil db {:command test-tx} (dec (:t db)) (java.time.Instant/now))
+                      (async/<!!))]
+      ;(alter-var-root #'fluree.db.ledger.transact.json/last-resp (constantly res))
+      res))
+
+
+  (criterium.core/quick-bench
+    (let [test-tx (fluree.db.api/tx->command "prefix/a"
+                                             [{:_id   ["movie/title" "Gran Torino"]
+                                               :title "Gran Torino2"}
+                                              {:_id   "movie"
+                                               :title "New Movie"}
+                                              {:_id   "movie"
+                                               :title "New Movie2"}
+                                              {:_id  "artist"
+                                               :name "Brian"}]
+                                             "c457227f6f7ee94c3b2a32fbf055b33df42578d34047c14b2c9fe64273dce957")
+          res     (-> (fluree.db.ledger.transact/build-transaction nil db {:command test-tx} (dec (:t db)) (java.time.Instant/now))
+                      (async/<!!))]
+      ;(alter-var-root #'fluree.db.ledger.transact.json/last-resp (constantly res))
+      res))
+
 
   (def test-tx (fluree.db.api/tx->command "prefix/a"
                                           [{:_id   ["movie/title" "Gran Torino"]
