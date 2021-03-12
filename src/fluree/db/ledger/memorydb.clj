@@ -14,16 +14,22 @@
 
 ;; For now, requires bootstrap and transact namespaces, which are only in fluree/ledger
 
+(defn fake-conn []
+  "Returns a fake connection object that is suitable for use with the memorydb if
+  no other conn is available."
+  {:transactor? false})
+
 (defn new-db
   "Creates a local, in-memory but bootstrapped db (primarily for testing)."
-  [conn ledger]
-  (let [pc (async/promise-chan)]
-    (async/go
-      (let [block-data   (bootstrap/boostrap-memory-db conn ledger nil)
-            db-no-schema (:db block-data)
-            schema       (<? (schema/schema-map db-no-schema))]
-        (async/put! pc (assoc db-no-schema :schema schema))))
-    pc))
+  ([conn ledger] (new-db conn ledger nil))
+  ([conn ledger bootstrap-opts]
+   (let [pc (async/promise-chan)]
+     (async/go
+       (let [block-data   (bootstrap/boostrap-memory-db conn ledger bootstrap-opts)
+             db-no-schema (:db block-data)
+             schema       (<? (schema/schema-map db-no-schema))]
+         (async/put! pc (assoc db-no-schema :schema schema))))
+     pc)))
 
 
 (defn transact-flakes
