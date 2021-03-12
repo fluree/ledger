@@ -13,3 +13,5 @@ default-private-key.txt
 default_private_key.txt
 /.cpcache
 /data
+/resources/adminUI
+/node_modules
