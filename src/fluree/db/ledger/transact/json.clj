@@ -26,7 +26,7 @@
 
 (def ^:const parallelism
   "Processes this many transaction items in parallel."
-  10)
+  8)
 
 (defn register-validate-fn
   [f {:keys [validate-fn] :as tx-state}]
@@ -90,10 +90,12 @@
         (->> (flake/sid->cid _id)
              (dbproto/-c-prop (:db tx-state) :name))))
 
+
 (defn- resolve-collection-id
   "Resolves collection id from collection name"
   [db _collection]
   (dbproto/-c-prop db :id _collection))
+
 
 (defn resolve-action
   "Returns top level action as keyword for subject based on user-supplied action (if available),
@@ -121,6 +123,7 @@
       (fn [property] (dbproto/-p-prop db property pred-id))
       (throw (throw (ex-info (str "Predicate does not exist: " predicate)
                              {:status 400 :error :db/invalid-tx}))))))
+
 
 (defn conform-object-value
   "Attempts to coerce any value to internal form."
@@ -252,15 +255,6 @@
                         async/merge
                         (async/into []))
             (pred-info :unique) (resolve-unique _id pred-info tx-state))))
-
-
-(defn add-flake-to-txi
-  "Used to add one or more proposed flakes to either temp-flakes or lookup-flakes"
-  [txi [s p o t]]
-  (let [flake (flake/->Flake s p o t true nil)]
-    (if (or (tempid/TempId? s) (tempid/TempId? o))
-      (update txi :_temp-flakes conj flake)
-      (update txi :_lookup-flakes conj flake))))
 
 
 (defn add-singleton-flake
@@ -565,7 +559,8 @@
   [_ db cmd-data next-t block-instant]
   (async/go
     (try
-      (let [tx-map           (tx-util/validate-command (:command cmd-data))
+      (let [start-time (System/currentTimeMillis)
+            tx-map           (tx-util/validate-command (:command cmd-data))
             _                (when (not-empty (:deps tx-map)) ;; transaction has dependencies listed, verify they are satisfied
                                (or (<? (tx-util/deps-succeeded? db (:deps tx-map)))
                                    (throw (ex-info (str "One or more of the dependencies for this transaction failed: " (:deps tx-map))
@@ -614,6 +609,7 @@
          :bytes        tx-bytes
          :fuel         (+ (:spent @(:fuel tx-state)) tx-bytes (count all-flakes) 1)
          :status       200
+         :duration     (str (- (System/currentTimeMillis) start-time) "ms")
          :txid         txid
          :auth         auth
          :authority    authority
