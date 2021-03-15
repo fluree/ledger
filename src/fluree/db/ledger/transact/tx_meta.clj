@@ -64,7 +64,8 @@
                       :authority (when authority (<? (dbproto/-subid db ["_auth/id" authority] false)))
                       :tx-string (:cmd command)
                       :signature (:sig command)
-                      :nonce     nonce}
+                      :nonce     nonce
+                      :t         t}
 
           flakes     (->> (tx-meta-flakes tx-state error-str)
                           (flake/sorted-set-by flake/cmp-flakes-block))
