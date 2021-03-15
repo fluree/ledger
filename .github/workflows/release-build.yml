@@ -34,7 +34,7 @@ jobs:
         id: create_release
         uses: softprops/action-gh-release@v1
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.RELEASE_NOTIFICATIONS_TOKEN }}
         with:
           tag_name: ${{ steps.get-tag.outputs.tag }}
           draft: false
