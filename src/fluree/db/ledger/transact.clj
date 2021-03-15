@@ -1421,7 +1421,7 @@
              cmd-types        #{}
              txns             {}
              remove-preds-acc #{}]
-        (let [
+        (let [start-time    (System/currentTimeMillis)
               ;tx-result     (<? (build-transaction session db cmd-data next-t block-instant))
               tx-result     (<? (tx-json/build-transaction session db cmd-data next-t block-instant))
               {:keys [db-after bytes fuel flakes tempids auth authority status error hash
@@ -1439,6 +1439,7 @@
                                                           :bytes     bytes
                                                           :id        (:id cmd-data)
                                                           :fuel      fuel
+                                                          :duration  (str (- (System/currentTimeMillis) start-time) "ms")
                                                           :auth      auth
                                                           :hash      hash
                                                           :authority authority
