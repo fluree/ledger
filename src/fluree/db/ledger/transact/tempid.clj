@@ -65,3 +65,9 @@
                                    {:status 400
                                     :error  :db/invalid-tx})))))
   subject-id)
+(defn result-map
+  "Creates a map of original user tempid strings to the resolved value."
+  [{:keys [tempids] :as tx-state}]
+  (reduce-kv (fn [acc tempid subject-id]
+               (assoc acc (:user-string tempid) subject-id))
+             {} @tempids))

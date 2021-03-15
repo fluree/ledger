@@ -540,14 +540,6 @@
            <?))))
 
 
-(defn tempid-return-map
-  "Creates a map of original user tempid strings to the resolved value."
-  [{:keys [tempids] :as tx-state}]
-  (reduce-kv (fn [acc tempid subject-id]
-               (assoc acc (:user-string tempid) subject-id))
-             {} @tempids))
-
-
 (defn update-db-after
   "Updates db-after into tx-state"
   [db-after tx-state]
@@ -605,7 +597,7 @@
          :db-before    db-before
          :db-after     db-after
          :flakes       (conj all-flakes @hash-flake)
-         :tempids      (tempid-return-map tx-state)
+         :tempids      (tempid/result-map tx-state)
          :bytes        tx-bytes
          :fuel         (+ (:spent @(:fuel tx-state)) tx-bytes (count all-flakes) 1)
          :status       200
