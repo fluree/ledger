@@ -5,7 +5,7 @@
             [clojure.core.async :as async]
             [aleph.http :as http]
             [aleph.netty :as netty]
-            [compojure.core :as compojure]
+            [compojure.core :as compojure :refer [defroutes]]
             [compojure.route :as route]
             [manifold.deferred :as d]
             [ring.middleware.params :as params]
@@ -926,49 +926,56 @@
                                      uri))))))
 
 
+(defn- api-routes
+  [system]
+  (compojure/routes
+    (compojure/GET "/fdb/storage/:network/:db/:type" request (storage-handler system request))
+    (compojure/GET "/fdb/storage/:network/:db/:type/:key" request (storage-handler system request))
+    (compojure/GET "/fdb/ws" request (websocket/handler system request))
+    (compojure/ANY "/fdb/health" request (health-handler system request))
+    (compojure/ANY "/fdb/nw-state" request (nw-state system request))
+    (compojure/GET "/fdb/version" request (version-handler system request))
+    (compojure/POST "/fdb/add-server" request (add-server system request))
+    (compojure/POST "/fdb/remove-server" request (remove-server system request))
+    (compojure/POST "/fdb/sub" request (subscription-handler system request))
+    (compojure/GET "/fdb/new-keys" request (keys-handler system request))
+    (compojure/POST "/fdb/new-keys" request (keys-handler system request))
+    (compojure/POST "/fdb/dbs" request (get-ledgers system request))
+    (compojure/GET "/fdb/dbs" request (get-ledgers system request))
+    (compojure/POST "/fdb/new-db" request (new-ledger system request))
+    (compojure/POST "/fdb/delete-db" request (delete-ledger system request))
+    (compojure/POST "/fdb/:network/:db/pw/:action" request (password-handler system request))
+    (compojure/POST "/fdb/:network/:db/:action" request (wrap-action-handler system request))
+
+    ;; fallback 404 for unknown API paths
+    (compojure/ANY "/fdb/*" [] not-found)))
+
+
+(defroutes admin-ui-routes
+  (compojure/GET "/" [] (resp/resource-response "index.html" {:root "adminUI"}))
+  (route/resources "/" {:root "adminUI"})
+  (compojure/GET "/:page" [] (resp/resource-response "index.html" {:root "adminUI"})))
+
+
 ;; TODO - handle CORS more reasonably for production
 (defn- make-handler
   [system]
-  (ignore-trailing-slash
-    (cors/wrap-cors
-      (wrap-errors
-        (:debug-mode? system)
-        (params/wrap-params
-          (compojure/routes
-            ;; API routes
-            (compojure/GET "/fdb/storage/:network/:db/:type" request (storage-handler system request))
-            (compojure/GET "/fdb/storage/:network/:db/:type/:key" request (storage-handler system request))
-            (compojure/GET "/fdb/ws" request (websocket/handler system request))
-            (compojure/ANY "/fdb/health" request (health-handler system request))
-            (compojure/ANY "/fdb/nw-state" request (nw-state system request))
-            (compojure/GET "/fdb/version" request (version-handler system request))
-            (compojure/POST "/fdb/add-server" request (add-server system request))
-            (compojure/POST "/fdb/remove-server" request (remove-server system request))
-            (compojure/POST "/fdb/sub" request (subscription-handler system request))
-            (compojure/GET "/fdb/new-keys" request (keys-handler system request))
-            (compojure/POST "/fdb/new-keys" request (keys-handler system request))
-            (compojure/POST "/fdb/dbs" request (get-ledgers system request))
-            (compojure/GET "/fdb/dbs" request (get-ledgers system request))
-            (compojure/POST "/fdb/new-db" request (new-ledger system request))
-            (compojure/POST "/fdb/delete-db" request (delete-ledger system request))
-            (compojure/POST "/fdb/:network/:db/pw/:action" request (password-handler system request))
-            (compojure/POST "/fdb/:network/:db/:action" request (wrap-action-handler system request))
-            ;; Add any new /fdb/ API routes to the section above
+  (-> (compojure/routes
+        (api-routes system)
 
-            ;; If we reach here with a path that starts with /fdb/, return a 404
-            (compojure/ANY "/fdb/*" [] not-found)
+        admin-ui-routes
 
-            ;; admin UI routes
-            (compojure/GET "/" [] (resp/resource-response "index.html" {:root "adminUI"}))
-            (route/resources "/" {:root "adminUI"})
-            (compojure/GET "/:page" [] (resp/resource-response "index.html" {:root "adminUI"}))
+        ;; final 404 fallback
+        (constantly not-found))
 
-            ;; Final 404 fallback
-            (constantly not-found))))
+      params/wrap-params
+      (->> (wrap-errors (:debug-mode? system)))
+      (cors/wrap-cors
+        :access-control-allow-origin [#".+"]
+        :access-control-expose-headers ["X-Fdb-Block" "X-Fdb-Fuel" "X-Fdb-Status" "X-Fdb-Time" "X-Fdb-Version"]
+        :access-control-allow-methods [:get :put :post :delete])
+      ignore-trailing-slash))
 
-      :access-control-allow-origin [#".+"]
-      :access-control-expose-headers ["X-Fdb-Block" "X-Fdb-Fuel" "X-Fdb-Status" "X-Fdb-Time"]
-      :access-control-allow-methods [:get :put :post :delete])))
 
 (defrecord WebServer [close])
 
