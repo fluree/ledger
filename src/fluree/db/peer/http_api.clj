@@ -927,6 +927,7 @@
         (:debug-mode? system)
         (params/wrap-params
           (compojure/routes
+            ;; API routes
             (compojure/GET "/fdb/storage/:network/:db/:type" request (storage-handler system request))
             (compojure/GET "/fdb/storage/:network/:db/:type/:key" request (storage-handler system request))
             (compojure/GET "/fdb/ws" request (websocket/handler system request))
@@ -943,18 +944,17 @@
             (compojure/POST "/fdb/delete-db" request (delete-ledger system request))
             (compojure/POST "/fdb/:network/:db/pw/:action" request (password-handler system request))
             (compojure/POST "/fdb/:network/:db/:action" request (wrap-action-handler system request))
+            ;; Add any new /fdb/ API routes to the section above
+
+            ;; If we reach here with a path that starts with /fdb/, return a 404
+            (compojure/ANY "/fdb/*" [] not-found)
+
+            ;; admin UI routes
             (compojure/GET "/" [] (resp/resource-response "index.html" {:root "adminUI"}))
             (route/resources "/" {:root "adminUI"})
-            (compojure/GET "/account" [] (resp/resource-response "index.html" {:root "adminUI"}))
-            (compojure/GET "/flureeql" [] (resp/resource-response "index.html" {:root "adminUI"}))
-            (compojure/GET "/graphql" [] (resp/resource-response "index.html" {:root "adminUI"}))
-            (compojure/GET "/sparql" [] (resp/resource-response "index.html" {:root "adminUI"}))
-            (compojure/GET "/schema" [] (resp/resource-response "index.html" {:root "adminUI"}))
-            (compojure/GET "/import" [] (resp/resource-response "index.html" {:root "adminUI"}))
-            (compojure/GET "/permissions" [] (resp/resource-response "index.html" {:root "adminUI"}))
-            (compojure/GET "/exploredb" [] (resp/resource-response "index.html" {:root "adminUI"}))
-            (compojure/GET "/networkdashboard" [] (resp/resource-response "index.html" {:root "adminUI"}))
-            (compojure/GET "/transact" [] (resp/resource-response "index.html" {:root "adminUI"}))
+            (compojure/GET "/:page" [] (resp/resource-response "index.html" {:root "adminUI"}))
+
+            ;; Final 404 fallback
             (constantly not-found))))
 
       :access-control-allow-origin [#".+"]
