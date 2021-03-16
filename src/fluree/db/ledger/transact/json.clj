@@ -250,7 +250,6 @@
   (let [multi? (pred-info :multi)]
     (cond-> object
             (nil? object) (async/go ::delete)
-            (txfunction/tx-fn? object) (txfunction/execute _id pred-info tx-state)
             (not multi?) (resolve-object-item _id pred-info tx-state)
             multi? (->> (mapv #(resolve-object-item % _id pred-info tx-state))
                         async/merge
@@ -315,7 +314,12 @@
             acc
             (let [pred-info (predicate-details pred collection db)
                   pid       (pred-info :id)
-                  obj*      (<? (resolve-object obj _id* pred-info tx-state))]
+                  obj*      (if (txfunction/tx-fn? obj)
+                              (-> (txfunction/execute obj _id pred-info tx-state)
+                                  <?
+                                  (resolve-object _id* pred-info tx-state)
+                                  <?)
+                              (<? (resolve-object obj _id* pred-info tx-state)))]
               (cond
                 ;; delete should have no tempids, so can register the final flakes in tx-state
                 (= :delete action)
