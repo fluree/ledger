@@ -3,14 +3,15 @@
   (:require [fluree.db.util.core :as util]
             [clojure.string :as str]))
 
-
 ;; functions related to generation of tempids
 
-(defrecord TempId [user-string collection unique])
+(defrecord TempId [user-string collection key unique?])
+
 
 (defn TempId?
   [x]
   (instance? TempId x))
+
 
 (defn register
   "Registers a TempId instance into the tx-state, returns provided TempId unaltered."
@@ -19,13 +20,15 @@
   (swap! tempids update TempId identity)                    ;; don't touch any existing value, otherwise nil
   TempId)
 
+
 (defn new*
   [tempid]
   (let [[collection id] (str/split tempid #"[^\._a-zA-Z0-9]" 2)
         key (if id
               (keyword collection id)
               (keyword collection (str (util/random-uuid))))]
-    (->TempId tempid collection key)))
+    (->TempId tempid collection key (boolean id))))
+
 
 (defn new
   "Generates a new tempid record from tempid string. Registers tempid in :tempids atom within
@@ -38,6 +41,7 @@
   (let [TempId (new* tempid)]
     (register TempId tx-state)))
 
+
 (defn use
   "Returns a tempid that will be used for a Flake object value, but only returns it if
   it already exists. If it does not exist, it means it is a tempid used as a value, but it was never used
@@ -49,6 +53,7 @@
       (throw (ex-info (str "Tempid " tempid " used as a value, but there is no corresponding subject in the transaction")
                       {:status 400
                        :error  :db/invalid-tx})))))
+
 
 (defn set
   "Sets a tempid value into the cache. If the tempid was already set by another :upsert
@@ -65,9 +70,15 @@
                                    {:status 400
                                     :error  :db/invalid-tx})))))
   subject-id)
+
+
 (defn result-map
   "Creates a map of original user tempid strings to the resolved value."
   [{:keys [tempids] :as tx-state}]
-  (reduce-kv (fn [acc tempid subject-id]
-               (assoc acc (:user-string tempid) subject-id))
+  (reduce-kv (fn [acc ^TempId tempid subject-id]
+               (if (:unique? tempid)
+                 (assoc acc (:user-string tempid) subject-id)
+                 (update acc (:user-string tempid) (fn [[min-sid max-sid]]
+                                                     [(if min-sid (min min-sid subject-id) subject-id)
+                                                      (if max-sid (max max-sid subject-id) subject-id)]))))
              {} @tempids))
