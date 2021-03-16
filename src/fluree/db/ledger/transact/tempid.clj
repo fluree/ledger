@@ -1,7 +1,10 @@
 (ns fluree.db.ledger.transact.tempid
   (:refer-clojure :exclude [use set])
   (:require [fluree.db.util.core :as util]
-            [clojure.string :as str]))
+            [clojure.string :as str]
+            [fluree.db.constants :as const]
+            [fluree.db.flake :as flake]
+            [fluree.db.util.json :as json]))
 
 ;; functions related to generation of tempids
 
@@ -82,3 +85,9 @@
                                                      [(if min-sid (min min-sid subject-id) subject-id)
                                                       (if max-sid (max max-sid subject-id) subject-id)]))))
              {} @tempids))
+
+
+(defn flake
+  "Returns flake for tx-meta (transaction sid) that contains a json packaging of the tempids map."
+  [tempids-map t]
+  (flake/->Flake t const/$_tx:tempids (json/stringify tempids-map) t true nil))

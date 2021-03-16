@@ -12,15 +12,13 @@
             [fluree.db.dbfunctions.core :as dbfunctions]
             [fluree.db.util.tx :as tx-util]
             [fluree.db.util.schema :as schema-util]
-            [fluree.db.query.schema :as schema]
             [fluree.db.ledger.transact.retract :as tx-retract]
             [fluree.db.ledger.transact.tempid :as tempid]
             [fluree.db.ledger.transact.tags :as tags]
             [fluree.db.ledger.transact.txfunction :as txfunction]
             [fluree.db.ledger.transact.auth :as tx-auth]
             [fluree.db.ledger.transact.tx-meta :as tx-meta]
-            [fluree.db.ledger.transact.validation :as tx-validate]
-            [fluree.db.ledger.transact.schema :as tx-schema])
+            [fluree.db.ledger.transact.validation :as tx-validate])
   (:import (fluree.db.flake Flake)))
 
 
@@ -556,7 +554,7 @@
   [_ db cmd-data next-t block-instant]
   (async/go
     (try
-      (let [start-time (System/currentTimeMillis)
+      (let [start-time       (System/currentTimeMillis)
             tx-map           (tx-util/validate-command (:command cmd-data))
             _                (when (not-empty (:deps tx-map)) ;; transaction has dependencies listed, verify they are satisfied
                                (or (<? (tx-util/deps-succeeded? db (:deps tx-map)))
@@ -571,10 +569,11 @@
                                :new-db (tx-util/create-new-db-tx tx-map))
             tx-flakes        (<? (do-transact tx-state tx))
             tx-meta-flakes   (tx-meta/tx-meta-flakes tx-state nil)
-
+            tempids-map      (tempid/result-map tx-state)
             schema-flakes    @(:schema-flakes tx-state)
             all-flakes       (cond-> (into tx-flakes tx-meta-flakes)
                                      schema-flakes (into schema-flakes)
+                                     (not-empty tempids-map) (conj (tempid/flake tempids-map next-t))
                                      @(:tags tx-state) (into (tags/create-flakes tx-state)))
 
             ;; kick off hash process in the background, it can take a while
@@ -602,7 +601,7 @@
          :db-before    db-before
          :db-after     db-after
          :flakes       (conj all-flakes @hash-flake)
-         :tempids      (tempid/result-map tx-state)
+         :tempids      tempids-map
          :bytes        tx-bytes
          :fuel         (+ (:spent @(:fuel tx-state)) tx-bytes (count all-flakes) 1)
          :status       200
