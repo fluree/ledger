@@ -236,6 +236,7 @@
         (= :ref type) (cond
                         (tempid/TempId? object*) object*
                         (string? object*) (tempid/use object* tx-state)
+                        (int? object*) (<? (resolve-ident-strict object* tx-state))
                         (util/pred-ident? object*) (<? (resolve-ident-strict object* tx-state)))
 
         (= :tag type) (<? (tags/resolve object* pred-info tx-state))
