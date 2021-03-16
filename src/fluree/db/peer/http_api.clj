@@ -34,7 +34,8 @@
             [fluree.db.ledger.reindex :as reindex]
             [fluree.db.ledger.mutable :as mutable]
             [fluree.db.auth :as auth]
-            [fluree.db.ledger.delete :as delete])
+            [fluree.db.ledger.delete :as delete]
+            [fluree.db.meta :as meta])
   (:import (java.io Closeable)
            (java.time Instant)
            (java.net BindException)
@@ -612,6 +613,13 @@
       :login (password-login system ledger request)
       :generate (password-generate system ledger request))))
 
+
+(defn version-handler [system request]
+  {:headers {"Content-Type" "text/plain"}
+   :status  200
+   :body    (meta/version)})
+
+
 (defn- remove-deep
   [key-set data]
   (walk/prewalk (fn [node] (if (map? node)
@@ -933,6 +941,7 @@
             (compojure/GET "/fdb/ws" request (websocket/handler system request))
             (compojure/ANY "/fdb/health" request (health-handler system request))
             (compojure/ANY "/fdb/nw-state" request (nw-state system request))
+            (compojure/GET "/fdb/version" request (version-handler system request))
             (compojure/POST "/fdb/add-server" request (add-server system request))
             (compojure/POST "/fdb/remove-server" request (remove-server system request))
             (compojure/POST "/fdb/sub" request (subscription-handler system request))
