@@ -179,13 +179,16 @@
   - If new subject, has to specify type. If it has :component true, then :type needs to be ref
   "
   [pred-sid {:keys [validate-fn db-before] :as tx-state}]
-  (let [pred-flakes     (get-in @validate-fn [:c-spec pred-sid])
-        existing-schema (:schema db-before)
-        new?            (predicate-new? pred-sid existing-schema)
-        {:keys [type multi component unique]} (flakes-by-type pred-flakes)]
-    (cond-> pred-flakes
-            true (check-type-changes new? type)
-            multi (check-multi-changes multi)
-            component (check-component-changes new? component)
-            unique (check-unique-changes new? pred-sid existing-schema unique))))
+  (try
+    (let [pred-flakes     (get-in @validate-fn [:c-spec pred-sid])
+          existing-schema (:schema db-before)
+          new?            (predicate-new? pred-sid existing-schema)
+          {:keys [type multi component unique]} (flakes-by-type pred-flakes)]
+      (cond-> pred-flakes
+              true (check-type-changes new? type)
+              multi (check-multi-changes multi)
+              component (check-component-changes new? component)
+              unique (check-unique-changes new? pred-sid existing-schema unique)))
+    ;; any returned exception will halt processing... don't throw here
+    (catch Exception e e)))
 

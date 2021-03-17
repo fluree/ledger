@@ -353,7 +353,9 @@
 ;; Permissions
 
 (defn permissions
-  "Validates transaction based on the state of the new database."
+  "Validates transaction based on the state of the new database.
+
+  Exceptions here should throw: caught by go-try."
   [db-before candidate-db flakes]
   (go-try
     (let [tx-permissions (:permissions db-before)
@@ -381,7 +383,9 @@
 (defn tx-deps-check
   "A transaction can optionally include a list of dependent transactions.
   Returns true if dependency check is successful, throws exception if there
-  is an error."
+  is an error.
+
+  Exceptions here should throw: catch by go-try."
   [db tx-map]
   (let [deps (:deps tx-map)]
     (go-try
