@@ -1,6 +1,5 @@
 (ns fluree.db.ledger.transact.json
-  (:require [fluree.db.ledger.transact.subject :refer :all]
-            [fluree.db.util.async :refer [<? <?? go-try merge-into? channel?]]
+  (:require [fluree.db.util.async :refer [<? <?? go-try merge-into? channel?]]
             [fluree.db.util.core :as util]
             [fluree.db.util.log :as log]
             [fluree.db.dbproto :as dbproto]
@@ -18,7 +17,8 @@
             [fluree.db.ledger.transact.txfunction :as txfunction]
             [fluree.db.ledger.transact.auth :as tx-auth]
             [fluree.db.ledger.transact.tx-meta :as tx-meta]
-            [fluree.db.ledger.transact.validation :as tx-validate])
+            [fluree.db.ledger.transact.validation :as tx-validate]
+            [fluree.db.ledger.transact.error :as tx-error])
   (:import (fluree.db.flake Flake)))
 
 
@@ -77,7 +77,7 @@
 
 (defn- resolve-collection-name
   "Resolves collection name from _id"
-  [_id tx-state]
+  [_id {:keys [db-root] :as tx-state}]
   (cond (tempid/TempId? _id)
         (:collection _id)
 
@@ -86,7 +86,7 @@
 
         (int? _id)
         (->> (flake/sid->cid _id)
-             (dbproto/-c-prop (:db tx-state) :name))))
+             (dbproto/-c-prop db-root :name))))
 
 
 (defn- resolve-collection-id
@@ -166,14 +166,14 @@
   resolve it to a different subject!)
 
   If error is not thrown, returns the provided object argument."
-  [object-ch _id pred-info {:keys [db t] :as tx-state}]
+  [object-ch _id pred-info {:keys [db-before t] :as tx-state}]
   (go-try
     (let [object       (<? object-ch)
           pred-id      (pred-info :id)
           ;; create a two-tuple of [object-value async-chan-with-found-subjects]
           ;; to iterate over. Kicks off queries (if multi) in parallel.
           obj+subj-chs (->> (if (pred-info :multi) object [object])
-                            (map #(vector % (query-range/index-range db :post = [pred-id %]))))]
+                            (map #(vector % (query-range/index-range db-before :post = [pred-id %]))))]
       ;; use a loop here so we can use async to full extent
       (loop [[[obj subject-ch] & r] obj+subj-chs]
         (if-not obj
@@ -294,7 +294,7 @@
                    if the tempid is resolved via a ':unique true' predicate
                    need to look up and retract any existing flakes with same subject+predicate
   - _temp-multi-flakes - multi-flakes that need permanent ids yet, but then act like _multi-flakes"
-  [{:keys [_id _action _meta] :as txi} {:keys [db t] :as tx-state}]
+  [{:keys [_id _action _meta] :as txi} {:keys [db-before t] :as tx-state}]
   (go-try
     (let [_p-o-pairs (dissoc txi :_id :_action :_meta)
           _id*       (cond
@@ -310,7 +310,7 @@
                [[pred obj] & r] _p-o-pairs]
           (if (nil? pred)                                   ;; finished
             acc
-            (let [pred-info (predicate-details pred collection db)
+            (let [pred-info (predicate-details pred collection db-before)
                   pid       (pred-info :id)
                   obj*      (if (txfunction/tx-fn? obj)
                               (-> (txfunction/execute obj _id pred-info tx-state)
@@ -403,54 +403,63 @@
 
 
 (defn ->tx-state
-  [db-before t auth authority block-instant {:keys [txid cmd sig nonce] :as tx-map}]
-  {:db            db-before
-   :db-root       (dbproto/-rootdb db-before)
-   :db-after      (atom nil)                                ;; store updated db here
-   :flakes        nil                                       ;; holds final list of flakes for tx once complete
-   :auth          auth
-   :authority     authority
-   :t             t
-   :instant       block-instant
-   :txid          txid
-   :tx-string     cmd
-   :signature     sig
-   :nonce         nonce
-   :fuel          (atom {:stack   []
-                         :credits 1000000
-                         :spent   0})
-   ;; hold map of all tempids to their permanent ids. After initial processing will use this to fill
-   ;; all tempids with the permanent ids.
-   :tempids       (atom {})
-   ;; idents (two-tuples of unique predicate + value) may be used multiple times in same tx
-   ;; we keep the ones we've already resolved here as a cache
-   :idents        (atom {})
-   ;; if a tempid resolves to existing subject via :upsert predicate, set it here. tempids don't need
-   ;; to check for existing duplicate values, but if a tempid resolves via upsert, we need to check it
-   :upserts       (atom nil)                                ;; cache of resolved identities
-   ;; Unique predicate + value used in transaction kept here, to ensure the same unique is not used
-   ;; multiple times within the transaction
-   :uniques       (atom #{})
+  [db t block-instant {:keys [auth auth-sid authority authority-sid tx-permissions txid cmd sig nonce type] :as tx-map}]
+  (let [tx        (case (keyword (:type tx-map))            ;; command type is either :tx or :new-db
+                    :tx (:tx tx-map)
+                    :new-db (tx-util/create-new-db-tx tx-map))
+        db-before (cond-> db
+                          tx-permissions (assoc :permissions tx-permissions))]
+    {:db-before     db-before
+     :db-root       db
+     :db-after      (atom nil)                              ;; store updated db here
+     :flakes        nil                                     ;; holds final list of flakes for tx once complete
+     :auth-id       auth                                    ;; auth id string in _auth/id
+     :auth          auth-sid                                ;; auth subject-id integer
+     :authority-id  authority                               ;; authority id string as per _auth/id (or nil if no authority)
+     :authority     authority-sid                           ;; authority subject-id integer (or nil if no authority)
+     :t             t
+     :instant       block-instant
+     :txid          txid
+     :tx-type       type
+     :tx            tx
+     :tx-string     cmd
+     :signature     sig
+     :nonce         nonce
+     :fuel          (atom {:stack   []
+                           :credits 1000000
+                           :spent   0})
+     ;; hold map of all tempids to their permanent ids. After initial processing will use this to fill
+     ;; all tempids with the permanent ids.
+     :tempids       (atom {})
+     ;; idents (two-tuples of unique predicate + value) may be used multiple times in same tx
+     ;; we keep the ones we've already resolved here as a cache
+     :idents        (atom {})
+     ;; if a tempid resolves to existing subject via :upsert predicate, set it here. tempids don't need
+     ;; to check for existing duplicate values, but if a tempid resolves via upsert, we need to check it
+     :upserts       (atom nil)                              ;; cache of resolved identities
+     ;; Unique predicate + value used in transaction kept here, to ensure the same unique is not used
+     ;; multiple times within the transaction
+     :uniques       (atom #{})
 
-   ;; as data is getting processed, all schema flakes end up in this bucket to allow
-   ;; for additional validation, and then processing prior to the other flakes.
-   :schema-flakes (atom nil)
-   ;; we may generate new tags as part of the transaction. Holds those new tags, but also a cache
-   ;; of tag lookups to speed transaction by avoiding full lookups of the same tag multiple times in same tx
-   :tags          (atom nil)
+     ;; as data is getting processed, all schema flakes end up in this bucket to allow
+     ;; for additional validation, and then processing prior to the other flakes.
+     :schema-flakes (atom nil)
+     ;; we may generate new tags as part of the transaction. Holds those new tags, but also a cache
+     ;; of tag lookups to speed transaction by avoiding full lookups of the same tag multiple times in same tx
+     :tags          (atom nil)
 
-   ;; Some predicates may require extra validation after initial processing, we register functions
-   ;; here for that purpose, 'cache' holds cached functions that are ready to execute
-   :validate-fn   (atom {:queue   [] :cache {}
-                         ;; need to track respective flakes for predicates (for tx-spec) and subject changes (collection-specs)
-                         :tx-spec nil :c-spec nil})})
+     ;; Some predicates may require extra validation after initial processing, we register functions
+     ;; here for that purpose, 'cache' holds cached functions that are ready to execute
+     :validate-fn   (atom {:queue   [] :cache {}
+                           ;; need to track respective flakes for predicates (for tx-spec) and subject changes (collection-specs)
+                           :tx-spec nil :c-spec nil})}))
 
 
 (defn assign-permanent-ids
   "Assigns any unresolved tempids with a permanent subject id."
-  [{:keys [tempids upserts db t] :as tx-state} tx]
+  [{:keys [tempids upserts db-before t] :as tx-state} tx]
   (try
-    (let [ecount (assoc (:ecount db) -1 t)]                 ;; make sure to set current _tx ecount to 't' value, even if no tempids in transaction
+    (let [ecount (assoc (:ecount db-before) -1 t)]          ;; make sure to set current _tx ecount to 't' value, even if no tempids in transaction
       (loop [[[tempid resolved-id] & r] @tempids
              tempids* @tempids
              upserts* #{}
@@ -462,7 +471,7 @@
               ;; return tx-state, don't need to update ecount in db-after, as dbproto/-with will update it
               tx-state)
           (if (nil? resolved-id)
-            (let [cid      (dbproto/-c-prop db :id (:collection tempid))
+            (let [cid      (dbproto/-c-prop db-before :id (:collection tempid))
                   next-id  (if (= -1 cid)
                              t                              ; _tx collection has special handling as we decrement. Current value held in 't'
                              (if-let [last-sid (get ecount* cid)]
@@ -475,9 +484,9 @@
     (catch Exception e
       (log/error e (str "Unexpected error assigning permanent id to tempids."
                         "with error: " (.getMessage e))
-                 {:ecount      (:ecount db)
+                 {:ecount      (:ecount db-before)
                   :tempids     @tempids
-                  :schema-coll (get-in db [:schema :coll])})
+                  :schema-coll (get-in db-before [:schema :coll])})
       (throw (ex-info (str "Unexpected error assigning permanent id to tempids."
                            "with error: " (.getMessage e))
                       {:status 500 :error :db/unexpected-error}
@@ -485,7 +494,7 @@
 
 
 (defn resolve-temp-flakes
-  [temp-flakes multi? {:keys [db tempids upserts] :as tx-state}]
+  [temp-flakes multi? {:keys [db-before tempids upserts] :as tx-state}]
   (go-try
     (loop [[^Flake tf & r] temp-flakes
            flakes []]
@@ -498,7 +507,7 @@
                                     (tempid/TempId? o) (assoc :o (get @tempids o)))
               retract-flake (when (contains? @upserts s)    ;; if was an upsert resolved, could be an existing flake that needs to get retracted
                               (first (<? (tx-retract/flake (.-s flake) (.-p tf) (if multi? (.-o flake) nil) tx-state))))
-              pred-info     (fn [property] (dbproto/-p-prop db property (.-p flake)))
+              pred-info     (fn [property] (dbproto/-p-prop db-before property (.-p flake)))
               flakes*       (add-singleton-flake flakes flake retract-flake pred-info tx-state)]
           (recur r flakes*))))))
 
@@ -507,7 +516,7 @@
   [tx-state tx]
   (go-try
     (loop [[statements & r] tx
-           flakes (flake/sorted-set-by flake/cmp-flakes-spot-novelty)]
+           flakes (flake/sorted-set-by flake/cmp-flakes-block)]
       (if (nil? statements)
         flakes
         (let [{:keys [_temp-multi-flakes _temp-flakes _final-flakes _collection]} statements
@@ -551,96 +560,80 @@
 
 
 (defn build-transaction
-  [_ db cmd-data next-t block-instant]
+  [tx-state]
+  (go-try
+    (let [{:keys [db-before auth-id authority-id txid tx t tx-type fuel]} tx-state
+          tx-flakes        (<? (do-transact tx-state tx))
+          tx-meta-flakes   (tx-meta/tx-meta-flakes tx-state nil)
+          tempids-map      (tempid/result-map tx-state)
+          schema-flakes    @(:schema-flakes tx-state)
+          all-flakes       (cond-> (into tx-flakes tx-meta-flakes)
+                                   schema-flakes (into schema-flakes)
+                                   (not-empty tempids-map) (conj (tempid/flake tempids-map t))
+                                   @(:tags tx-state) (into (tags/create-flakes tx-state)))
+
+          ;; kick off hash process in the background, it can take a while
+          hash-flake       (future (tx-meta/generate-hash-flake all-flakes tx-state))
+          fast-forward-db? (:tt-id db-before)
+          ;; final db that can be used for any final testing/spec validation
+          db-after         (-> (if fast-forward-db?
+                                 (<? (dbproto/-forward-time-travel db-before all-flakes))
+                                 (<? (dbproto/-with-t db-before all-flakes)))
+                               dbproto/-rootdb
+                               tx-util/make-candidate-db
+                               (tx-meta/add-tx-hash-flake @hash-flake)
+                               (update-db-after tx-state))
+          tx-bytes         (- (get-in db-after [:stats :size]) (get-in db-before [:stats :size]))]
+
+      ;; runs all 'spec' validations
+      (<? (tx-validate/run all-flakes tx-state parallelism))
+
+      (<? (tx-validate/permissions db-before db-after all-flakes))
+
+      ;; note here that db-after does NOT contain the tx-hash flake. The hash generation takes time, so is done in the background
+      ;; This should not matter as
+      {:t            t
+       :hash         (.-o ^Flake @hash-flake)
+       :db-before    db-before
+       :db-after     db-after
+       :flakes       (conj all-flakes @hash-flake)
+       :tempids      tempids-map
+       :bytes        tx-bytes
+       :fuel         (+ (:spent @fuel) tx-bytes (count all-flakes) 1)
+       :status       200
+       ;:duration     (str (- (System/currentTimeMillis) start-time) "ms")
+       :txid         txid
+       :auth         auth-id
+       :authority    authority-id
+       :type         tx-type
+       :remove-preds (when schema-flakes
+                       (schema-util/remove-from-post-preds schema-flakes))})))
+
+
+(defn transact
+  [db cmd-data t block-instant]
   (async/go
     (try
-      (let [start-time       (System/currentTimeMillis)
-            tx-map           (tx-util/validate-command (:command cmd-data))
-            _                (when (not-empty (:deps tx-map)) ;; transaction has dependencies listed, verify they are satisfied
-                               (or (<? (tx-util/deps-succeeded? db (:deps tx-map)))
-                                   (throw (ex-info (str "One or more of the dependencies for this transaction failed: " (:deps tx-map))
-                                                   {:status 403 :error :db/invalid-auth}))))
-            {:keys [auth authority txid]} tx-map
-            {:keys [auth-id authority-id tx-permissions]} (<? (tx-auth/resolve db auth authority))
-            db-before        (assoc db :permissions tx-permissions)
-            tx-state         (->tx-state db-before next-t auth-id authority-id block-instant tx-map)
-            tx               (case (keyword (:type tx-map)) ;; command type is either :tx or :new-db
-                               :tx (:tx tx-map)
-                               :new-db (tx-util/create-new-db-tx tx-map))
-            tx-flakes        (<? (do-transact tx-state tx))
-            tx-meta-flakes   (tx-meta/tx-meta-flakes tx-state nil)
-            tempids-map      (tempid/result-map tx-state)
-            schema-flakes    @(:schema-flakes tx-state)
-            all-flakes       (cond-> (into tx-flakes tx-meta-flakes)
-                                     schema-flakes (into schema-flakes)
-                                     (not-empty tempids-map) (conj (tempid/flake tempids-map next-t))
-                                     @(:tags tx-state) (into (tags/create-flakes tx-state)))
-
-            ;; kick off hash process in the background, it can take a while
-            hash-flake       (future (tx-meta/generate-hash-flake all-flakes tx-state))
-            fast-forward-db? (:tt-id db-before)
-            ;; final db that can be used for any final testing/spec validation
-            db-after         (-> (if fast-forward-db?
-                                   (<? (dbproto/-forward-time-travel db-before all-flakes))
-                                   (<? (dbproto/-with-t db-before all-flakes)))
-                                 dbproto/-rootdb
-                                 tx-util/make-candidate-db
-                                 (tx-meta/add-tx-hash-flake @hash-flake)
-                                 (update-db-after tx-state))
-            tx-bytes         (- (get-in db-after [:stats :size]) (get-in db-before [:stats :size]))]
-
-        ;; runs all 'spec' validations
-        (<? (tx-validate/run all-flakes tx-state parallelism))
-
-        (<? (tx-util/validate-permissions db db-after all-flakes tx-permissions))
-
-        ;; note here that db-after does NOT contain the tx-hash flake. The hash generation takes time, so is done in the background
-        ;; This should not matter as
-        {:t            next-t
-         :hash         (.-o ^Flake @hash-flake)
-         :db-before    db-before
-         :db-after     db-after
-         :flakes       (conj all-flakes @hash-flake)
-         :tempids      tempids-map
-         :bytes        tx-bytes
-         :fuel         (+ (:spent @(:fuel tx-state)) tx-bytes (count all-flakes) 1)
-         :status       200
-         :duration     (str (- (System/currentTimeMillis) start-time) "ms")
-         :txid         txid
-         :auth         auth
-         :authority    authority
-         :type         (keyword (:type tx-map))
-         :remove-preds (when schema-flakes
-                         (schema-util/remove-from-post-preds schema-flakes))})
+      (let [tx-map   (try (tx-util/validate-command (:command cmd-data))
+                          (catch Exception e
+                            (log/error e "Unexpected error parsing command: " (pr-str cmd-data))
+                            (throw (ex-info "Unexpected error parsing command."
+                                            {:status   500
+                                             :error    :db/command-parse-exception
+                                             :cmd-data cmd-data}
+                                            e))))
+            _        (when (not-empty (:deps tx-map))       ;; transaction has dependencies listed, verify they are satisfied
+                       (<? (tx-validate/tx-deps-check db tx-map)))
+            tx-map*  (<? (tx-auth/add-auth-ids-permissions db tx-map))
+            tx-state (->tx-state db t block-instant tx-map*)
+            result   (async/<! (build-transaction tx-state))]
+        (if (util/exception? result)
+          (<? (tx-error/handler result tx-state))
+          result))
       (catch Exception e
-        (let [error            (ex-data e)
-              fast-forward-db? (:tt-id db)
-              status           (or (:status error) 500)
-              error-str        (str status " "
-                                    (if (:error error)
-                                      (str (util/keyword->str (:error error)))
-                                      "db/unexpected-error")
-                                    " "
-                                    (.getMessage e))
-              tx-map           (try (tx-util/validate-command (:command cmd-data)) (catch Exception e nil))
-              {:keys [auth authority]} tx-map
-              resp-map         (<? (tx-meta/generate-tx-error-flakes db next-t tx-map (:command cmd-data) error-str))
-              db-after         (if fast-forward-db?
-                                 (<? (dbproto/-forward-time-travel db (:flakes resp-map)))
-                                 (<? (dbproto/-with-t db (:flakes resp-map))))
-              bytes            (- (get-in db-after [:stats :size]) (get-in db [:stats :size]))]
-          (when (= 500 status)
-            (log/error e "Unexpected error processing transaction. Please report issues to Fluree."))
-          (assoc resp-map
-            :status status
-            :error error-str
-            :bytes bytes
-            :db-after db-after
-            ;; TODO - report out fuel in error within ex-info for use here
-            :fuel (or (:fuel (ex-data e)) 0)
-            :auth auth
-            :authority authority
-            :type (keyword (:type tx-map))))))))
+        (async/<! (tx-error/pre-processing-handler e db cmd-data t))))))
+
+
 
 (comment
   (def conn (:conn user/system))

@@ -39,6 +39,7 @@
   (let [tx-hash (tx-util/gen-tx-hash flakes true)]
     (flake/->Flake t const/$_tx:hash tx-hash t true nil)))
 
+
 (defn add-tx-hash-flake
   "Adds tx-hash flake to db by adding directly into novelty.
   This assumes the tx-hash is not indexed - if that is modified it could create an issue
@@ -52,6 +53,7 @@
         (update-in [:novelty :psot] conj tx-hash-flake)
         (update-in [:stats :size] + flake-bytes)
         (update-in [:stats :flakes] inc))))
+
 
 (defn generate-tx-error-flakes
   "If an error occurs, returns a set of flakes for the 't' that represents error."
@@ -74,6 +76,7 @@
        :hash   (.-o hash-flake)
        :flakes (conj flakes hash-flake)})))
 
+
 (defn valid-tx-meta?
   "If a user supplies their own tx-meta we must validate it such that:
   - they never attempt to set the fluree-only predicates defined by system-predicates above
@@ -86,8 +89,4 @@
         (system-predicates (.-p flake))
         (throw (ex-info (str "Attempt to write a Fluree reserved predicate with flake: " flake)
                         {:error  :db/invalid-transaction
-                         :status 400}))))
-
-    )
-
-  )
+                         :status 400}))))))

@@ -8,7 +8,11 @@
             [fluree.db.util.core :as util]
             [fluree.db.dbproto :as dbproto]
             [fluree.db.ledger.transact.schema :as tx-schema]
-            [fluree.db.ledger.transact.tx-meta :as tx-meta])
+            [fluree.db.ledger.transact.tx-meta :as tx-meta]
+            [fluree.db.util.log :as log]
+            [fluree.db.permissions-validate :as perm-validate]
+            [fluree.db.flake :as flake]
+            [fluree.db.api :as fdb])
   (:import (fluree.db.flake Flake)))
 
 ;;; functions to validate transactions
@@ -162,11 +166,11 @@
 
 (defn queue-pred-spec
   "Flakes param flows through, queues spec for flake"
-  [flakes flake pred-info {:keys [validate-fn db] :as tx-state}]
+  [flakes flake pred-info {:keys [validate-fn db-root] :as tx-state}]
   (let [spec           (pred-info :spec)
         specDoc        (pred-info :specDoc)
         predicate-name (pred-info :name)
-        fn-promise     (resolve-function spec db validate-fn "predSpec")
+        fn-promise     (resolve-function spec db-root validate-fn "predSpec")
         pred-spec-fn   (partial run-predicate-spec fn-promise flake predicate-name specDoc)]
     (queue-validation-fn :predicate tx-state pred-spec-fn nil nil)
     flakes))
@@ -196,14 +200,14 @@
   "This function is designed to be called with a (partial pid pred-name txSpecDoc) and
   returns a function whose only argument is tx-state, which can be used to get the final
   list of predicate flakes affected by this predicate."
-  [pid pred-tx-fn pred-name tx-spec-doc {:keys [db auth instant fuel validate-fn t] :as tx-state}]
+  [pid pred-tx-fn pred-name tx-spec-doc {:keys [db-root auth instant fuel validate-fn t] :as tx-state}]
   (try
     (let [pid-flakes (get-in @validate-fn [:tx-spec pid])
           fuel-atom  (atom {:stack   []
                             :credits (:credits @fuel)
                             :spent   0})
           f          @pred-tx-fn
-          res        (f {:db      db
+          res        (f {:db      db-root
                          :pid     pid
                          :instant instant
                          :flakes  pid-flakes
@@ -248,11 +252,11 @@
   For each predicate that requires a txSpec function to be run, we store
   a two-tuple of the function (as a promise) and a list of flakes for that predicate
   that must be validated."
-  [flakes predicate-flakes pred-info {:keys [validate-fn db] :as tx-state}]
+  [flakes predicate-flakes pred-info {:keys [validate-fn db-root] :as tx-state}]
   (let [pid        (pred-info :id)
         tx-spec-fn (when (empty? (get-in @validate-fn [:tx-spec pid]))
                      ;; first time called (no existing flakes for this tx-spec), generate and queue fn also
-                     (build-predicate-tx-spec-fn pred-info db))]
+                     (build-predicate-tx-spec-fn pred-info db-root))]
     (queue-validation-fn :predicate-tx tx-state tx-spec-fn predicate-flakes pid)
     flakes))
 
@@ -313,10 +317,10 @@
 
 
 (defn queue-collection-spec
-  [collection c-spec-fn-ids {:keys [validate-fn db] :as tx-state} subject-flakes]
+  [collection c-spec-fn-ids {:keys [validate-fn db-root] :as tx-state} subject-flakes]
   (let [sid        (.-s ^Flake (first subject-flakes))
-        c-spec-fn  (resolve-function c-spec-fn-ids db validate-fn "collectionSpec")
-        c-spec-doc (or (dbproto/-c-prop db :specDoc collection) collection) ;; use collection name as default specDoc
+        c-spec-fn  (resolve-function c-spec-fn-ids db-root validate-fn "collectionSpec")
+        c-spec-doc (or (dbproto/-c-prop db-root :specDoc collection) collection) ;; use collection name as default specDoc
         execute-fn (partial run-collection-spec sid c-spec-fn c-spec-doc)]
     (queue-validation-fn :collection tx-state execute-fn subject-flakes sid)))
 
@@ -334,8 +338,8 @@
 
 (defn check-collection-specs
   "If a collection spec is needed, register it for processing the subject's flakes."
-  [collection {:keys [db] :as tx-state} subject-flakes]
-  (let [c-spec-fn-ids    (dbproto/-c-prop db :spec collection)
+  [collection {:keys [db-root] :as tx-state} subject-flakes]
+  (let [c-spec-fn-ids    (dbproto/-c-prop db-root :spec collection)
         pred-collection? (= "_predicate" collection)
         tx-collection?   (= "_tx" collection)]
     (when c-spec-fn-ids
@@ -346,6 +350,58 @@
       (queue-tx-meta-collection-spec tx-state subject-flakes)))
   subject-flakes)
 
+;; Permissions
+
+(defn permissions
+  "Validates transaction based on the state of the new database."
+  [db-before candidate-db flakes]
+  (go-try
+    (let [tx-permissions (:permissions db-before)
+          no-filter?     (true? (:root? tx-permissions))]
+      (if no-filter?
+        ;; everything allowed, just return
+        true
+        ;; go through each statement and check
+        (loop [[^Flake flake & r] flakes]
+          (when (> (.-s flake) const/$maxSystemPredicates)
+            (when-not (if (.-op flake)
+                        (<? (perm-validate/allow-flake? candidate-db flake tx-permissions))
+                        (<? (perm-validate/allow-flake? db-before flake tx-permissions)))
+              (throw (ex-info (format "Insufficient permissions for predicate: %s within collection: %s."
+                                      (dbproto/-p-prop db-before :name (.-p flake))
+                                      (dbproto/-c-prop db-before :name (flake/sid->cid (.-s flake))))
+                              {:status 400
+                               :error  :db/write-permission}))))
+          (if r
+            (recur r)
+            true))))))
+
+;; dependencies
+
+(defn tx-deps-check
+  "A transaction can optionally include a list of dependent transactions.
+  Returns true if dependency check is successful, throws exception if there
+  is an error."
+  [db tx-map]
+  (let [deps (:deps tx-map)]
+    (go-try
+      (if (empty? deps)
+        true
+        (let [res (->> (reduce-kv (fn [query-acc key dep]
+                                    (-> query-acc
+                                        (update :selectOne conj (str "?error" key))
+                                        (update :where conj [(str "?tx" key) "_tx/id" dep])
+                                        (update :optional conj [(str "?tx" key) "_tx/error" (str "?error" key)])))
+                                  {:selectOne [] :where [] :optional []} deps)
+                       (fdb/query-async (go-try db))
+                       <?)]
+          (if (and (not (empty? res)) (every? nil? res))
+            true
+            (throw (ex-info (str "One or more of the dependencies for this transaction failed: " deps)
+                            {:status 403 :error :db/invalid-auth}))))))))
+
+
+;; Runtime
 
 (defn flush-fn-queue
   "Flushes the validation function queue onto queue-ch."
@@ -374,7 +430,7 @@
   - cache
   - tx-spec
   - c-spec"
-  [all-flakes {:keys [db-after validate-fn] :as tx-state} parallelism]
+  [all-flakes {:keys [validate-fn] :as tx-state} parallelism]
   (go-try
     (let [{:keys [queue]} @validate-fn]
       (if (empty? queue)                                    ;; if nothing in queue, return true for success.
@@ -385,7 +441,7 @@
               result-ch (async/chan parallelism)
               af        (fn [f res-chan]
                           (async/go
-                            (let [fn-result (f tx-state*)]
+                            (let [fn-result (async/<! (f tx-state*))]
                               (async/put! res-chan fn-result)
                               (async/close! res-chan))))]
 

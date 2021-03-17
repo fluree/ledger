@@ -9,10 +9,10 @@
 (defn subject
   "Returns retraction flakes for an entire subject. Also returns retraction
   flakes for any refs to that subject."
-  [subject-id {:keys [db t] :as tx-state}]
+  [subject-id {:keys [db-root t] :as tx-state}]
   (go-try
-    (let [flakes (query-range/index-range db :spot = [subject-id])
-          refs   (query-range/index-range db :opst = [subject-id])]
+    (let [flakes (query-range/index-range db-root :spot = [subject-id])
+          refs   (query-range/index-range db-root :opst = [subject-id])]
       (->> (<? flakes)
            (concat (<? refs))
            (map #(flake/flip-flake % t))
@@ -21,11 +21,11 @@
 
 (defn flake
   "Retracts one or more flakes given a subject, predicate, and optionally an object value."
-  [subject-id predicate-id object {:keys [db t] :as tx-state}]
+  [subject-id predicate-id object {:keys [db-root t] :as tx-state}]
   (go-try
     (let [flakes (if (= ::delete object)
-                   (query-range/index-range db :spot = [subject-id predicate-id])
-                   (query-range/index-range db :spot = [subject-id predicate-id object]))]
+                   (query-range/index-range db-root :spot = [subject-id predicate-id])
+                   (query-range/index-range db-root :spot = [subject-id predicate-id object]))]
       (->> (<? flakes)
            (map #(flake/flip-flake % t))))))
 

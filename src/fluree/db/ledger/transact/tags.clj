@@ -40,7 +40,7 @@
 
 (defn resolve
   "Returns the subject id of the tag if it exists, or a tempid for a new tag."
-  [tag pred-info {:keys [tags db] :as tx-state}]
+  [tag pred-info {:keys [tags db-root] :as tx-state}]
   (go-try
     (let [pred-name (or (pred-info :name)
                         (throw (ex-info (str "Trying to resolve predicate name for tag resolution but name is unknown for pred: " (pred-info :id))
@@ -51,7 +51,7 @@
 
           ;; find tag in cache for this transaction, or attempt to resolve in database
           resolved  (or (get @tags tag-name)
-                        (when-let [tag-sid (<? (dbproto/-tag-id db tag-name))]
+                        (when-let [tag-sid (<? (dbproto/-tag-id db-root tag-name))]
                           (swap! tags assoc tag-name tag-sid)
                           tag-sid))]
 

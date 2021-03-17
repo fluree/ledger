@@ -1,9 +1,5 @@
 (ns fluree.db.ledger.transact.schema
   (:require [fluree.db.util.async :refer [<? <?? go-try merge-into? channel?]]
-            [fluree.db.query.schema :as schema]
-            [fluree.db.util.schema :as schema-util]
-            [fluree.db.dbproto :as dbproto]
-            [fluree.db.query.range :as query-range]
             [fluree.db.constants :as const]
             [fluree.db.flake :as flake]
             [fluree.db.util.core :as util])
@@ -179,9 +175,9 @@
   - multi-cardinality cannot be set to single-cardinality
   - If new subject, has to specify type. If it has :component true, then :type needs to be ref
   "
-  [pred-sid {:keys [validate-fn db] :as tx-state}]
+  [pred-sid {:keys [validate-fn db-before] :as tx-state}]
   (let [pred-flakes     (get-in @validate-fn [:c-spec pred-sid])
-        existing-schema (:schema db)
+        existing-schema (:schema db-before)
         new?            (predicate-new? pred-sid existing-schema)
         {:keys [type multi component unique]} (flakes-by-type pred-flakes)]
     (cond-> pred-flakes

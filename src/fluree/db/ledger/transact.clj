@@ -1423,7 +1423,7 @@
              remove-preds-acc #{}]
         (let [start-time    (System/currentTimeMillis)
               ;tx-result     (<? (build-transaction session db cmd-data next-t block-instant))
-              tx-result     (<? (tx-json/build-transaction session db cmd-data next-t block-instant))
+              tx-result     (<? (tx-json/transact db cmd-data next-t block-instant))
               {:keys [db-after bytes fuel flakes tempids auth authority status error hash
                       remove-preds]} tx-result
               block-bytes*  (+ block-bytes bytes)
