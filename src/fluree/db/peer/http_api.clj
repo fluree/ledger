@@ -926,6 +926,12 @@
                                      uri))))))
 
 
+(defn wrap-version-header [handler]
+  (fn [request]
+    (let [response (handler request)]
+      (assoc-in response [:headers "X-Fdb-Version"] (meta/version)))))
+
+
 (defn- api-routes
   [system]
   (compojure/routes
@@ -968,6 +974,7 @@
         ;; final 404 fallback
         (constantly not-found))
 
+      wrap-version-header
       params/wrap-params
       (->> (wrap-errors (:debug-mode? system)))
       (cors/wrap-cors
