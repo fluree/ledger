@@ -441,8 +441,10 @@
               result-ch (async/chan parallelism)
               af        (fn [f res-chan]
                           (async/go
-                            (let [fn-result (async/<! (f tx-state*))]
-                              (async/put! res-chan fn-result)
+                            (let [fn-result (f tx-state*)]
+                              (async/put! res-chan (if (channel? fn-result)
+                                                     (async/<! fn-result)
+                                                     fn-result))
                               (async/close! res-chan))))]
 
           ;; kicks off process to push queue onto queue-ch
