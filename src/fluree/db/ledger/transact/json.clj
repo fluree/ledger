@@ -303,10 +303,11 @@
                        :else _id)
           tempid?    (tempid/TempId? _id*)
           action     (resolve-action _action (empty? _p-o-pairs) tempid?)
-          collection (resolve-collection-name _id* tx-state)]
+          collection (resolve-collection-name _id* tx-state)
+          txi*       (assoc txi :_collection collection)]
       (if (and (= :delete action) (empty? _p-o-pairs))
-        (assoc txi :_final-flakes (<? (tx-retract/subject _id* tx-state)))
-        (loop [acc txi
+        (assoc txi* :_final-flakes (<? (tx-retract/subject _id* tx-state)))
+        (loop [acc txi*
                [[pred obj] & r] _p-o-pairs]
           (if (nil? pred)                                   ;; finished
             acc
