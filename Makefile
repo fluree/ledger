@@ -47,6 +47,15 @@ release-version-latest: prep-release
 deps: deps.edn
 	clojure -Stree
 
+package-lock.json: package.json
+	npm install
+
+node_modules: package.json package-lock.json
+	npm install && touch $@
+
+resources/adminUI: node_modules
+	ln -nsf ../node_modules/@fluree/admin-ui/build $@
+
 build:
 	mkdir -p build
 
@@ -65,7 +74,7 @@ build/CHANGELOG.md: CHANGELOG.md | build
 build/%: resources/% | build
 	cp $< $(@D)/
 
-target/fluree-ledger.jar: pom.xml $(SOURCES) $(RESOURCES)
+target/fluree-ledger.jar: pom.xml resources/adminUI $(SOURCES) $(RESOURCES)
 	clojure -X:jar
 
 jar: target/fluree-ledger.jar
@@ -76,7 +85,7 @@ pom.xml: deps.edn
 test:
 	clojure -M:test
 
-target/fluree-ledger.standalone.jar: pom.xml $(SOURCES) $(RESOURCES)
+target/fluree-ledger.standalone.jar: pom.xml resources/adminUI $(SOURCES) $(RESOURCES)
 	clojure -X:uberjar
 
 uberjar: target/fluree-ledger.standalone.jar
@@ -124,3 +133,5 @@ install: $(DESTDIR)/bin/fluree $(DESTDIR)/share/java/fluree-ledger.standalone.ja
 clean:
 	rm -rf build
 	rm -rf target
+	rm -rf resources/adminUI
+	rm -rf node_modules
