@@ -627,8 +627,8 @@
                              node))
                 data))
 
-(defn nw-state
-  [system request]
+(defn nw-state-handler
+  [system _]
   (let [deferred (d/deferred)]
     (async/go
       (try
@@ -933,7 +933,7 @@
     (compojure/GET "/fdb/storage/:network/:db/:type/:key" request (storage-handler system request))
     (compojure/GET "/fdb/ws" request (websocket/handler system request))
     (compojure/ANY "/fdb/health" request (health-handler system request))
-    (compojure/ANY "/fdb/nw-state" request (nw-state system request))
+    (compojure/ANY "/fdb/nw-state" request (nw-state-handler system request))
     (compojure/GET "/fdb/version" request (version-handler system request))
     (compojure/POST "/fdb/add-server" request (add-server system request))
     (compojure/POST "/fdb/remove-server" request (remove-server system request))
