@@ -53,9 +53,6 @@ You can run the integration tests like this:
 
 ### Building
 
-1. Install maven
-    1. macOS: `brew install maven`
-    1. Arch Linux: `pacman -S maven`
 1. Set the version you want in `pom.xml`
 1. Run `make`
 

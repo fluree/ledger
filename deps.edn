@@ -49,4 +49,7 @@
    :exec-fn hf.depstar/uberjar
    :exec-args {:jar "target/fluree-ledger.standalone.jar"
                :aot true
-               :main-class fluree.db.server}}}}
+               :main-class fluree.db.server}}
+
+  :meta
+  {:main-opts ["-m" "fluree.db.meta"]}}}
