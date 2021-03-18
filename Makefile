@@ -91,8 +91,12 @@ target/fluree-ledger.jar: pom.xml resources/adminUI $(SOURCES) $(RESOURCES)
 
 jar: target/fluree-ledger.jar
 
-pom.xml: deps.edn
+# force this to always run b/c it's way too easy for pom.xml to be newer than deps.edn
+# but still be out of date w/r/t dep versions
+pom.xml: FORCE
 	clojure -Spom
+
+FORCE:
 
 test:
 	clojure -M:test
