@@ -128,12 +128,28 @@
   (assert (<= 1 (count component-flakes) 2)
           (str "At most there should be a predicate component retraction and new assertion, provided: " component-flakes))
   (let [new-component-val (some #(when (true? (.-op %)) (.-o %)) component-flakes)]
-    (if (and (not new?)
-             (true? new-component-val))
-      (throw (ex-info (str "A an existing predicate cannot be set to component: true.")
+    (cond
+      ;; make sure for any new predicate with :component true, that type is ref.
+      (and new? (true? new-component-val))
+      (let [type-sid (some (fn [^Flake flake]
+                             (when (and (= const/$_predicate:type (.-p flake))
+                                        (true? (.-op flake)))
+                               (.-o flake)))
+                           pred-flakes)]
+        (when (not= (:ref type->sid) type-sid)
+          (throw (ex-info (str "An predicate with 'component: true' must be of type ref.")
+                          {:status 400
+                           :error  :db/invalid-predicate}))))
+
+
+      (and (not new?) (true? new-component-val))
+      (throw (ex-info (str "An existing predicate cannot be set to component: true.")
                       {:status 400
-                       :error  :db/invalid-tx}))
-      pred-flakes)))
+                       :error  :db/invalid-predicate}))
+
+      :else ::ok)
+    ;; always pass through pred-flakes
+    pred-flakes))
 
 (defn check-unique-changes
   " - unique cannot be set to true for existing predicate if existing values are not unique

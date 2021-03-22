@@ -10,7 +10,6 @@
             [fluree.db.spec :as fspec]
             [fluree.db.dbfunctions.core :as dbfunctions]
             [fluree.db.util.tx :as tx-util]
-            [fluree.db.util.schema :as schema-util]
             [fluree.db.ledger.transact.retract :as tx-retract]
             [fluree.db.ledger.transact.tempid :as tempid]
             [fluree.db.ledger.transact.tags :as tags]

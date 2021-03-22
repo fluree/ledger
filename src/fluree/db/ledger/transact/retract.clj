@@ -2,20 +2,43 @@
   (:require [fluree.db.util.async :refer [<? <?? go-try merge-into? channel?]]
             [fluree.db.query.range :as query-range]
             [fluree.db.flake :as flake]
-            [clojure.core.async :as async]))
+            [clojure.core.async :as async]
+            [fluree.db.dbproto :as dbproto]
+            [fluree.db.util.log :as log])
+  (:import (fluree.db.flake Flake)))
 
 ;;; functions to retract existing flakes from the ledger
+
+(declare subject)
+
+(defn components
+  "Checks flakes to see if any are a component, and if so, finds additional retractions and returns."
+  [flakes {:keys [db-root] :as tx-state}]
+  (go-try
+    (loop [[^Flake flake & r] flakes
+           components #{}]
+      (if (nil? flake)
+        components
+        (let [component? (true? (dbproto/-p-prop db-root :component (.-p flake)))]
+          (if component?
+            ;; If components, calls itself again (via 'subject' fn) to continue to recur components until there are none
+            (let [c-flakes (<? (subject (.-o flake) tx-state))]
+              (recur r (into components c-flakes)))
+            (recur r components)))))))
+
 
 (defn subject
   "Returns retraction flakes for an entire subject. Also returns retraction
   flakes for any refs to that subject."
   [subject-id {:keys [db-root t] :as tx-state}]
   (go-try
-    (let [flakes (query-range/index-range db-root :spot = [subject-id])
-          refs   (query-range/index-range db-root :opst = [subject-id])]
-      (->> (<? flakes)
-           (concat (<? refs))
+    (let [flakes     (<? (query-range/index-range db-root :spot = [subject-id]))
+          refs       (<? (query-range/index-range db-root :opst = [subject-id]))
+          components (<? (components flakes tx-state))]
+      (->> flakes
+           (concat refs)
            (map #(flake/flip-flake % t))
+           (concat components)
            (into [])))))
 
 
