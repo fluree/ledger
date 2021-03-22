@@ -1,6 +1,6 @@
 FROM clojure:tools-deps-1.10.3.814-slim-buster AS builder
 
-RUN apt-get update && apt-get install -y curl
+RUN apt-get update && apt-get install -y curl git
 
 RUN curl -sL https://deb.nodesource.com/setup_14.x | bash -
 RUN apt-get update && apt-get install -y nodejs
