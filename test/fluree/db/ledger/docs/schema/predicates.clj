@@ -59,7 +59,9 @@
                                             (basic/get-conn)
                                             test/ledger-chat
                                             txn
-                                            {:timeout 480000})) test/safe-Throwable->map :cause)
+                                            {:timeout 480000}))
+                               test/safe-Throwable->map
+                               :cause)
         set-upsert         [{:_id ["_predicate/name" "_predicate/name"], :upsert true}]
         upsertRes          (async/<!! (fdb/transact-async
                                         (basic/get-conn)
@@ -72,8 +74,7 @@
                                         txn
                                         {:timeout 480000}))]
 
-    (is (str/includes? res "Predicate _predicate/name does not allow upsert"))
-    (is (str/includes? res "duplicates an existing _predicate/name (_user/username)"))
+    (= res "Unique predicate _predicate/name with value: _user/username matched an existing subject: 50.")
 
     (is (= 200 (:status upsertRes)))
 
@@ -171,8 +172,7 @@
                               test/safe-Throwable->map
                               :cause)]
 
-      (is (str/includes? add-person-resp "Predicate person/handle does not allow upsert"))
-      (is (str/includes? add-person-resp "duplicates an existing person/handle (jdoe)")))))
+      (= add-person-resp "Unique predicate person/handle with value: jdoe matched an existing subject: 351843720888321."))))
 
 (deftest predicates-test
   (add-predicate-long-desc)

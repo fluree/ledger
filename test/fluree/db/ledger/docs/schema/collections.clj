@@ -64,8 +64,9 @@
                                                   {:timeout 120000}))
         attemptToUpsertRes  (async/<!! (fdb/transact-async (basic/get-conn) test/ledger-chat txn))]
 
-    (is (str/includes? res "Predicate _collection/name does not allow upsert"))
-    (is (str/includes? res "duplicates an existing _collection/name (_user)"))
+    ;(is (str/includes? res "Predicate _collection/name does not allow upsert"))
+    ;(is (str/includes? res "duplicates an existing _collection/name (_user)"))
+    (= res "Unique predicate _collection/name with value: _user matched an existing subject: 17592186044421.")
 
     (is (= 200 (:status upsertRes)))
 
