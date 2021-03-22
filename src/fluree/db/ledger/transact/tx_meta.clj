@@ -85,8 +85,8 @@
   [tx-meta-sid {:keys [validate-fn] :as tx-state}]
   (let [subject-flakes (get-in @validate-fn [:c-spec tx-meta-sid])]
     (doseq [^Flake flake subject-flakes]
-      (when
-        (system-predicates (.-p flake))
+      (when (system-predicates (.-p flake))
         (throw (ex-info (str "Attempt to write a Fluree reserved predicate with flake: " flake)
                         {:error  :db/invalid-transaction
-                         :status 400}))))))
+                         :status 400}))))
+    true))

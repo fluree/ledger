@@ -144,7 +144,7 @@
     (fspec/type-check object type)))
 
 
-(defn register-unique
+(defn register-unique!
   "Registers unique value in the tx-state and return true if successful.
   Will be unsuccessful if the ident already exists in the unique value cache
   and return false.
@@ -176,15 +176,17 @@
                             (map #(vector % (query-range/index-range db-before :post = [pred-id %]))))]
       ;; use a loop here so we can use async to full extent
       (loop [[[obj subject-ch] & r] obj+subj-chs]
+        (when obj
+          ;; register every unique pred+object combo into state to ensure not used multiple times in same transaction
+          (when (false? (register-unique! [pred-id obj] tx-state))
+            (throw (ex-info (str "Unique predicate " (pred-info :name) " was used more than once "
+                                 "in the transaction with the value of: " object ".")
+                            {:status 400 :error :db/invalid-tx}))))
         (if-not obj
           ;; finished, return original object - no errors
           object
-          ;; check out next ident
+          ;; check out next ident, if existing-flake we have a potential conflict
           (let [^Flake existing-flake (first (<? subject-ch))]
-            (when (false? (register-unique [pred-id obj] tx-state))
-              (throw (ex-info (str "Unique predicate " (pred-info :name) " was used more than once "
-                                   "in the transaction with the value of: " object ".")
-                              {:status 400 :error :db/invalid-tx})))
             (cond
               ;; no matching existing flake, move on
               (nil? existing-flake) (recur r)
@@ -246,13 +248,14 @@
   "Resolves object into its final state so can be used for consistent comparisons with existing data."
   [object _id pred-info tx-state]
   (let [multi? (pred-info :multi)]
-    (cond-> object
-            (nil? object) (async/go ::delete)
-            (not multi?) (resolve-object-item _id pred-info tx-state)
-            multi? (->> (mapv #(resolve-object-item % _id pred-info tx-state))
-                        async/merge
-                        (async/into []))
-            (pred-info :unique) (resolve-unique _id pred-info tx-state))))
+    (if (nil? object)
+      (async/go ::delete)                                   ;; delete any existing object
+      (cond-> object
+              (not multi?) (resolve-object-item _id pred-info tx-state)
+              multi? (->> (mapv #(resolve-object-item % _id pred-info tx-state))
+                          async/merge
+                          (async/into []))
+              (pred-info :unique) (resolve-unique _id pred-info tx-state)))))
 
 
 (defn add-singleton-flake
@@ -294,70 +297,73 @@
                    if the tempid is resolved via a ':unique true' predicate
                    need to look up and retract any existing flakes with same subject+predicate
   - _temp-multi-flakes - multi-flakes that need permanent ids yet, but then act like _multi-flakes"
-  [{:keys [_id _action _meta] :as txi} {:keys [db-before t] :as tx-state}]
-  (go-try
-    (let [_p-o-pairs (dissoc txi :_id :_action :_meta)
-          _id*       (cond
-                       (util/temp-ident? _id) (tempid/new (:_id txi) tx-state)
-                       (util/pred-ident? _id) (<? (resolve-ident-strict _id tx-state))
-                       :else _id)
-          tempid?    (tempid/TempId? _id*)
-          action     (resolve-action _action (empty? _p-o-pairs) tempid?)
-          collection (resolve-collection-name _id* tx-state)
-          txi*       (assoc txi :_collection collection)]
-      (if (and (= :delete action) (empty? _p-o-pairs))
-        (assoc txi* :_final-flakes (<? (tx-retract/subject _id* tx-state)))
-        (loop [acc txi*
-               [[pred obj] & r] _p-o-pairs]
-          (if (nil? pred)                                   ;; finished
-            acc
-            (let [pred-info (predicate-details pred collection db-before)
-                  pid       (pred-info :id)
-                  obj*      (if (txfunction/tx-fn? obj)
-                              (-> (txfunction/execute obj _id pred-info tx-state)
-                                  <?
-                                  (resolve-object _id* pred-info tx-state)
-                                  <?)
-                              (<? (resolve-object obj _id* pred-info tx-state)))]
-              (cond
-                ;; delete should have no tempids, so can register the final flakes in tx-state
-                (= :delete action)
-                (-> acc
-                    (update :_final-flakes into (if (pred-info :multi)
-                                                  (<? (tx-retract/multi _id* pid obj* tx-state))
-                                                  (<? (tx-retract/flake _id* pid obj* tx-state))))
-                    (recur r))
+  [{:keys [db-before t] :as tx-state} {:keys [_id _action _meta] :as txi} res-chan]
+  (async/go
+    (try
+      (let [_p-o-pairs (dissoc txi :_id :_action :_meta)
+            _id*       (cond
+                         (util/temp-ident? _id) (tempid/new (:_id txi) tx-state)
+                         (util/pred-ident? _id) (<? (resolve-ident-strict _id tx-state))
+                         :else _id)
+            tempid?    (tempid/TempId? _id*)
+            action     (resolve-action _action (empty? _p-o-pairs) tempid?)
+            collection (resolve-collection-name _id* tx-state)
+            txi*       (assoc txi :_collection collection)]
+        (if (and (= :delete action) (empty? _p-o-pairs))
+          (async/>! res-chan (assoc txi* :_final-flakes (<? (tx-retract/subject _id* tx-state))))
+          (loop [acc txi*
+                 [[pred obj] & r] _p-o-pairs]
+            (if (nil? pred)                                 ;; finished
+              (async/>! res-chan acc)
+              (let [pred-info (predicate-details pred collection db-before)
+                    pid       (pred-info :id)
+                    obj*      (if (txfunction/tx-fn? obj)
+                                (-> (txfunction/execute obj _id pred-info tx-state)
+                                    <?
+                                    (resolve-object _id* pred-info tx-state)
+                                    <?)
+                                (<? (resolve-object obj _id* pred-info tx-state)))]
+                (cond
+                  ;; delete should have no tempids, so can register the final flakes in tx-state
+                  (= :delete action)
+                  (-> acc
+                      (update :_final-flakes into (if (pred-info :multi)
+                                                    (<? (tx-retract/multi _id* pid obj* tx-state))
+                                                    (<? (tx-retract/flake _id* pid obj* tx-state))))
+                      (recur r))
 
-                ;; multi could have a tempid as one of the values, need to look at each independently
-                (pred-info :multi)
-                (let [acc** (loop [acc* acc
-                                   [o & r] obj*]
-                              (if (nil? o)
-                                acc*
-                                (let [new-flake (flake/->Flake _id* pid o t true nil)]
-                                  (if (or tempid? (tempid/TempId? o))
-                                    (-> acc*
-                                        (update :_temp-multi-flakes conj new-flake)
-                                        (recur r))
-                                    ;; multi-cardinality we only care if a flake matches exactly
-                                    (let [retract-flake (first (<? (tx-retract/flake _id* pid o tx-state)))
-                                          final-flakes  (add-singleton-flake (:_final-flakes acc*) new-flake retract-flake pred-info tx-state)]
-                                      (recur (assoc acc* :_final-flakes final-flakes) r))))))]
-                  (recur acc** r))
+                  ;; multi could have a tempid as one of the values, need to look at each independently
+                  (pred-info :multi)
+                  (let [acc** (loop [acc* acc
+                                     [o & r] obj*]
+                                (if (nil? o)
+                                  acc*
+                                  (let [new-flake (flake/->Flake _id* pid o t true nil)]
+                                    (if (or tempid? (tempid/TempId? o))
+                                      (-> acc*
+                                          (update :_temp-multi-flakes conj new-flake)
+                                          (recur r))
+                                      ;; multi-cardinality we only care if a flake matches exactly
+                                      (let [retract-flake (first (<? (tx-retract/flake _id* pid o tx-state)))
+                                            final-flakes  (add-singleton-flake (:_final-flakes acc*) new-flake retract-flake pred-info tx-state)]
+                                        (recur (assoc acc* :_final-flakes final-flakes) r))))))]
+                    (recur acc** r))
 
-                (or tempid? (tempid/TempId? obj*))
-                (-> acc
-                    (update :_temp-flakes conj (flake/->Flake _id* pid obj* t true nil))
-                    (recur r))
+                  (or tempid? (tempid/TempId? obj*))
+                  (-> acc
+                      (update :_temp-flakes conj (flake/->Flake _id* pid obj* t true nil))
+                      (recur r))
 
-                ;; single-cardinality, and no tempid - we can make final and also do the lookup here
-                ;; for a retraction flake, if present
-                :else
-                (let [new-flake     (flake/->Flake _id* pid obj* t true nil)
-                      ;; need to see if an existing flake exists that needs to get retracted
-                      retract-flake (first (<? (tx-retract/flake _id* pid nil tx-state)))
-                      final-flakes  (add-singleton-flake (:_final-flakes acc) new-flake retract-flake pred-info tx-state)]
-                  (recur (assoc acc :_final-flakes final-flakes) r))))))))))
+                  ;; single-cardinality, and no tempid - we can make final and also do the lookup here
+                  ;; for a retraction flake, if present
+                  :else
+                  (let [new-flake     (flake/->Flake _id* pid obj* t true nil)
+                        ;; need to see if an existing flake exists that needs to get retracted
+                        retract-flake (first (<? (tx-retract/flake _id* pid nil tx-state)))
+                        final-flakes  (add-singleton-flake (:_final-flakes acc) new-flake retract-flake pred-info tx-state)]
+                    (recur (assoc acc :_final-flakes final-flakes) r)))))))
+        (async/close! res-chan))
+      (catch Exception e (async/put! res-chan e) (async/close! res-chan)))))
 
 
 (defn- extract-children*
@@ -534,19 +540,39 @@
                  (recur r))))))))
 
 
+(defn statements-pipeline
+  [tx-state tx]
+  (async/go
+    (let [queue-ch  (async/to-chan! tx)
+          result-ch (async/chan parallelism)
+          af        (partial generate-statements tx-state)]
+
+      (async/pipeline-async parallelism result-ch af queue-ch)
+
+      (loop [tx* []]
+        (let [next-res (async/<! result-ch)]
+          (cond
+            ;; no more functions, complete - queue-ch closed as queue was exhausted
+            (nil? next-res)
+            tx*
+
+            ;; exception, close channels and return exception
+            (util/exception? next-res)
+            (do (async/close! queue-ch)
+                (async/close! result-ch)
+                next-res)
+
+            ;; anything else, all good - keep going
+            :else (recur (conj tx* next-res))))))))
+
+
 (defn do-transact
   [tx-state tx]
   (go-try
-    (let [
-          ;{:keys [tx-meta rest-tx sig txid authority auth]} tx-map
-          ;tx-state (->tx-state db-before t auth block-instant) ;; holds state data for entire transaction
-          ]
+    (let []
       (->> tx
            (mapcat #(extract-children % tx-state))
-           ;; TODO - place into async pipeline
-           (map #(generate-statements % tx-state))
-           async/merge
-           (async/into [])
+           (statements-pipeline tx-state)
            <?
            (assign-permanent-ids tx-state)
            (finalize-flakes tx-state)

@@ -180,20 +180,21 @@
 
 (defn- pred-tx-spec-response
   [pred-name tx-spec-doc response]
-  (util/exception? response)
-  (ex-info (str "Internal execution error for predicate txSpec: " (.getMessage ^Exception response) ". "
-                "The predicate " pred-name " does not conform to the txSpec. " tx-spec-doc)
-           {:status 400
-            :error  :db/invalid-tx
-            :cause  response})
+  (cond
+    (util/exception? response)
+    (ex-info (str "Internal execution error for predicate txSpec: " (.getMessage ^Exception response) ". "
+                  "The predicate " pred-name " does not conform to the txSpec. " tx-spec-doc)
+             {:status 400
+              :error  :db/invalid-tx
+              :cause  response})
 
-  response
-  true
+    response
+    true
 
-  :else
-  (ex-info (str "The predicate " pred-name " does not conform to the txSpec. " tx-spec-doc)
-           {:status 400
-            :error  :db/invalid-tx}))
+    :else
+    (ex-info (str "The predicate " pred-name " does not conform to the txSpec. " tx-spec-doc)
+             {:status 400
+              :error  :db/invalid-tx})))
 
 
 (defn run-predicate-tx-spec
@@ -231,10 +232,15 @@
         pred-name   (pred-info :name)
         tx-spec-doc (pred-info :txSpecDoc)
         pid         (pred-info :id)
-        queue-fn    (partial run-predicate-tx-spec pid pred-tx-fn pred-name tx-spec-doc)]
+        fn-sid      (pred-info :txSpec)
+        queue-fn    (-> run-predicate-tx-spec
+                        (partial pid pred-tx-fn pred-name tx-spec-doc)
+                        (with-meta {:type   :predicate-tx-spec
+                                    :target pred-name
+                                    :fn-sid fn-sid}))]
 
     ;; kick off building function, will put realized function into pred-tx-fn promise
-    (build-function (pred-info :txSpec) db pred-tx-fn "predSpec")
+    (build-function fn-sid db pred-tx-fn "predSpec")
     ;; return function
     queue-fn))
 
@@ -264,23 +270,24 @@
 ;; collection specs
 
 (defn- collection-spec-response
-  [flakes c-spec-doc response]
-  (util/exception? response)
-  (ex-info (str "Internal execution error for collection spec: " (.getMessage ^Exception response) ". "
-                "Transaction does not adhere to the collection spec: " c-spec-doc)
-           {:status 400
-            :error  :db/invalid-tx
-            :flakes flakes
-            :cause  response})
+  [flakes c-spec-fn c-spec-doc response]
+  (cond
+    (util/exception? response)
+    (ex-info (str "Internal execution error for collection spec: " (.getMessage ^Exception response) ". "
+                  "Transaction does not adhere to the collection spec: " c-spec-doc)
+             {:status 400
+              :error  :db/invalid-tx
+              :flakes flakes
+              :cause  response})
 
-  response
-  true
+    response
+    true
 
-  :else
-  (ex-info (str "Transaction does not adhere to the collection spec: " c-spec-doc)
-           {:status 400
-            :error  :db/invalid-tx
-            :flakes flakes}))
+    :else
+    (ex-info (str "Transaction does not adhere to the collection spec: " c-spec-doc)
+             {:status 400
+              :error  :db/invalid-tx
+              :flakes flakes})))
 
 
 (defn run-collection-spec
@@ -305,15 +312,13 @@
                               :flakes  subject-flakes
                               :auth_id auth
                               :t       t
-                              :state   fuel-atom})]
+                              :state   fuel-atom})
+                res*      (or (if (channel? res) (async/<! res) res))]
 
             ;; update main tx fuel count with the fuel spent to execute this tx function
             (update-tx-spent-fuel fuel (:spent @fuel-atom))
-
-            (if (async-util/channel? res)
-              (collection-spec-response subject-flakes c-spec-doc (<? res))
-              (collection-spec-response subject-flakes c-spec-doc res)))))
-      (catch Exception e (collection-spec-response (get-in @validate-fn [:c-spec sid]) c-spec-doc e)))))
+            (collection-spec-response subject-flakes c-spec-fn c-spec-doc res*))))
+      (catch Exception e (collection-spec-response (get-in @validate-fn [:c-spec sid]) c-spec-fn c-spec-doc e)))))
 
 
 (defn queue-collection-spec
@@ -321,19 +326,32 @@
   (let [sid        (.-s ^Flake (first subject-flakes))
         c-spec-fn  (resolve-function c-spec-fn-ids db-root validate-fn "collectionSpec")
         c-spec-doc (or (dbproto/-c-prop db-root :specDoc collection) collection) ;; use collection name as default specDoc
-        execute-fn (partial run-collection-spec sid c-spec-fn c-spec-doc)]
+        execute-fn (-> run-collection-spec
+                       (partial sid c-spec-fn c-spec-doc)
+                       (with-meta {:type   :collection-spec
+                                   :target sid
+                                   :fn-sid c-spec-fn-ids
+                                   :doc    c-spec-doc}))]
     (queue-validation-fn :collection tx-state execute-fn subject-flakes sid)))
 
 (defn queue-predicate-collection-spec
   [tx-state subject-flakes]
   (let [sid        (.-s ^Flake (first subject-flakes))
-        execute-fn (partial tx-schema/validate-schema-predicate sid)]
+        execute-fn (-> tx-schema/validate-schema-predicate
+                       (partial sid)
+                       (with-meta {:type   :collection-spec
+                                   :target sid
+                                   :fn     :validate-schema-predicate}))]
     (queue-validation-fn :collection tx-state execute-fn subject-flakes sid)))
 
 (defn queue-tx-meta-collection-spec
   [tx-state subject-flakes]
   (let [sid        (.-s ^Flake (first subject-flakes))
-        execute-fn (partial tx-meta/valid-tx-meta? sid)]
+        execute-fn (-> tx-meta/valid-tx-meta?
+                       (partial sid)
+                       (with-meta {:type   :collection-spec
+                                   :target sid
+                                   :fn     :validate-tx-meta}))]
     (queue-validation-fn :collection tx-state execute-fn subject-flakes sid)))
 
 (defn check-collection-specs
@@ -422,7 +440,7 @@
 
       ;; put was not successful, queue-ch got closed due to an error result
       :else
-      nil)))
+      ::closed)))
 
 
 (defn run
@@ -445,10 +463,9 @@
               result-ch (async/chan parallelism)
               af        (fn [f res-chan]
                           (async/go
-                            (let [fn-result (f tx-state*)]
-                              (async/put! res-chan (if (channel? fn-result)
-                                                     (async/<! fn-result)
-                                                     fn-result))
+                            (let [fn-result (as-> (f tx-state*) res
+                                                  (if (channel? res) (async/<! res) res))]
+                              (async/put! res-chan fn-result)
                               (async/close! res-chan))))]
 
           ;; kicks off process to push queue onto queue-ch

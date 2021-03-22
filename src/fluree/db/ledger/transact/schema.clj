@@ -188,7 +188,8 @@
               true (check-type-changes new? type)
               multi (check-multi-changes multi)
               component (check-component-changes new? component)
-              unique (check-unique-changes new? pred-sid existing-schema unique)))
+              unique (check-unique-changes new? pred-sid existing-schema unique))
+      true)
     ;; any returned exception will halt processing... don't throw here
     (catch Exception e e)))
 
