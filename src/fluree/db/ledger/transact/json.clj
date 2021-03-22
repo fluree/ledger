@@ -629,7 +629,13 @@
        :auth         auth-id
        :authority    authority-id
        :type         tx-type
-       :remove-preds @remove-from-post})))
+       :remove-preds (when-let [removes @remove-from-post]
+                       ;; need to validate removes are truly index removes in new db
+                       (->> removes
+                            (reduce #(if (dbproto/-p-prop db-after :idx? %2)
+                                       %1                   ;; an :index or :unique were made false, but still indexable
+                                       (conj %1 %2)) #{})
+                            (not-empty)))})))
 
 
 (defn transact
