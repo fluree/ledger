@@ -11,7 +11,7 @@
 
 (declare subject)
 
-(defn components
+(defn retract-components
   "Checks flakes to see if any are a component, and if so, finds additional retractions and returns."
   [flakes {:keys [db-root] :as tx-state}]
   (go-try
@@ -34,7 +34,7 @@
   (go-try
     (let [flakes     (<? (query-range/index-range db-root :spot = [subject-id]))
           refs       (<? (query-range/index-range db-root :opst = [subject-id]))
-          components (<? (components flakes tx-state))]
+          components (<? (retract-components flakes tx-state))]
       (->> flakes
            (concat refs)
            (map #(flake/flip-flake % t))
@@ -46,11 +46,14 @@
   "Retracts one or more flakes given a subject, predicate, and optionally an object value."
   [subject-id predicate-id object {:keys [db-root t] :as tx-state}]
   (go-try
-    (let [flakes (if (= ::delete object)
-                   (query-range/index-range db-root :spot = [subject-id predicate-id])
-                   (query-range/index-range db-root :spot = [subject-id predicate-id object]))]
-      (->> (<? flakes)
-           (map #(flake/flip-flake % t))))))
+    (let [flakes     (if (= ::delete object)
+                       (<? (query-range/index-range db-root :spot = [subject-id predicate-id]))
+                       (<? (query-range/index-range db-root :spot = [subject-id predicate-id object])))
+          components (when (dbproto/-p-prop db-root :component predicate-id)
+                       (<? (retract-components flakes tx-state)))]
+      (->> flakes
+           (map #(flake/flip-flake % t))
+           (into components)))))
 
 
 ;; TODO - below, instead of async/into,could use a transducer to return a single clean channel that concats, and not need to use go-try here
