@@ -416,50 +416,48 @@
                     :new-db (tx-util/create-new-db-tx tx-map))
         db-before (cond-> db
                           tx-permissions (assoc :permissions tx-permissions))]
-    {:db-before     db-before
-     :db-root       db
-     :db-after      (atom nil)                              ;; store updated db here
-     :flakes        nil                                     ;; holds final list of flakes for tx once complete
-     :auth-id       auth                                    ;; auth id string in _auth/id
-     :auth          auth-sid                                ;; auth subject-id integer
-     :authority-id  authority                               ;; authority id string as per _auth/id (or nil if no authority)
-     :authority     authority-sid                           ;; authority subject-id integer (or nil if no authority)
-     :t             t
-     :instant       block-instant
-     :txid          txid
-     :tx-type       type
-     :tx            tx
-     :tx-string     cmd
-     :signature     sig
-     :nonce         nonce
-     :fuel          (atom {:stack   []
-                           :credits 1000000
-                           :spent   0})
+    {:db-before        db-before
+     :db-root          db
+     :db-after         (atom nil)                           ;; store updated db here
+     :flakes           nil                                  ;; holds final list of flakes for tx once complete
+     :auth-id          auth                                 ;; auth id string in _auth/id
+     :auth             auth-sid                             ;; auth subject-id integer
+     :authority-id     authority                            ;; authority id string as per _auth/id (or nil if no authority)
+     :authority        authority-sid                        ;; authority subject-id integer (or nil if no authority)
+     :t                t
+     :instant          block-instant
+     :txid             txid
+     :tx-type          type
+     :tx               tx
+     :tx-string        cmd
+     :signature        sig
+     :nonce            nonce
+     :fuel             (atom {:stack   []
+                              :credits 1000000
+                              :spent   0})
      ;; hold map of all tempids to their permanent ids. After initial processing will use this to fill
      ;; all tempids with the permanent ids.
-     :tempids       (atom {})
+     :tempids          (atom {})
      ;; idents (two-tuples of unique predicate + value) may be used multiple times in same tx
      ;; we keep the ones we've already resolved here as a cache
-     :idents        (atom {})
+     :idents           (atom {})
      ;; if a tempid resolves to existing subject via :upsert predicate, set it here. tempids don't need
      ;; to check for existing duplicate values, but if a tempid resolves via upsert, we need to check it
-     :upserts       (atom nil)                              ;; cache of resolved identities
+     :upserts          (atom nil)                           ;; cache of resolved identities
      ;; Unique predicate + value used in transaction kept here, to ensure the same unique is not used
      ;; multiple times within the transaction
-     :uniques       (atom #{})
-
-     ;; as data is getting processed, all schema flakes end up in this bucket to allow
-     ;; for additional validation, and then processing prior to the other flakes.
-     :schema-flakes (atom nil)
+     :uniques          (atom #{})
+     ;; If a predicate schema change removes an index (either by turning off index:true or unique:true)
+     ;; then we capture the subject ids here and pass back in the transaction result for indexing
+     :remove-from-post (atom nil)
      ;; we may generate new tags as part of the transaction. Holds those new tags, but also a cache
      ;; of tag lookups to speed transaction by avoiding full lookups of the same tag multiple times in same tx
-     :tags          (atom nil)
-
+     :tags             (atom nil)
      ;; Some predicates may require extra validation after initial processing, we register functions
      ;; here for that purpose, 'cache' holds cached functions that are ready to execute
-     :validate-fn   (atom {:queue   [] :cache {}
-                           ;; need to track respective flakes for predicates (for tx-spec) and subject changes (collection-specs)
-                           :tx-spec nil :c-spec nil})}))
+     :validate-fn      (atom {:queue   [] :cache {}
+                              ;; need to track respective flakes for predicates (for tx-spec) and subject changes (collection-specs)
+                              :tx-spec nil :c-spec nil})}))
 
 
 (defn assign-permanent-ids
@@ -589,13 +587,11 @@
 (defn build-transaction
   [tx-state]
   (go-try
-    (let [{:keys [db-before auth-id authority-id txid tx t tx-type fuel]} tx-state
+    (let [{:keys [db-before auth-id authority-id txid tx t tx-type fuel remove-from-post]} tx-state
           tx-flakes        (<? (do-transact tx-state tx))
           tx-meta-flakes   (tx-meta/tx-meta-flakes tx-state nil)
           tempids-map      (tempid/result-map tx-state)
-          schema-flakes    @(:schema-flakes tx-state)
           all-flakes       (cond-> (into tx-flakes tx-meta-flakes)
-                                   schema-flakes (into schema-flakes)
                                    (not-empty tempids-map) (conj (tempid/flake tempids-map t))
                                    @(:tags tx-state) (into (tags/create-flakes tx-state)))
 
@@ -633,8 +629,7 @@
        :auth         auth-id
        :authority    authority-id
        :type         tx-type
-       :remove-preds (when schema-flakes
-                       (schema-util/remove-from-post-preds schema-flakes))})))
+       :remove-preds @remove-from-post})))
 
 
 (defn transact

@@ -160,6 +160,7 @@
           (= p const/$_predicate:multi) :multi
           (= p const/$_predicate:component) :component
           (= p const/$_predicate:unique) :unique
+          (= p const/$_predicate:index) :index
           :else :other)))
     flakes))
 
@@ -168,6 +169,20 @@
   the existing / db-before schema."
   [pred-sid existing-schema]
   (not (get-in existing-schema [:pred pred-sid])))
+
+
+(defn check-remove-from-post
+  "Adds any predicate subject flakes that are removing
+  an existing index, either via index: true or unique: true to the
+  remove-from-post atom in tx-state."
+  [flakes index-flakes {:keys [remove-from-post] :as tx-state}]
+  (when-let [remove-post-sids (->> index-flakes
+                                   (keep #(when (and (true? (.-op %)) (false? (.-o %)))
+                                            (.-s %)))
+                                   (not-empty))]
+    (swap! remove-from-post into remove-post-sids))
+  flakes)
+
 
 (defn validate-schema-predicate
   "To validate a predicate change, need to check the following:
@@ -183,12 +198,13 @@
     (let [pred-flakes     (get-in @validate-fn [:c-spec pred-sid])
           existing-schema (:schema db-before)
           new?            (predicate-new? pred-sid existing-schema)
-          {:keys [type multi component unique]} (flakes-by-type pred-flakes)]
+          {:keys [type multi component unique index]} (flakes-by-type pred-flakes)]
       (cond-> pred-flakes
               true (check-type-changes new? type)
               multi (check-multi-changes multi)
               component (check-component-changes new? component)
-              unique (check-unique-changes new? pred-sid existing-schema unique))
+              unique (check-unique-changes new? pred-sid existing-schema unique)
+              (or index unique) (check-remove-from-post (concat unique index) tx-state))
       true)
     ;; any returned exception will halt processing... don't throw here
     (catch Exception e e)))
