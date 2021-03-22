@@ -357,16 +357,22 @@
 (defn check-collection-specs
   "If a collection spec is needed, register it for processing the subject's flakes."
   [collection {:keys [db-root] :as tx-state} subject-flakes]
-  (let [c-spec-fn-ids    (dbproto/-c-prop db-root :spec collection)
-        pred-collection? (= "_predicate" collection)
-        tx-collection?   (= "_tx" collection)]
+  (let [c-spec-fn-ids (dbproto/-c-prop db-root :spec collection)]
     (when c-spec-fn-ids
       (queue-collection-spec collection c-spec-fn-ids tx-state subject-flakes))
-    (when pred-collection?
-      (queue-predicate-collection-spec tx-state subject-flakes))
-    (when tx-collection?
-      (queue-tx-meta-collection-spec tx-state subject-flakes)))
-  subject-flakes)
+    ;; schema changes and user-specified _tx require internal custom validations
+    (cond
+      (= "_predicate" collection)
+      (queue-predicate-collection-spec tx-state subject-flakes)
+
+      (= "_tx" collection)
+      (queue-tx-meta-collection-spec tx-state subject-flakes)
+
+      (= "_collection" collection)
+      (tx-schema/validate-collection-name subject-flakes)
+
+      :else nil)
+    subject-flakes))
 
 ;; Permissions
 

@@ -8,6 +8,29 @@
 
 ;; functions related to validating and working with schemas inside of transactions
 
+(def ^:const collection-name-regex #"^[a-zA-Z0-9_][a-zA-Z0-9\.\-_]{0,254}$")
+(def ^:const predicate-name-regex #"^[a-zA-Z0-9_][a-zA-Z0-9\.\-_]{0,254}/[a-zA-Z0-9][a-zA-Z0-9\.\-_]{0,254}$")
+(def ^:const predicate-contains-__-regex #"^.*__.*$")
+(def ^:const predicate-contains-via-regex #"^.*_Via_.*$")
+
+
+(defn validate-collection-name
+  "Ensures any new collection name validates against the collection-name-regex."
+  [collection-flakes]
+  (log/warn "Calling validate-collection-name with flakes: " (pr-str collection-flakes))
+  (when-let [new-name (some->> collection-flakes
+                               (some (fn [^Flake schema-flake]
+                                       (when (and (= (.-p schema-flake) const/$_collection:name)
+                                                  (true? (.-op schema-flake)))
+                                         (.-o schema-flake))))
+                               (not-empty))]
+    (when-not (re-matches collection-name-regex new-name)
+      (throw (ex-info (str "Invalid collection name, must start with a-z, A-Z, or 0-9 "
+                           "and can also include .-_. Provided: " new-name)
+                      {:status 400
+                       :error  :db/invalid-collection})))))
+
+
 (def ^:const
   type->sid
   {:int     (flake/->sid const/$_tag const/_predicate$type:int)
@@ -161,6 +184,7 @@
           (= p const/$_predicate:component) :component
           (= p const/$_predicate:unique) :unique
           (= p const/$_predicate:index) :index
+          (= p const/$_predicate:name) :name
           :else :other)))
     flakes))
 
@@ -184,6 +208,23 @@
   flakes)
 
 
+(defn- valid-pred-name?
+  "Tests and new (:op true) predicate-name-flakes against regex to ensure valid."
+  [pred-flakes pred-name-flakes]
+  (assert (<= 1 (count pred-name-flakes) 2)
+          (str "At most there should be a predicate name retraction and new assertion, provided: " pred-name-flakes))
+  (when-let [new-pred-name (some #(when (true? (.-op %)) (.-o %)) pred-name-flakes)]
+    (when (or (not (re-matches predicate-name-regex new-pred-name))
+              (re-matches predicate-contains-via-regex new-pred-name)
+              (re-matches predicate-contains-__-regex new-pred-name))
+      (throw (ex-info (str "Invalid predicate name. Must start with a-z, A-Z, or 0-9, and can include .-_. "
+                           "Cannot contain '__', '/_', or '_Via_'. Must include a namespace with a single /, "
+                           "i.e: 'mynamespace/mypred'. Provided: "
+                           new-pred-name)
+                      {:status 400 :error :db/invalid-predicate}))))
+  pred-flakes)
+
+
 (defn validate-schema-predicate
   "To validate a predicate change, need to check the following:
   - types can only be changed from/to certain values
@@ -198,14 +239,14 @@
     (let [pred-flakes     (get-in @validate-fn [:c-spec pred-sid])
           existing-schema (:schema db-before)
           new?            (predicate-new? pred-sid existing-schema)
-          {:keys [type multi component unique index]} (flakes-by-type pred-flakes)]
+          {:keys [type multi component unique index name]} (flakes-by-type pred-flakes)]
       (cond-> pred-flakes
               true (check-type-changes new? type)
               multi (check-multi-changes multi)
               component (check-component-changes new? component)
               unique (check-unique-changes new? pred-sid existing-schema unique)
+              name (valid-pred-name? name)
               (or index unique) (check-remove-from-post (concat unique index) tx-state))
       true)
     ;; any returned exception will halt processing... don't throw here
     (catch Exception e e)))
-
