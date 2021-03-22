@@ -67,7 +67,7 @@
       pred-flakes
 
       (and new? (nil? new-type))
-      (throw (ex-info (str "A new predicate must have a defined data type.")
+      (throw (ex-info (str "A new predicate must have a defined data type. Invalid Flakes: " (mapv vec pred-flakes))
                       {:status 400
                        :error  :db/invalid-tx}))
 
