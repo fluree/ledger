@@ -1,4 +1,4 @@
-{:deps {org.clojure/clojure {:mvn/version "1.10.2"}
+{:deps {org.clojure/clojure {:mvn/version "1.10.3"}
         org.clojure/data.xml {:mvn/version "0.2.0-alpha6"}
         com.fluree/db {:mvn/version "1.0.0-rc15"}
         com.fluree/raft {:mvn/version "1.0.0-beta1"}
