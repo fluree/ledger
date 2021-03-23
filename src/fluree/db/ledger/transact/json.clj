@@ -284,10 +284,9 @@
   (async/go
     (try
       (let [_p-o-pairs (dissoc txi :_id :_action :_meta)
-            _id*       (cond
-                         (util/temp-ident? _id) (tempid/new (:_id txi) tx-state)
-                         (util/pred-ident? _id) (<? (resolve-ident-strict _id tx-state))
-                         :else _id)
+            _id*       (if (util/pred-ident? _id)
+                         (<? (resolve-ident-strict _id tx-state))
+                         _id)
             delete?    (when _action (or (= :delete _action) (= "delete" _action)))
             collection (resolve-collection-name _id* tx-state)
             txi*       (assoc txi :_collection collection)
@@ -311,7 +310,7 @@
                  [[pred-info obj*] & r] pi-obj]
             (if (nil? pred-info)                            ;; finished
               (async/>! res-chan acc)
-              (let [pid  (pred-info :id)]
+              (let [pid (pred-info :id)]
                 (cond
                   ;; delete should have no tempids, so can register the final flakes in tx-state
                   delete?

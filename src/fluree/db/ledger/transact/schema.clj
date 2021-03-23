@@ -17,7 +17,6 @@
 (defn validate-collection-name
   "Ensures any new collection name validates against the collection-name-regex."
   [collection-flakes]
-  (log/warn "Calling validate-collection-name with flakes: " (pr-str collection-flakes))
   (when-let [new-name (some->> collection-flakes
                                (some (fn [^Flake schema-flake]
                                        (when (and (= (.-p schema-flake) const/$_collection:name)
