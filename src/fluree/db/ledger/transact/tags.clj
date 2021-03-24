@@ -34,7 +34,7 @@
   "Generates a _tag tempid"
   [tag {:keys [tempids] :as tx-state}]
   (let [tempid (tempid/->TempId "_tag" "_tag" (keyword tag) false)]
-    (swap! tempids update tempid identity)
+    (tempid/register tempid tx-state)
     tempid))
 
 

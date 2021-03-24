@@ -426,6 +426,9 @@
      ;; hold map of all tempids to their permanent ids. After initial processing will use this to fill
      ;; all tempids with the permanent ids.
      :tempids          (atom {})
+     ;; hold same tempids as :tempids above, but stores them in insertion order to ensure when
+     ;; assigning permanent ids, it will be done in a predicable order
+     :tempids-ordered  (atom [])
      ;; idents (two-tuples of unique predicate + value) may be used multiple times in same tx
      ;; we keep the ones we've already resolved here as a cache
      :idents           (atom {})
@@ -447,43 +450,6 @@
                               ;; need to track respective flakes for predicates (for tx-spec) and subject changes (collection-specs)
                               :tx-spec nil :c-spec nil})}))
 
-
-(defn assign-permanent-ids
-  "Assigns any unresolved tempids with a permanent subject id."
-  [{:keys [tempids upserts db-before t] :as tx-state} tx]
-  (try
-    (let [ecount (assoc (:ecount db-before) -1 t)]          ;; make sure to set current _tx ecount to 't' value, even if no tempids in transaction
-      (loop [[[tempid resolved-id] & r] @tempids
-             tempids* @tempids
-             upserts* #{}
-             ecount*  ecount]
-        (if (nil? tempid)                                   ;; finished
-          (do (reset! tempids tempids*)
-              (when-not (empty? upserts*)
-                (reset! upserts upserts*))
-              ;; return tx-state, don't need to update ecount in db-after, as dbproto/-with will update it
-              tx-state)
-          (if (nil? resolved-id)
-            (let [cid      (dbproto/-c-prop db-before :id (:collection tempid))
-                  next-id  (if (= -1 cid)
-                             t                              ; _tx collection has special handling as we decrement. Current value held in 't'
-                             (if-let [last-sid (get ecount* cid)]
-                               (inc last-sid)
-                               (flake/->sid cid 0)))
-                  ecount** (assoc ecount* cid next-id)]
-              (recur r (assoc tempids* tempid next-id) upserts* ecount**))
-            (recur r tempids* (conj upserts* resolved-id) ecount*))))
-      tx)
-    (catch Exception e
-      (log/error e (str "Unexpected error assigning permanent id to tempids."
-                        "with error: " (.getMessage e))
-                 {:ecount      (:ecount db-before)
-                  :tempids     @tempids
-                  :schema-coll (get-in db-before [:schema :coll])})
-      (throw (ex-info (str "Unexpected error assigning permanent id to tempids."
-                           "with error: " (.getMessage e))
-                      {:status 500 :error :db/unexpected-error}
-                      e)))))
 
 
 (defn resolve-temp-flakes
@@ -560,7 +526,7 @@
            (mapcat #(extract-children % tx-state))
            (statements-pipeline tx-state)
            <?
-           (assign-permanent-ids tx-state)
+           (tempid/assign-subject-ids tx-state)
            (finalize-flakes tx-state)
            <?))))
 
@@ -648,162 +614,3 @@
           result))
       (catch Exception e
         (async/<! (tx-error/pre-processing-handler e db cmd-data t))))))
-
-
-
-(comment
-  (def conn (:conn user/system))
-  (def db (async/<!! (fluree.db.api/db conn "blank/ledger2")))
-  (def last-resp nil)
-
-  (-> db
-      :schema
-      :pred
-      keys)
-
-  ;(def newdb (async/<!! (dbproto/-with-t db #{#Flake [17592186044436 40 "person" -3 true nil] #Flake [-3 100 "853204521965754426ebf18ec11cd457ed587f03d1b6d54ef5d82ff58bc1ba45" -3 true nil] #Flake [-3 101 105553116266496 -3 true nil] #Flake [-3 103 1615308222639 -3 true nil] #Flake [-3 106 "{\"type\":\"tx\",\"db\":\"blank/ledger\",\"tx\":[{\"_id\":\"_collection\",\"name\":\"person\"}],\"nonce\":1615308222639,\"auth\":\"TfE9koGjRzWrWD9VbqN3KdyPZor1eDrafmU\",\"expire\":1615308252639}" -3 true nil] #Flake [-3 107 "1b304402207db6c8feb3c26822e4133850ce3425c50124beaf10a907cfffe60574be83c7ce02202a7ab67b66f8d109d97b53f06d4f659b144d1753bf6ae5c983db5abd9c371b0d" -3 true nil]})))
-  newdb
-
-  (time (fluree.db.api/tx->command
-          "blank/ledger2"
-          [{:_id "_collection", :name "person"}
-           {:_id "_collection", :name "chat"}
-           {:_id "_collection", :name "comment"}
-           {:_id "_collection", :name "artist"}
-           {:_id "_collection", :name "movie"}
-           {:_id "_predicate", :name "person/handle", :doc "The person's unique handle", :unique true, :type "string"}
-           {:_id "_predicate", :name "person/fullName", :doc "The person's full name.", :type "string", :index true}
-           {:_id "_predicate", :name "person/age", :doc "The person's age in years", :type "int", :index true}
-           {:_id "_predicate", :name "person/follows", :doc "Any persons this subject follows", :type "ref", :restrictCollection "person"}
-           {:_id "_predicate", :name "person/favNums", :doc "The person's favorite numbers", :type "int", :multi true}
-           {:_id "_predicate", :name "person/favArtists", :doc "The person's favorite artists", :type "ref", :restrictCollection "artist", :multi true}
-           {:_id "_predicate", :name "person/favMovies", :doc "The person's favorite movies", :type "ref", :restrictCollection "movie", :multi true}
-           {:_id "_predicate", :name "person/user", :type "ref", :restrictCollection "_user"}
-           {:_id "_predicate", :name "chat/message", :doc "A chat message", :type "string", :fullText true}
-           {:_id "_predicate", :name "chat/person", :doc "A reference to the person that created the message", :type "ref", :restrictCollection "person"}
-           {:_id "_predicate", :name "chat/instant", :doc "The instant in time when this chat happened.", :type "instant", :index true}
-           {:_id "_predicate", :name "chat/comments", :doc "A reference to comments about this message", :type "ref", :component true, :multi true, :restrictCollection "comment"}
-           {:_id "_predicate", :name "comment/message", :doc "A comment message.", :type "string", :fullText true}
-           {:_id "_predicate", :name "comment/person", :doc "A reference to the person that made the comment", :type "ref", :restrictCollection "person"}
-           {:_id "_predicate", :name "artist/name", :type "string", :unique true}
-           {:_id "_predicate", :name "movie/title", :type "string", :fullText true, :unique true}
-           ]
-          "c457227f6f7ee94c3b2a32fbf055b33df42578d34047c14b2c9fe64273dce957"))
-
-  (time (let [db      db
-              test-tx (fluree.db.api/tx->command
-                        "blank/ledger2"
-                        [{:_id "_collection", :name "person"}
-                         {:_id "_collection", :name "chat"}
-                         {:_id "_collection", :name "comment"}
-                         {:_id "_collection", :name "artist"}
-                         {:_id "_collection", :name "movie"}
-                         {:_id "_predicate", :name "person/handle", :doc "The person's unique handle", :unique true, :type "string"}
-                         {:_id "_predicate", :name "person/fullName", :doc "The person's full name.", :type "string", :index true}
-                         {:_id "_predicate", :name "person/age", :doc "The person's age in years", :type "int", :index true}
-                         {:_id "_predicate", :name "person/follows", :doc "Any persons this subject follows", :type "ref", :restrictCollection "person"}
-                         {:_id "_predicate", :name "person/favNums", :doc "The person's favorite numbers", :type "int", :multi true}
-                         {:_id "_predicate", :name "person/favArtists", :doc "The person's favorite artists", :type "ref", :restrictCollection "artist", :multi true}
-                         {:_id "_predicate", :name "person/favMovies", :doc "The person's favorite movies", :type "ref", :restrictCollection "movie", :multi true}
-                         {:_id "_predicate", :name "person/user", :type "ref", :restrictCollection "_user"}
-                         {:_id "_predicate", :name "chat/message", :doc "A chat message", :type "string", :fullText true}
-                         {:_id "_predicate", :name "chat/person", :doc "A reference to the person that created the message", :type "ref", :restrictCollection "person"}
-                         {:_id "_predicate", :name "chat/instant", :doc "The instant in time when this chat happened.", :type "instant", :index true}
-                         {:_id "_predicate", :name "chat/comments", :doc "A reference to comments about this message", :type "ref", :component true, :multi true, :restrictCollection "comment"}
-                         {:_id "_predicate", :name "comment/message", :doc "A comment message.", :type "string", :fullText true}
-                         {:_id "_predicate", :name "comment/person", :doc "A reference to the person that made the comment", :type "ref", :restrictCollection "person"}
-                         {:_id "_predicate", :name "artist/name", :type "string", :unique true}
-                         {:_id "_predicate", :name "movie/title", :type "string", :fullText true, :unique true}
-                         ]
-                        "c457227f6f7ee94c3b2a32fbf055b33df42578d34047c14b2c9fe64273dce957")
-              res     (-> (build-transaction nil db {:command test-tx} (dec (:t db)) (java.time.Instant/now))
-                          (async/<!!))]
-          (alter-var-root #'fluree.db.ledger.transact.json/last-resp (constantly res))
-          res))
-
-  (-> last-resp
-      :db-after
-      (async/go)
-      (fluree.db.api/query {:select [:*] :from "_predicate"})
-      deref
-      )
-
-  (criterium.core/quick-bench
-    (let [test-tx (fluree.db.api/tx->command "prefix/a"
-                                             [{:_id   ["movie/title" "Gran Torino"]
-                                               :title "Gran Torino2"}
-                                              {:_id   "movie"
-                                               :title "New Movie"}
-                                              {:_id   "movie"
-                                               :title "New Movie2"}
-                                              {:_id  "artist"
-                                               :name "Brian"}]
-                                             "c457227f6f7ee94c3b2a32fbf055b33df42578d34047c14b2c9fe64273dce957")
-          res     (-> (build-transaction nil db {:command test-tx} (dec (:t db)) (java.time.Instant/now))
-                      (async/<!!))]
-      ;(alter-var-root #'fluree.db.ledger.transact.json/last-resp (constantly res))
-      res))
-
-
-  (criterium.core/quick-bench
-    (let [test-tx (fluree.db.api/tx->command "prefix/a"
-                                             [{:_id   ["movie/title" "Gran Torino"]
-                                               :title "Gran Torino2"}
-                                              {:_id   "movie"
-                                               :title "New Movie"}
-                                              {:_id   "movie"
-                                               :title "New Movie2"}
-                                              {:_id  "artist"
-                                               :name "Brian"}]
-                                             "c457227f6f7ee94c3b2a32fbf055b33df42578d34047c14b2c9fe64273dce957")
-          res     (-> (fluree.db.ledger.transact/build-transaction nil db {:command test-tx} (dec (:t db)) (java.time.Instant/now))
-                      (async/<!!))]
-      ;(alter-var-root #'fluree.db.ledger.transact.json/last-resp (constantly res))
-      res))
-
-
-  (def test-tx (fluree.db.api/tx->command "prefix/a"
-                                          [{:_id   ["movie/title" "Gran Torino"]
-                                            :title "Gran Torino2"}]
-                                          "c457227f6f7ee94c3b2a32fbf055b33df42578d34047c14b2c9fe64273dce957"))
-  (time (async/<!! (build-transaction nil db {:command test-tx} -9 (java.time.Instant/now))))
-
-  (-> last-resp
-      :db-after
-      (async/go)
-      (fluree.db.api/query {:select [:*] :from "movie"})
-      (deref))
-
-  )
-
-
-
-(comment
-
-  (require 'clojure.core.async :refer :all)
-
-  (def ca (async/chan 1))
-  (def cb (async/chan 1))
-
-  (pipeline
-    4                                                       ; thread count, i prefer egyptian cotton
-    cb                                                      ; to
-    (filter even?)                                          ; transducer
-    ca                                                      ; from
-    )
-
-  (doseq [i (range 10)]
-    (async/go (clojure.core.async/>! ca i)))
-  (async/go-loop []
-    (println (async/<! cb))
-    (recur))
-
-  (async/close! ca)
-  (async/close! cb)
-
-  (inc 1)
-
-  )
-
-
-

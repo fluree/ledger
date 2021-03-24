@@ -4,7 +4,9 @@
             [clojure.string :as str]
             [fluree.db.constants :as const]
             [fluree.db.flake :as flake]
-            [fluree.db.util.json :as json]))
+            [fluree.db.util.json :as json]
+            [fluree.db.dbproto :as dbproto]
+            [fluree.db.util.log :as log]))
 
 ;; functions related to generation of tempids
 
@@ -18,10 +20,11 @@
 
 (defn register
   "Registers a TempId instance into the tx-state, returns provided TempId unaltered."
-  [TempId {:keys [tempids] :as tx-state}]
+  [TempId {:keys [tempids tempids-ordered] :as tx-state}]
   {:pre [(TempId? TempId)]}
   (swap! tempids update TempId identity)                    ;; don't touch any existing value, otherwise nil
-  TempId)
+  (swap! tempids-ordered conj TempId)                       ;; creation ordered list to be used when assigning subject ids in same order as listed in tx
+  true)
 
 
 (defn new*
@@ -42,7 +45,8 @@
   update any existing subject id that might have already been mapped to the tempid."
   [tempid tx-state]
   (let [TempId (new* tempid)]
-    (register TempId tx-state)))
+    (register TempId tx-state)
+    TempId))
 
 
 (defn use
@@ -91,3 +95,42 @@
   "Returns flake for tx-meta (transaction sid) that contains a json packaging of the tempids map."
   [tempids-map t]
   (flake/->Flake t const/$_tx:tempids (json/stringify tempids-map) t true nil))
+
+(defn assign-subject-ids
+  "Assigns any unresolved tempids with a permanent subject id."
+  [{:keys [tempids tempids-ordered upserts db-before t] :as tx-state} tx]
+  (try
+    (let [ecount      (assoc (:ecount db-before) -1 t)      ;; make sure to set current _tx ecount to 't' value, even if no tempids in transaction
+          tempids-map @tempids]
+      (loop [[tempid & r] @tempids-ordered
+             ;[[tempid resolved-id] & r] @tempids
+             tempids-map* tempids-map
+             upserts*     #{}
+             ecount*      ecount]
+        (if (nil? tempid)                                   ;; finished
+          (do (reset! tempids tempids-map*)
+              (when-not (empty? upserts*)
+                (reset! upserts upserts*))
+              ;; return tx-state, don't need to update ecount in db-after, as dbproto/-with will update it
+              tx-state)
+          (if (nil? (get tempids-map tempid))
+            (let [cid      (dbproto/-c-prop db-before :id (:collection tempid))
+                  next-id  (if (= -1 cid)
+                             t                              ; _tx collection has special handling as we decrement. Current value held in 't'
+                             (if-let [last-sid (get ecount* cid)]
+                               (inc last-sid)
+                               (flake/->sid cid 0)))
+                  ecount** (assoc ecount* cid next-id)]
+              (recur r (assoc tempids-map* tempid next-id) upserts* ecount**))
+            (recur r tempids-map* (conj upserts* (get tempids-map tempid)) ecount*))))
+      tx)
+    (catch Exception e
+      (log/error e (str "Unexpected error assigning permanent id to tempids."
+                        "with error: " (.getMessage e))
+                 {:ecount      (:ecount db-before)
+                  :tempids     @tempids
+                  :schema-coll (get-in db-before [:schema :coll])})
+      (throw (ex-info (str "Unexpected error assigning permanent id to tempids."
+                           "with error: " (.getMessage e))
+                      {:status 500 :error :db/unexpected-error}
+                      e)))))
