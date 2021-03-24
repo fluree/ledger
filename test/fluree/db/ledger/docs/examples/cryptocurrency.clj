@@ -34,13 +34,13 @@
     ;; block should be 2
     (is (= 2 (:block schema-resp)))
 
-    ;; there should be 5 tempids
-    (is (= 5 (count (:tempids schema-resp))))))
+    ;; there should be 5 tempid keys
+    (is (= 2 (count (:tempids schema-resp))))))
 
 ;; Add sample data
 
 (deftest add-sample-data
-  (testing "Add sample data for the voting app")
+  (testing "Add sample data for the cryptocurrency app")
   (let [txn   [{:_id "_user$cryptoMan", :username "cryptoMan"}
                {:_id "_user$cryptoWoman", :username "cryptoWoman"}
                {:_id "wallet$cryptoMan", :name "cryptoMan", :balance 200, :user "_user$cryptoMan"}
@@ -71,7 +71,7 @@
     ;; block should be 4
     (is (= 4 (:block data-resp)))
 
-    ;; there should be 12 tempids
+    ;; there should be 7 tempids
     (is (= 7 (count (:tempids data-resp))))))
 
 

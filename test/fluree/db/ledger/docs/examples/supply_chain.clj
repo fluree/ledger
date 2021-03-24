@@ -37,8 +37,17 @@
     ;; block should be 3
     (is (= 2 (:block schema-resp)))
 
-    ;; there should be 48 tempids
-    (is (= 48 (count (:tempids schema-resp))))))
+    ;; there should be 5 _collection tempids
+    (is (= 5 (test/get-tempid-count (:tempids schema-resp) "_collection")))
+
+    ;; there should be _predicate tempids
+    (is (= 42 (test/get-tempid-count (:tempids schema-resp) "_predicate")))
+
+    ;; there should be a tempid key _fn$s
+    (is (true? (contains? (:tempids schema-resp) "_fn$s")))
+
+    ;; there should be 3 tempid keys total
+    (is (= 3 (count (keys (:tempids schema-resp)))))))
 
 ;; Add sample data
 
@@ -54,8 +63,11 @@
     ;; block should be 3
     (is (= 3 (:block data-resp)))
 
-    ;; there should be 12 tempids
-    (is (= 12 (count (:tempids data-resp))))))
+    ;; there should be 4 tempids for collection 'organization'
+    (is (= 4 (test/get-tempid-count (:tempids data-resp) "organization")))
+
+    ;; there should be 6 tempid keys
+    (is (= 6 (count (keys (:tempids data-resp)))))))
 
 
 ;; Add Block 4 Smart Functions

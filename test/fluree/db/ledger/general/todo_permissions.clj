@@ -44,8 +44,11 @@
     ;; block should be 2
     (is (= 2 (:block schema-resp)))
 
-    ;; there should be 4 tempids
-    (is (= 4 (count (:tempids schema-resp))))))
+    ;; there should be 3 _predicate tempids
+    (is (= 3 (test/get-tempid-count (:tempids schema-resp) "_predicate")))
+
+    ;; there should be 2 tempid keys
+    (is (= 2 (count (keys (:tempids schema-resp)))))))
 
 (deftest add-smart-functions
   (testing "Add supporting smart functions")
