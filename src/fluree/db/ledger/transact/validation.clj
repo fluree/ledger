@@ -61,7 +61,8 @@
                              (map #(query-range/index-range db :spot = [% const/$_fn:code]))
                              async/merge
                              (async/into [])
-                             (map #(if (util/exception? %) (throw %) (.-o ^Flake %)))
+                             (<?)
+                             (map #(if (util/exception? %) (throw %) (.-o ^Flake (first %))))
                              dbfunctions/combine-fns)
                         (-> (<? (query-range/index-range db :spot = [fn-subjects const/$_fn:code]))
                             ^Flake first
@@ -116,10 +117,9 @@
   (cond
     ;; some error in processing happened, don't allow transaction but communicate internal error
     (util/exception? response)
-    (ex-info (str "Internal execution error for predicate spec: " (.getMessage ^Exception response) ". "
-                  (if specDoc
-                    (str specDoc " Value: " (.-o flake))
-                    (str "Object " (.-o flake) " does not conform to the spec for predicate: " predicate-name)))
+    (ex-info (str "Internal execution error for predicate spec: " predicate-name " and Flake: " (vec flake)
+                  ". Error: " (.getMessage ^Exception response) ". specDoc: "
+                  (or specDoc (str "Object " (.-o flake) " does not conform to the spec for predicate: " predicate-name)))
              {:status 400
               :error  :db/invalid-tx
               :cause  response})
@@ -131,7 +131,7 @@
     ;; non truthy value, spec failed - do not allow transaction
     :else
     (ex-info (str (if specDoc
-                    (str specDoc " Value: " (.-o flake))
+                    (str specDoc " Flake: " (vec flake))
                     (str "Object " (.-o flake) " does not conform to the spec for predicate: " predicate-name)))
              {:status 400
               :error  :db/invalid-tx})))
