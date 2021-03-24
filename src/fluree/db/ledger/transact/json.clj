@@ -446,7 +446,7 @@
      :tags             (atom nil)
      ;; Some predicates may require extra validation after initial processing, we register functions
      ;; here for that purpose, 'cache' holds cached functions that are ready to execute
-     :validate-fn      (atom {:queue   [] :cache {}
+     :validate-fn      (atom {:queue   (list) :cache {}
                               ;; need to track respective flakes for predicates (for tx-spec) and subject changes (collection-specs)
                               :tx-spec nil :c-spec nil})}))
 
