@@ -78,3 +78,16 @@
     (do
       (println "Not a throwable:" (pr-str v))
       v)))
+
+
+(defn get-tempid-count
+  "Returns count of tempids within a collection, given the tempid map from the returned transaction
+  and a collection name."
+  [tempids collection]
+  (let [collection-tempids (get tempids collection)]
+    (when-not (sequential? collection-tempids)
+      (throw (ex-info (str "Unable to get collection range from tempid map for: " collection)
+                      {:tempids    tempids
+                       :collection collection})))
+    (let [[start-sid end-sid] collection-tempids]
+      (inc (- end-sid start-sid)))))

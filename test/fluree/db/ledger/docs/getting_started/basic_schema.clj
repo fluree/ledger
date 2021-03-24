@@ -31,16 +31,6 @@
            (recur results r)
            results))))))
 
-(defn- get-tempid-count
-  [tempids collection]
-  (letfn [(tempid-count [range]
-            (when-not (sequential? range)
-              (throw (ex-info (str "Unable to get collection range from tempid map for: " collection)
-                              {:tempids    tempids
-                               :collection collection})))
-            (let [[start-sid end-sid] range]
-              (inc (- end-sid start-sid))))]
-    (some-> tempids (get collection) tempid-count)))
 
 ;; Add collections
 
@@ -84,7 +74,7 @@
     (is (= 3 (:block collection-resp)))
 
     ;; there should be 16 _predicate tempids
-    (is (= 17 (-> collection-resp :tempids (get-tempid-count "_predicate"))))))
+    (is (= 17 (-> collection-resp :tempids (test/get-tempid-count "_predicate"))))))
 
 ;; Add sample data
 
@@ -104,7 +94,7 @@
     (is (= 15 (count (:tempids collection-resp))))
 
     ;; there should be 3 chat tempids that were not unique
-    (is (= 3 (-> collection-resp :tempids (get-tempid-count "chat"))))))
+    (is (= 3 (-> collection-resp :tempids (test/get-tempid-count "chat"))))))
 
 
 (deftest graphql-txn
@@ -118,7 +108,7 @@
     ;; tempids should only have person key
     (= #{"person"} (-> collection-resp :tempids keys set))
     ;; should be two persons added
-    (is (= 2 (-> collection-resp :tempids (get-tempid-count "person"))))))
+    (is (= 2 (-> collection-resp :tempids (test/get-tempid-count "person"))))))
 
 
 (deftest basic-schema-test

@@ -30,16 +30,6 @@
       (get-unique-count (distinct (concat current (repeatedly distance fn))) goal-count fn)
       (distinct current))))
 
-(defn- get-tempid-count
-  [tempids collection]
-  (letfn [(tempid-count [range]
-            (when-not (sequential? range)
-              (throw (ex-info (str "Unable to get collection range from tempid map for: " collection)
-                              {:tempids    tempids
-                               :collection collection})))
-            (let [[start-sid end-sid] range]
-              (inc (- end-sid start-sid))))]
-    (some-> tempids (get collection) tempid-count)))
 
 (defn standard-request
   ([body]
@@ -77,10 +67,10 @@
     (is (= 2 (:block body)))
 
     ;; should have added 59 predicates
-    (= 59 (-> body :tempids (get-tempid-count :_predicate)))
+    (= 59 (-> body :tempids (test/get-tempid-count :_predicate)))
 
     ;; should have added 4 new collections
-    (= 4 (-> body :tempids (get-tempid-count :_collection)))))
+    (= 4 (-> body :tempids (test/get-tempid-count :_collection)))))
 
 
 
@@ -121,7 +111,7 @@
            (-> body :tempids keys set)))
 
     ; check that 1 person (without tempid) was added
-    (= 1 (-> body :tempids (get-tempid-count :person)))))
+    (= 1 (-> body :tempids (test/get-tempid-count :person)))))
 
 
 (deftest standalone-new-people*
@@ -236,7 +226,7 @@
 
     (is (every? boolean (map #((set personKeys) %) [:tempids :block :hash :fuel :auth :status :flakes])))
     (is (< 100 (count flakes)))
-    (is (= 100 (get-tempid-count tempids :person)))))
+    (is (= 100 (test/get-tempid-count tempids :person)))))
 
 (deftest standalone-transacting-new-persons
   (add-schema*)
@@ -423,7 +413,7 @@
 
     (is (< 99 (count flakes)))
 
-    (is (= 100 (get-tempid-count tempids :chat)))))
+    (is (= 100 (test/get-tempid-count tempids :chat)))))
 
 
 (deftest standalone-add-new-chats*
