@@ -1,5 +1,6 @@
 (ns fluree.db.ledger.ledger-test
   (:require [clojure.test :refer :all]
+            [clojure.tools.logging :as log]
             [fluree.db.ledger.test-helpers :as test]
 
             [fluree.db.ledger.api.downloaded :as api]
@@ -30,6 +31,11 @@
             [fluree.db.ledger.docs.examples.supply-chain :as supply-chain]
             [fluree.db.ledger.docs.examples.voting :as voting]
             [fluree.db.ledger.general.todo-permissions :as todo-perm]))
+
+(Thread/setDefaultUncaughtExceptionHandler
+ (reify Thread$UncaughtExceptionHandler
+   (uncaughtException [_ thread ex]
+     (log/error ex "Uncaught exception on" (.getName thread)))))
 
 ;; TODO - tests fail - commented out for convenience:
 ;; API - (test-gen-flakes-query-transact-with)
