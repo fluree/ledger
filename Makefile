@@ -2,7 +2,7 @@ RELEASE_BUCKET ?= fluree-releases-public
 MINIMUM_JAVA_VERSION ?= 11
 JAVA_VERSION_FOR_RELEASE_BUILDS := $(MINIMUM_VERSION)
 
-VERSION := $(shell mvn org.apache.maven.plugins:maven-help-plugin:3.2.0:evaluate -Dexpression=project.version -q -DforceStdout 2>/dev/null)
+VERSION := $(shell clojure -M:meta version)
 VERSION ?= SNAPSHOT
 
 MAJOR_VERSION := $(shell echo $(VERSION) | cut -d '.' -f1)
@@ -14,6 +14,9 @@ SOURCES := $(shell find src)
 RESOURCES := $(shell find resources)
 
 DESTDIR ?= /usr/local
+
+print-version:
+	@echo $(VERSION)
 
 build/fluree-$(VERSION).zip: stage-release
 	cd build && zip -r fluree-$(VERSION).zip * -x 'data/' 'data/**' 'release-staging/' 'release-staging/**'
@@ -79,8 +82,12 @@ target/fluree-ledger.jar: pom.xml resources/adminUI $(SOURCES) $(RESOURCES)
 
 jar: target/fluree-ledger.jar
 
-pom.xml: deps.edn
+# force this to always run b/c it's way too easy for pom.xml to be newer than deps.edn
+# but still be out of date w/r/t dep versions
+pom.xml: FORCE
 	clojure -Spom
+
+FORCE:
 
 test:
 	clojure -M:test

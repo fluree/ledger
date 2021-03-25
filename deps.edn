@@ -1,6 +1,6 @@
-{:deps {org.clojure/clojure {:mvn/version "1.10.2"}
+{:deps {org.clojure/clojure {:mvn/version "1.10.3"}
         org.clojure/data.xml {:mvn/version "0.2.0-alpha6"}
-        com.fluree/db {:mvn/version "1.0.0-rc14"}
+        com.fluree/db {:mvn/version "1.0.0-rc15"}
         com.fluree/raft {:mvn/version "1.0.0-beta1"}
         com.fluree/crypto {:mvn/version "0.3.5"}
 
@@ -49,4 +49,7 @@
    :exec-fn hf.depstar/uberjar
    :exec-args {:jar "target/fluree-ledger.standalone.jar"
                :aot true
-               :main-class fluree.db.server}}}}
+               :main-class fluree.db.server}}
+
+  :meta
+  {:main-opts ["-m" "fluree.db.meta"]}}}

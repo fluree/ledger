@@ -5,7 +5,7 @@
             [clojure.core.async :as async]
             [aleph.http :as http]
             [aleph.netty :as netty]
-            [compojure.core :as compojure]
+            [compojure.core :as compojure :refer [defroutes]]
             [compojure.route :as route]
             [manifold.deferred :as d]
             [ring.middleware.params :as params]
@@ -34,7 +34,8 @@
             [fluree.db.ledger.reindex :as reindex]
             [fluree.db.ledger.mutable :as mutable]
             [fluree.db.auth :as auth]
-            [fluree.db.ledger.delete :as delete])
+            [fluree.db.ledger.delete :as delete]
+            [fluree.db.meta :as meta])
   (:import (java.io Closeable)
            (java.time Instant)
            (java.net BindException)
@@ -612,15 +613,22 @@
       :login (password-login system ledger request)
       :generate (password-generate system ledger request))))
 
+
+(defn version-handler [system request]
+  {:headers {"Content-Type" "text/plain"}
+   :status  200
+   :body    (meta/version)})
+
+
 (defn- remove-deep
   [key-set data]
   (walk/prewalk (fn [node] (if (map? node)
-                                     (apply dissoc node key-set)
-                                     node))
-                        data))
+                             (apply dissoc node key-set)
+                             node))
+                data))
 
-(defn nw-state
-  [system request]
+(defn nw-state-handler
+  [system _]
   (let [deferred (d/deferred)]
     (async/go
       (try
@@ -854,7 +862,7 @@
                                                        :auth)
                                           db'      (<? (fdb/db (:conn system) db-name))
                                           auth-id' (<? (dbproto/-subid db' ["_auth/id" jwt-auth] true))
-                 _                                 (when (util/exception? auth-id')
+                                          _        (when (util/exception? auth-id')
                                                      (throw (ex-info (str "Auth id for request does not exist in the database: " jwt-auth)
                                                                      {:status 403 :error :db/invalid-auth})))]
                                       jwt-auth))
@@ -918,47 +926,63 @@
                                      uri))))))
 
 
+(defn wrap-version-header [handler]
+  (fn [request]
+    (let [response (handler request)]
+      (assoc-in response [:headers "X-Fdb-Version"] (meta/version)))))
+
+
+(defn- api-routes
+  [system]
+  (compojure/routes
+    (compojure/GET "/fdb/storage/:network/:db/:type" request (storage-handler system request))
+    (compojure/GET "/fdb/storage/:network/:db/:type/:key" request (storage-handler system request))
+    (compojure/GET "/fdb/ws" request (websocket/handler system request))
+    (compojure/ANY "/fdb/health" request (health-handler system request))
+    (compojure/ANY "/fdb/nw-state" request (nw-state-handler system request))
+    (compojure/GET "/fdb/version" request (version-handler system request))
+    (compojure/POST "/fdb/add-server" request (add-server system request))
+    (compojure/POST "/fdb/remove-server" request (remove-server system request))
+    (compojure/POST "/fdb/sub" request (subscription-handler system request))
+    (compojure/GET "/fdb/new-keys" request (keys-handler system request))
+    (compojure/POST "/fdb/new-keys" request (keys-handler system request))
+    (compojure/POST "/fdb/dbs" request (get-ledgers system request))
+    (compojure/GET "/fdb/dbs" request (get-ledgers system request))
+    (compojure/POST "/fdb/new-db" request (new-ledger system request))
+    (compojure/POST "/fdb/delete-db" request (delete-ledger system request))
+    (compojure/POST "/fdb/:network/:db/pw/:action" request (password-handler system request))
+    (compojure/POST "/fdb/:network/:db/:action" request (wrap-action-handler system request))
+
+    ;; fallback 404 for unknown API paths
+    (compojure/ANY "/fdb/*" [] not-found)))
+
+
+(defroutes admin-ui-routes
+  (compojure/GET "/" [] (resp/resource-response "index.html" {:root "adminUI"}))
+  (route/resources "/" {:root "adminUI"})
+  (compojure/GET "/:page" [] (resp/resource-response "index.html" {:root "adminUI"})))
+
+
 ;; TODO - handle CORS more reasonably for production
 (defn- make-handler
   [system]
-  (ignore-trailing-slash (cors/wrap-cors
-                           (wrap-errors
-                             (:debug-mode? system)
-                             (params/wrap-params
-                               (compojure/routes
-                                 (compojure/GET "/fdb/storage/:network/:db/:type" request (storage-handler system request))
-                                 (compojure/GET "/fdb/storage/:network/:db/:type/:key" request (storage-handler system request))
-                                 (compojure/GET "/fdb/ws" request (websocket/handler system request))
-                                 (compojure/ANY "/fdb/health" request (health-handler system request))
-                                 (compojure/ANY "/fdb/nw-state" request (nw-state system request))
-                                 (compojure/POST "/fdb/add-server" request (add-server system request))
-                                 (compojure/POST "/fdb/remove-server" request (remove-server system request))
-                                 (compojure/POST "/fdb/sub" request (subscription-handler system request))
-                                 (compojure/GET "/fdb/new-keys" request (keys-handler system request))
-                                 (compojure/POST "/fdb/new-keys" request (keys-handler system request))
-                                 (compojure/POST "/fdb/dbs" request (get-ledgers system request))
-                                 (compojure/GET "/fdb/dbs" request (get-ledgers system request))
-                                 (compojure/POST "/fdb/new-db" request (new-ledger system request))
-                                 (compojure/POST "/fdb/delete-db" request (delete-ledger system request))
-                                 (compojure/POST "/fdb/:network/:db/pw/:action" request (password-handler system request))
-                                 (compojure/POST "/fdb/:network/:db/:action" request (wrap-action-handler system request))
-                                 (compojure/GET "/" [] (resp/resource-response "index.html" {:root "adminUI"}))
-                                 (route/resources "/" {:root "adminUI"})
-                                 (compojure/GET "/account" [] (resp/resource-response "index.html" {:root "adminUI"}))
-                                 (compojure/GET "/flureeql" [] (resp/resource-response "index.html" {:root "adminUI"}))
-                                 (compojure/GET "/graphql" [] (resp/resource-response "index.html" {:root "adminUI"}))
-                                 (compojure/GET "/sparql" [] (resp/resource-response "index.html" {:root "adminUI"}))
-                                 (compojure/GET "/schema" [] (resp/resource-response "index.html" {:root "adminUI"}))
-                                 (compojure/GET "/import" [] (resp/resource-response "index.html" {:root "adminUI"}))
-                                 (compojure/GET "/permissions" [] (resp/resource-response "index.html" {:root "adminUI"}))
-                                 (compojure/GET "/exploredb" [] (resp/resource-response "index.html" {:root "adminUI"}))
-                                 (compojure/GET "/networkdashboard" [] (resp/resource-response "index.html" {:root "adminUI"}))
-                                 (compojure/GET "/transact" [] (resp/resource-response "index.html" {:root "adminUI"}))
-                                 (constantly not-found))))
+  (-> (compojure/routes
+        (api-routes system)
 
-                           :access-control-allow-origin [#".+"]
-                           :access-control-expose-headers ["X-Fdb-Block" "X-Fdb-Fuel" "X-Fdb-Status" "X-Fdb-Time"]
-                           :access-control-allow-methods [:get :put :post :delete])))
+        admin-ui-routes
+
+        ;; final 404 fallback
+        (constantly not-found))
+
+      wrap-version-header
+      params/wrap-params
+      (->> (wrap-errors (:debug-mode? system)))
+      (cors/wrap-cors
+        :access-control-allow-origin [#".+"]
+        :access-control-expose-headers ["X-Fdb-Block" "X-Fdb-Fuel" "X-Fdb-Status" "X-Fdb-Time" "X-Fdb-Version"]
+        :access-control-allow-methods [:get :put :post :delete])
+      ignore-trailing-slash))
+
 
 (defrecord WebServer [close])
 
