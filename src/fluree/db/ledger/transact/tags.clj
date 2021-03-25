@@ -4,14 +4,15 @@
             [fluree.db.dbproto :as dbproto]
             [fluree.db.ledger.transact.tempid :as tempid]
             [fluree.db.flake :as flake]
-            [fluree.db.constants :as const]))
+            [fluree.db.constants :as const]
+            [fluree.db.util.log :as log]))
 
 ;; operations related to resolving and creating new tags
 
 (defn- temp-flake->flake
   "Transforms a TempId based flake into a flake."
-  [{:keys [tempids t] :as tx-state} temp-flake]
-  (flake/->Flake (get @tempids temp-flake) const/$_tag:id (:user-string temp-flake) t true nil))
+  [{:keys [tempids t] :as tx-state} [tag-name tag-tempid]]
+  (flake/->Flake (get @tempids tag-tempid) const/$_tag:id tag-name t true nil))
 
 
 (defn create-flakes
@@ -26,15 +27,16 @@
    'person/favColor:green'  #Tempid{:user-string `person/favColor:green` :collection '_tag' :unique :person/favColor:green}
   }"
   [{:keys [tags] :as tx-state}]
-  (->> (vals @tags)
-       (filter tempid/TempId?)
+  (->> @tags
+       (filter #(tempid/TempId? (val %)))
        (map (partial temp-flake->flake tx-state))))
 
 (defn create
   "Generates a _tag tempid"
-  [tag {:keys [tempids] :as tx-state}]
-  (let [tempid (tempid/->TempId "_tag" "_tag" (keyword tag) false)]
-    (tempid/register tempid tx-state)
+  [tag-name {:keys [tags] :as tx-state}]
+  (let [tempid (tempid/->TempId "_tag" "_tag" (keyword tag-name) false)]
+    (tempid/register tempid tx-state)                       ;; register tempid
+    (swap! tags assoc tag-name tempid)                      ;; register tag name -> tempid in @tags
     tempid))
 
 

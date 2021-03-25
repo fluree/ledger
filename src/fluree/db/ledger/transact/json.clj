@@ -156,7 +156,9 @@
           ;; create a two-tuple of [object-value async-chan-with-found-subjects]
           ;; to iterate over. Kicks off queries (if multi) in parallel.
           obj+subj-chs (->> (if (pred-info :multi) object [object])
-                            (map #(vector % (query-range/index-range db-before :post = [pred-id %]))))]
+                            (map #(vector % (if (tempid/TempId? %)
+                                              (async/go [%]) ;; can't look up tempids, validate they were not resolved as final tx step (see validating fn below)
+                                              (query-range/index-range db-before :post = [pred-id %])))))]
       ;; use a loop here so we can use async to full extent
       (loop [[[obj subject-ch] & r] obj+subj-chs]
         (when obj
@@ -169,38 +171,40 @@
           ;; finished, return original object - no errors
           object
           ;; check out next ident, if existing-flake we have a potential conflict
-          (let [^Flake existing-flake (first (<? subject-ch))]
+          (let [existing-flake (first (<? subject-ch))]
             (cond
+              ;; if a tempid, just need to make sure (a) only used once [done by register-unique!]
+              ;; (b) didn't resolve to existing subject which we'd have to check at final tx result - done here by registering validation-fn
+              (tempid/TempId? existing-flake)
+              (do
+                (tx-validate/queue-check-unique-tempid-still-unique existing-flake _id pred-info tx-state)
+                (recur r))
+
+
               ;; no matching existing flake, move on
               (nil? existing-flake) (recur r)
 
               ;; lookup subject matches subject, will end up ignoring insert downstream unless :retractDuplicates is true
-              (= (.-s existing-flake) _id) (recur r)
+              (= (.-s ^Flake existing-flake) _id) (recur r)
 
               ;; found existing subject and tempid, so set tempid value (or throw if already set to different subject)
               (and (tempid/TempId? _id) (pred-info :upsert))
               (do
-                (tempid/set _id (.-s existing-flake) tx-state) ;; will throw if tempid was already set to a different subject
+                (tempid/set _id (.-s ^Flake existing-flake) tx-state) ;; will throw if tempid was already set to a different subject
                 (recur r))
 
               ;; tempid, but not upsert - throw
               (tempid/TempId? _id)
               (throw (ex-info (str "Unique predicate " (pred-info :name) " with value: "
-                                   object " matched an existing subject: " (.-s existing-flake) ".")
+                                   object " matched an existing subject: " (.-s ^Flake existing-flake) ".")
                               {:status 400 :error :db/invalid-tx :tempid _id}))
 
               ;; not a tempid, but subjects don't match
               ;; this can be OK assuming a different txi is retracting the existing flake
               ;; register a validating fn for post-processing to check this and throw if not the case
-              (not= (.-s existing-flake) _id)
-              (let [validate-subject-retracted (fn [{:keys [flakes] :as tx-state}]
-                                                 (let [check-flake (flake/flip-flake existing-flake t)
-                                                       retracted?  (contains? flakes check-flake)]
-                                                   (when-not retracted?
-                                                     (throw (ex-info (str "Unique predicate " (pred-info :name) " with value: "
-                                                                          object " matched an existing subject: " (.-s existing-flake) ".")
-                                                                     {:status 400 :error :db/invalid-tx :tempid _id})))))]
-                (register-validate-fn validate-subject-retracted tx-state)
+              (not= (.-s ^Flake existing-flake) _id)
+              (do
+                (tx-validate/queue-check-unique-match-retracted existing-flake _id pred-info object tx-state)
                 (recur r)))))))))
 
 
@@ -302,7 +306,7 @@
                                                  <?)
                                              (<? (resolve-object obj _id* pred-info tx-state)))]
                              (recur (conj acc [pred-info obj*]) r))))
-            _id**      (or (get @tempids _id*) _id*)
+            _id**      (or (get @tempids _id*) _id*)        ;; if a ':upsert true' value resolved to existing sid, will now be in @tempids map
             tempid?    (tempid/TempId? _id**)]
         (if (and delete? (empty? _p-o-pairs))
           (async/>! res-chan (assoc txi* :_final-flakes (<? (tx-retract/subject _id** tx-state))))
