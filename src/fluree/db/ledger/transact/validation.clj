@@ -12,7 +12,8 @@
             [fluree.db.util.log :as log]
             [fluree.db.permissions-validate :as perm-validate]
             [fluree.db.flake :as flake]
-            [fluree.db.api :as fdb])
+            [fluree.db.api :as fdb]
+            [fluree.db.ledger.transact.tempid :as tempid])
   (:import (fluree.db.flake Flake)))
 
 ;;; functions to validate transactions
@@ -21,6 +22,7 @@
   "Queues a validation function to be run once we have a db-after completed.
   There are a few basic types of validations functions, some of which must
   also queue flakes into tx-state that will be inputs to the function
+  - unique - no flake queuing necessary - just run at end of transaction
   - predicate - no flake queueing necessary as run once per flake
   - predicate-tx - must queue all the predicate flakes of this type which may be
                    across multiple transaction items. flake-or-flakes will be a single flake.
@@ -30,6 +32,7 @@
                  multiple transactions (but usually will not be). flake-or-flakes will be a sequence"
   [fn-type {:keys [validate-fn] :as tx-state} f flakes pid-or-sid]
   (case fn-type
+    :unique (swap! validate-fn update :queue conj f)
     :predicate (swap! validate-fn update :queue conj f)
     :predicate-tx (swap! validate-fn (fn [validate-data]
                                        (cond-> validate-data
@@ -107,6 +110,63 @@
     (throw (ex-info "Transaction unable to complete, all allocated fuel has been exhausted."
                     {:status 400
                      :error  :db/insufficient-fuel}))))
+
+;; unique: true special handling
+;; unique values, in specific situations, require validation after the transaction is finalized to make sure
+;; (a) if there is an existing unique match (pred+object), it can be OK so long as the existing match
+;;     is deleted somewhere within the transaction
+;; (b) any tempids used for unique:true might have resolved to existing subjects (via ':upsert true') which
+;;     needs to happen after any such resolution happens
+
+(defn queue-check-unique-match-retracted
+  "if there is an existing unique match (pred+object), it can be OK so long as the existing match
+  is deleted in the transaction, which we can validate once the transaction is complete by looking
+  for the specific retraction flake we expect to see - else throw."
+  [existing-flake _id pred-info object tx-state]
+  (let [f (fn [{:keys [flakes t] :as tx-state}]
+            (let [check-flake (flake/flip-flake existing-flake t)
+                  retracted?  (contains? flakes check-flake)]
+              (when-not retracted?
+                (throw (ex-info (str "Unique predicate " (pred-info :name) " with value: "
+                                     object " matched an existing subject: " (.-s ^Flake existing-flake) ".")
+                                {:status 400 :error :db/invalid-tx :tempid _id})))))]
+    (queue-validation-fn :unique tx-state f nil nil)))
+
+
+(defn queue-check-unique-tempid-still-unique
+  "if there is an existing unique match (pred+object), it can be OK so long as the existing match
+  is deleted in the transaction, which we can validate once the transaction is complete by looking
+  for the specific retraction flake we expect to see - else throw.
+  - tempid    - the tempid object value that is supposed to be unique
+  - _id       - the _id of the transaction item that caused this validation to be run, might be a tempid
+  - pred-info - pred-info function allows getting different information about this predicate
+  - tx-state  - transaction state, which is also passed in as the only argument in the final validation fn"
+  [tempid _id pred-info tx-state]
+  (let [f (fn [{:keys [tempids db-after] :as tx-state}]
+            (go-try
+              (let [tempid-sid (get @tempids tempid)
+                    _id*       (if (tempid/TempId? _id)
+                                 (get @tempids _id)
+                                 _id)
+                    matches    (<? (query-range/index-range @db-after :post = [(pred-info :id) tempid-sid]))
+                    matches-n  (count matches)]
+                ;; should be a single match, whose .-s is the final _id of the transacted flake
+                (if (not= 1 matches-n)
+                  (throw (ex-info (str "Unique predicate " (pred-info :name) " with a tempid value: "
+                                       (:user-string tempid) " resolved to subject: " tempid-sid
+                                       ", which is not unique.")
+                                  {:status 400 :error :db/invalid-tx :tempid tempid}))
+                  ;; one match as expected... extra check here as match .-s should always equal the _id*,
+                  ;; else something strange happened
+                  (or (= _id* (.-s ^Flake (first matches)))
+                      (throw (ex-info (str "Unique predicate " (pred-info :name) " with a tempid value: "
+                                           (:user-string tempid) " resolved to subject: " tempid-sid
+                                           ", but matching flake unexpectedly is not the subject of "
+                                           "the original transaction item! Transaction item subject: " _id*
+                                           " matching flake: " (vec (first matches)))
+                                      {:status 500 :error :db/unexpected-error :tempid tempid})))))))]
+    (queue-validation-fn :unique tx-state f nil nil)))
+
 
 ;; predicate specs
 
