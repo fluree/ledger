@@ -85,22 +85,15 @@ build/CHANGELOG.md: CHANGELOG.md | build
 build/%: resources/% | build
 	cp $< $(@D)/
 
-target/fluree-ledger.jar: pom.xml resources/adminUI $(SOURCES) $(RESOURCES)
+target/fluree-ledger.jar: resources/adminUI $(SOURCES) $(RESOURCES)
 	clojure -X:jar
 
 jar: target/fluree-ledger.jar
 
-# force this to always run b/c it's way too easy for pom.xml to be newer than deps.edn
-# but still be out of date w/r/t dep versions
-pom.xml: FORCE
-	clojure -Spom
-
-FORCE:
-
 test:
 	clojure -M:test
 
-target/fluree-ledger.standalone.jar: pom.xml resources/adminUI $(SOURCES) $(RESOURCES)
+target/fluree-ledger.standalone.jar: resources/adminUI $(SOURCES) $(RESOURCES)
 	clojure -X:uberjar
 
 uberjar: target/fluree-ledger.standalone.jar
@@ -151,3 +144,4 @@ clean:
 	rm -rf target
 	rm -rf resources/adminUI
 	rm -rf node_modules
+	rm pom.xml
