@@ -13,7 +13,7 @@ jobs:
       - name: Run integration tests
         run: script/run-in-docker.sh make test
       - name: Notify Slack fail
-        if: failure()
+        if: failure() && github.repository == "fluree/ledger"
         env:
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
         uses: voxmedia/github-action-slack-notify-build@v1
