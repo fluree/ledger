@@ -52,11 +52,11 @@ jobs:
             VERSION=pr-${{ github.event.number }}
           fi
           TAGS="${DOCKER_IMAGE}:${VERSION}"
-          POM_VERSION=$(docker run --rm -v ${PWD}:/usr/src/ledger:ro -w /usr/src/ledger maven mvn org.apache.maven.plugins:maven-help-plugin:3.2.0:evaluate -Dexpression=project.version -q -DforceStdout)
-          if [[ $POM_VERSION =~ [0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}-SNAPSHOT ]]; then
+          RELEASE_VERSION=$(docker run --rm -v ${PWD}:/usr/src/ledger:ro -w /usr/src/ledger make print-version)
+          if [[ $RELEASE_VERSION =~ [0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}-SNAPSHOT ]]; then
             # Only use this for snapshot versions in case we forget to bump it
             # after a release. Git tags are safer there.
-            TAGS="$TAGS,${DOCKER_IMAGE}:${POM_VERSION}"
+            TAGS="$TAGS,${DOCKER_IMAGE}:${RELEASE_VERSION}"
           fi
           if [[ $VERSION =~ ^v[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]]; then
             MINOR=${VERSION%.*}
