@@ -15,3 +15,4 @@ default_private_key.txt
 /data
 /resources/adminUI
 /node_modules
+/pom.xml
