@@ -20,9 +20,6 @@ RESOURCES := $(shell find resources)
 
 DESTDIR ?= /usr/local
 
-print-version:
-	@echo $(VERSION)
-
 build/fluree-$(VERSION).zip: stage-release
 	cd build && zip -r fluree-$(VERSION).zip * -x 'data/' 'data/**' 'release-staging/' 'release-staging/**'
 
@@ -30,6 +27,9 @@ build/fluree-$(VERSION).zip.sha256: build/fluree-$(VERSION).zip
 	cd $(@D) && $(SHACMD) $(<F) > $(@F)
 
 stage-release: build/release-staging build/fluree-ledger.standalone.jar build/fluree_start.sh build/logback.xml build/fluree_sample.properties build/LICENSE build/CHANGELOG.md
+
+print-version:
+	@echo $(VERSION)
 
 run: stage-release
 	cd build && ./fluree_start.sh
