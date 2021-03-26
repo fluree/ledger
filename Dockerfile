@@ -1,7 +1,9 @@
 FROM clojure:tools-deps-1.10.2.796-slim-buster AS builder
 
-# mkdir -p /usr/share/man/man1 is a Debian bug workaround
-RUN apt-get update && mkdir -p /usr/share/man/man1 && apt-get install --no-install-recommends --assume-yes zip maven
+RUN apt-get update && apt-get install --no-install-recommends -y curl
+
+RUN curl -sL https://deb.nodesource.com/setup_14.x | bash -
+RUN apt-get update && apt-get install --no-install-recommends -y nodejs
 
 RUN mkdir -p /usr/src/fluree-ledger
 WORKDIR /usr/src/fluree-ledger
@@ -9,6 +11,9 @@ WORKDIR /usr/src/fluree-ledger
 COPY deps.edn ./
 
 RUN clojure -A:test -P
+
+COPY package.json package-lock.json ./
+RUN npm install
 
 COPY . ./
 
