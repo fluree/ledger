@@ -30,15 +30,22 @@ jobs:
         run: |
           echo "pom.xml version is ${{ steps.pom-version.outputs.version }} but git tag is ${{ steps.get-version.outputs.version }}"
           false
-      - name: Create GitHub release
+      - name: Create draft GitHub release
         id: create_release
         uses: softprops/action-gh-release@v1
         env:
           GITHUB_TOKEN: ${{ secrets.RELEASE_NOTIFICATIONS_TOKEN }}
         with:
           tag_name: ${{ steps.get-tag.outputs.tag }}
-          draft: false
+          draft: true # draft until after assets are uploaded so downstream actions can find them
           prerelease: ${{ contains(github.ref, '-') }}
           files: |
             build/fluree-${{ steps.get-version.outputs.version }}.zip
             build/fluree-${{ steps.get-version.outputs.version }}.zip.sha256
+      - name: Mark release as published
+        uses: softprops/action-gh-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secretes.RELEASE_NOTIFICATIONS_TOKEN }}
+        with:
+          tag_name: ${{ steps.get-tag.outputs.tag }}
+          draft: false
