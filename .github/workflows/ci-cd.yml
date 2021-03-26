@@ -40,7 +40,7 @@ jobs:
       - name: Prep Docker
         id: prep
         run: |
-          DOCKER_IMAGE=fluree/ledger
+          DOCKER_IMAGE=${{ github.repository }}
           VERSION=none
           if [[ "${{ github.event_name }}" == "schedule" ]]; then
             VERSION=nightly
