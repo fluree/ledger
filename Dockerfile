@@ -5,7 +5,7 @@ RUN apt-get update && apt-get install -y curl git
 RUN curl -sL https://deb.nodesource.com/setup_14.x | bash -
 RUN apt-get update && apt-get install -y nodejs
 
-RUN apt-get update && apt-get install --no-install-recommends -y curl
+RUN apt-get update && apt-get install --assume-yes --no-install-recommends curl zip
 
 RUN curl -sL https://deb.nodesource.com/setup_14.x | bash -
 RUN apt-get update && apt-get install --no-install-recommends -y nodejs
