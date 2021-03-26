@@ -46,7 +46,7 @@
   "Retracts one or more flakes given a subject, predicate, and optionally an object value."
   [subject-id predicate-id object {:keys [db-root t] :as tx-state}]
   (go-try
-    (let [flakes     (if (= ::delete object)
+    (let [flakes     (if (= :delete object)                 ;; case will only exist if ':_action delete', else delete handled elsewhere
                        (<? (query-range/index-range db-root :spot = [subject-id predicate-id]))
                        (<? (query-range/index-range db-root :spot = [subject-id predicate-id object])))
           components (when (dbproto/-p-prop db-root :component predicate-id)
