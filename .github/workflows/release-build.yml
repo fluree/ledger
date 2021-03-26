@@ -45,7 +45,7 @@ jobs:
       - name: Mark release as published
         uses: softprops/action-gh-release@v1
         env:
-          GITHUB_TOKEN: ${{ secretes.RELEASE_NOTIFICATIONS_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.RELEASE_NOTIFICATIONS_TOKEN }}
         with:
           tag_name: ${{ steps.get-tag.outputs.tag }}
           draft: false
