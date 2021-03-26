@@ -8,7 +8,7 @@ RUN apt-get update && apt-get install -y nodejs
 RUN apt-get update && apt-get install --assume-yes --no-install-recommends curl zip
 
 RUN curl -sL https://deb.nodesource.com/setup_14.x | bash -
-RUN apt-get update && apt-get install --no-install-recommends -y nodejs
+RUN apt-get update && apt-get install --assume-yes --no-install-recommends nodejs
 
 RUN mkdir -p /usr/src/fluree-ledger
 WORKDIR /usr/src/fluree-ledger
