@@ -3,7 +3,6 @@ MINIMUM_JAVA_VERSION ?= 11
 JAVA_VERSION_FOR_RELEASE_BUILDS := $(MINIMUM_VERSION)
 
 VERSION := $(shell clojure -M:meta version)
-VERSION ?= SNAPSHOT
 
 MAJOR_VERSION := $(shell echo $(VERSION) | cut -d '.' -f1)
 MINOR_VERSION := $(shell echo $(VERSION) | cut -d '.' -f2)
