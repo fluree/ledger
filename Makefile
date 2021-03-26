@@ -144,4 +144,4 @@ clean:
 	rm -rf target
 	rm -rf resources/adminUI
 	rm -rf node_modules
-	rm pom.xml
+	rm -f pom.xml
