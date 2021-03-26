@@ -26,7 +26,11 @@
 
  :paths ["src" "resources"]
  :aliases
- {:dev
+ {:mvn/group-id com.fluree
+  :mvn/artifact-id ledger
+  :mvn/version "1.0.0-beta8"
+
+  :dev
   {:extra-paths ["dev"]
    :extra-deps {org.clojure/tools.namespace {:mvn/version "1.1.0"}}
    :main-opts ["-e" "(require,'user)"
@@ -40,16 +44,24 @@
    :main-opts ["-m" "cognitect.test-runner"]}
 
   :jar
-  {:extra-deps {seancorfield/depstar {:mvn/version "2.0.165"}}
+  {:replace-deps {com.github.seancorfield/depstar {:mvn/version "2.0.206"}}
    :exec-fn hf.depstar/jar
-   :exec-args {:jar "target/fluree-ledger.jar"}}
+   :exec-args {:jar "target/fluree-ledger.jar"
+               :group-id :mvn/group-id
+               :artifact-id :mvn/artifact-id
+               :version :mvn/version
+               :sync-pom true}}
 
   :uberjar
-  {:extra-deps {seancorfield/depstar {:mvn/version "2.0.165"}}
+  {:replace-deps {com.github.seancorfield/depstar {:mvn/version "2.0.206"}}
    :exec-fn hf.depstar/uberjar
    :exec-args {:jar "target/fluree-ledger.standalone.jar"
                :aot true
-               :main-class fluree.db.server}}
+               :main-class fluree.db.server
+               :group-id :mvn/group-id
+               :artifact-id :mvn/artifact-id
+               :version :mvn/version
+               :sync-pom true}}
 
   :meta
   {:main-opts ["-m" "fluree.db.meta"]}}}

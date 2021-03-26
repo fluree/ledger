@@ -3,25 +3,33 @@ MINIMUM_JAVA_VERSION ?= 11
 JAVA_VERSION_FOR_RELEASE_BUILDS := $(MINIMUM_VERSION)
 
 VERSION := $(shell clojure -M:meta version)
-VERSION ?= SNAPSHOT
 
 MAJOR_VERSION := $(shell echo $(VERSION) | cut -d '.' -f1)
 MINOR_VERSION := $(shell echo $(VERSION) | cut -d '.' -f2)
 
-.PHONY: deps test jar uberjar stage-release run check-release-jdk-version prep-release release release-stable release-latest release-version-latest docker-image install clean
+ifneq ($(strip $(shell which shasum)),)
+  SHACMD := shasum -a 256
+else
+  SHACMD := sha256sum
+endif
+
+.PHONY: deps test jar uberjar stage-release run check-release-jdk-version prep-release print-version release release-stable release-latest release-version-latest docker-image install clean
 
 SOURCES := $(shell find src)
 RESOURCES := $(shell find resources)
 
 DESTDIR ?= /usr/local
 
-print-version:
-	@echo $(VERSION)
-
 build/fluree-$(VERSION).zip: stage-release
 	cd build && zip -r fluree-$(VERSION).zip * -x 'data/' 'data/**' 'release-staging/' 'release-staging/**'
 
+build/fluree-$(VERSION).zip.sha256: build/fluree-$(VERSION).zip
+	cd $(@D) && $(SHACMD) $(<F) > $(@F)
+
 stage-release: build/release-staging build/fluree-ledger.standalone.jar build/fluree_start.sh build/logback.xml build/fluree_sample.properties build/LICENSE build/CHANGELOG.md
+
+print-version:
+	@echo $(VERSION)
 
 run: stage-release
 	cd build && ./fluree_start.sh
@@ -29,8 +37,8 @@ run: stage-release
 check-release-jdk-version:
 	resources/fluree_start.sh java_version $(JAVA_VERSION_FOR_RELEASE_BUILDS)
 
-prep-release: check-release-jdk-version clean build/fluree-$(VERSION).zip build/release-staging
-	cp build/fluree-$(VERSION).zip build/release-staging/
+prep-release: check-release-jdk-version clean build/fluree-$(VERSION).zip build/fluree-$(VERSION).zip.sha256 build/release-staging
+	cp build/fluree-$(VERSION).zip* build/release-staging/
 
 release: prep-release
 	aws s3 sync build/release-staging/ s3://$(RELEASE_BUCKET)/ --size-only --cache-control max-age=300 --acl public-read --profile fluree
@@ -77,22 +85,15 @@ build/CHANGELOG.md: CHANGELOG.md | build
 build/%: resources/% | build
 	cp $< $(@D)/
 
-target/fluree-ledger.jar: pom.xml resources/adminUI $(SOURCES) $(RESOURCES)
+target/fluree-ledger.jar: resources/adminUI $(SOURCES) $(RESOURCES)
 	clojure -X:jar
 
 jar: target/fluree-ledger.jar
 
-# force this to always run b/c it's way too easy for pom.xml to be newer than deps.edn
-# but still be out of date w/r/t dep versions
-pom.xml: FORCE
-	clojure -Spom
-
-FORCE:
-
 test:
 	clojure -M:test
 
-target/fluree-ledger.standalone.jar: pom.xml resources/adminUI $(SOURCES) $(RESOURCES)
+target/fluree-ledger.standalone.jar: resources/adminUI $(SOURCES) $(RESOURCES)
 	clojure -X:uberjar
 
 uberjar: target/fluree-ledger.standalone.jar
@@ -138,7 +139,9 @@ $(DESTDIR)/bin/fluree: resources/fluree_start.sh
 install: $(DESTDIR)/bin/fluree $(DESTDIR)/share/java/fluree-ledger.standalone.jar | $(DESTDIR)/etc/fluree.properties $(DESTDIR)/etc/fluree-logback.xml
 
 clean:
-	rm -rf build
+	@# only delete contents of build dir if full delete fails (e.g. b/c we're mounting it as a Docker volume)
+	rm -rf build 2>/dev/null || rm -rf build/*
 	rm -rf target
 	rm -rf resources/adminUI
 	rm -rf node_modules
+	rm -f pom.xml
