@@ -6,7 +6,7 @@
             [fluree.db.index :as index]
             [fluree.db.storage.core :as storage]
             [fluree.db.session :as session]
-            [clojure.core.async :as async]
+            [clojure.core.async :as async :refer [>! <! chan go]]
             [fluree.db.util.async :refer [<? go-try]]
             [fluree.db.util.core :as util]
             [fluree.db.ledger.txgroup.txgroup-proto :as txproto])
@@ -35,9 +35,10 @@
 (defn split-flakes
   "Splits into n parts. "
   [flakes size]
-  (if (< size *overflow-bytes*)                             ;; shouldn't be called if this is the case, log warning and return unaffected
+  (if (< size *overflow-bytes*)  ; shouldn't be called if this is the case, log warning and return unaffected
     (do
-      (log/warn "Split flakes called on flakes that are < *overflow-kb*" {:size size :overflow-kb *overflow-bytes*})
+      (log/warn "Split flakes called on flakes that are < *overflow-kb*"
+                {:size size :overflow-kb *overflow-bytes*})
       [flakes])
     (let [bytes-min (/ *overflow-bytes* 2)
           splits-n  (Math/round (float (/ size bytes-min)))
