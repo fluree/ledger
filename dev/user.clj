@@ -195,7 +195,7 @@
           :fdb-storage-file-root      "./data"
           :fdb-consensus-type         "raft"
           :fdb-api-open               true
-          :fdb-api-port               8080
+          :fdb-api-port               8090
           :fdb-stats-report-frequency "30m"})
 
   ;; Standalone - In Memory
