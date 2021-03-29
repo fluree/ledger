@@ -3,7 +3,8 @@
             [fluree.db.constants :as const]
             [fluree.db.flake :as flake]
             [fluree.db.util.core :as util]
-            [fluree.db.util.log :as log])
+            [fluree.db.util.log :as log]
+            [fluree.db.dbproto :as dbproto])
   (:import (fluree.db.flake Flake)))
 
 ;; functions related to validating and working with schemas inside of transactions
@@ -265,3 +266,24 @@
       true)
     ;; any returned exception will halt processing... don't throw here
     (catch Exception e e)))
+
+
+(defn remove-from-post-result
+  "Executed once db-after is in place. Does a validation of any predicates which were indexed that *may*
+  not be indexed any longer. Predicates which had changes to :unique or :index (both trigger indexing) are
+  added to the remove-from-post key during processing (done with check-remove-from-post function above).
+
+  During the course of the transaction, we don't have a guarantee of the final state of those predicates
+  (i.e. if ':unique true' was set to ':unique false', but separately ':index true' was set, we'd still
+  be indexing)... so we validate that indexing for these changes was actually turned off here as a final
+  check."
+  [{:keys [remove-from-post db-after] :as tx-state}]
+  (when-let [removes @remove-from-post]
+    ;; need to validate removes are truly index removes in new db (schema might have been changed from transaction)
+    (->> removes
+         (reduce (fn [acc pred-id]
+                   (if (dbproto/-p-prop @db-after :idx? pred-id)
+                     acc                                     ;; an :index or :unique were made false, but still indexable
+                     (conj acc pred-id)))
+                 #{})
+         (not-empty))))

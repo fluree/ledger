@@ -75,20 +75,20 @@
 
 (defn resolve-collection-id+name
   [db _id]
-  (let [partition   (cond (int? _id)
-                    (flake/sid->cid _id)
+  (let [partition (cond (int? _id)
+                        (flake/sid->cid _id)
 
-                    (vector? _id)
-                    (let [predicate-name (first _id)
-                          cname          (re-find #"^[a-zA-Z0-9_][a-zA-Z0-9\.\-_]{0,254}" predicate-name)]
-                      (dbproto/-c-prop db :partition cname))
+                        (vector? _id)
+                        (let [predicate-name (first _id)
+                              cname          (re-find #"^[a-zA-Z0-9_][a-zA-Z0-9\.\-_]{0,254}" predicate-name)]
+                          (dbproto/-c-prop db :partition cname))
 
-                    :else
-                    (let [cname (re-find #"^[a-zA-Z0-9_][a-zA-Z0-9\.\-_]{0,254}" _id)]
-                      (dbproto/-c-prop db :partition cname)))
-        _     (when-not partition (throw (ex-info (str "Invalid _id, no corresponding collection exists: " (pr-str _id))
-                                            {:status 400 :error :db/invalid-collection})))
-        cname (dbproto/-c-prop db :name partition)]
+                        :else
+                        (let [cname (re-find #"^[a-zA-Z0-9_][a-zA-Z0-9\.\-_]{0,254}" _id)]
+                          (dbproto/-c-prop db :partition cname)))
+        _         (when-not partition (throw (ex-info (str "Invalid _id, no corresponding collection exists: " (pr-str _id))
+                                                      {:status 400 :error :db/invalid-collection})))
+        cname     (dbproto/-c-prop db :name partition)]
     [partition cname]))
 
 (defn- predicate-name-illegal-chars
@@ -1424,8 +1424,8 @@
         (let [start-time    (System/currentTimeMillis)
               ;tx-result     (<? (build-transaction session db cmd-data next-t block-instant))
               tx-result     (<? (tx-json/transact db cmd-data next-t block-instant))
-              {:keys [db-after bytes fuel flakes tempids auth authority status error hash
-                      remove-preds]} tx-result
+              {:keys [db-after bytes fuel flakes tempids auth authority status error errors
+                      hash remove-preds]} tx-result
               block-bytes*  (+ block-bytes bytes)
               block-fuel*   (+ block-fuel fuel)
               block-flakes* (into block-flakes flakes)
@@ -1435,6 +1435,7 @@
                                                          {:t         next-t ;; subject id
                                                           :status    status
                                                           :error     error
+                                                          :errors    errors
                                                           :tempids   tempids
                                                           :bytes     bytes
                                                           :id        (:id cmd-data)

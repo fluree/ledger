@@ -17,7 +17,8 @@
             [fluree.db.ledger.transact.auth :as tx-auth]
             [fluree.db.ledger.transact.tx-meta :as tx-meta]
             [fluree.db.ledger.transact.validation :as tx-validate]
-            [fluree.db.ledger.transact.error :as tx-error])
+            [fluree.db.ledger.transact.error :as tx-error]
+            [fluree.db.ledger.transact.schema :as tx-schema])
   (:import (fluree.db.flake Flake)))
 
 
@@ -430,6 +431,7 @@
      :db-root          db
      :db-after         (atom nil)                           ;; store updated db here
      :flakes           nil                                  ;; holds final list of flakes for tx once complete
+     :permissions      tx-permissions
      :auth-id          auth                                 ;; auth id string in _auth/id
      :auth             auth-sid                             ;; auth subject-id integer
      :authority-id     authority                            ;; authority id string as per _auth/id (or nil if no authority)
@@ -563,7 +565,7 @@
 (defn build-transaction
   [tx-state]
   (go-try
-    (let [{:keys [db-before auth-id authority-id txid tx t tx-type fuel remove-from-post]} tx-state
+    (let [{:keys [db-before auth-id authority-id txid tx t tx-type fuel permissions]} tx-state
           tx-flakes        (<? (do-transact tx-state tx))
           tx-meta-flakes   (tx-meta/tx-meta-flakes tx-state nil)
           tempids-map      (tempid/result-map tx-state)
@@ -582,36 +584,44 @@
                                tx-util/make-candidate-db
                                (tx-meta/add-tx-hash-flake @hash-flake)
                                (update-db-after tx-state))
-          tx-bytes         (- (get-in db-after [:stats :size]) (get-in db-before [:stats :size]))]
+          tx-bytes         (- (get-in db-after [:stats :size]) (get-in db-before [:stats :size]))
 
-      ;; runs all 'spec' validations
-      (<? (tx-validate/run all-flakes tx-state parallelism))
+          ;; kick off permissions, returns async channel so allow to process in the background
+          ;; spec error reporting (next line) will take precedence over permission errors
 
-      (<? (tx-validate/permissions db-before db-after all-flakes))
+          ;; runs all 'spec' validations
+          spec-errors      (<? (tx-validate/run-queued-specs all-flakes tx-state parallelism))
+          perm-errors      (when (and (nil? spec-errors)    ;; only run permissions errors if no spec errors
+                                      (not (true? (:root? permissions))))
+                             (<? (tx-validate/run-permissions-checks all-flakes tx-state parallelism)))]
 
-      ;; note here that db-after does NOT contain the tx-hash flake. The hash generation takes time, so is done in the background
-      ;; This should not matter as
-      {:t            t
-       :hash         (.-o ^Flake @hash-flake)
-       :db-before    db-before
-       :db-after     db-after
-       :flakes       (conj all-flakes @hash-flake)
-       :tempids      tempids-map
-       :bytes        tx-bytes
-       :fuel         (+ (:spent @fuel) tx-bytes (count all-flakes) 1)
-       :status       200
-       ;:duration     (str (- (System/currentTimeMillis) start-time) "ms")
-       :txid         txid
-       :auth         auth-id
-       :authority    authority-id
-       :type         tx-type
-       :remove-preds (when-let [removes @remove-from-post]
-                       ;; need to validate removes are truly index removes in new db
-                       (->> removes
-                            (reduce #(if (dbproto/-p-prop db-after :idx? %2)
-                                       %1                   ;; an :index or :unique were made false, but still indexable
-                                       (conj %1 %2)) #{})
-                            (not-empty)))})))
+      (cond-> {:txid         txid
+               :t            t
+               :auth         auth-id
+               :authority    authority-id
+               :db-before    db-before
+               :db-after     db-after                       ;; will get replaced if there is an error
+               :status       200                            ;; will get replaced if there is an error
+               :errors       nil                            ;; will get replaced if there is an error
+               :flakes       (conj all-flakes @hash-flake)  ;; will get replaced if there is an error
+               :hash         (.-o ^Flake @hash-flake)       ;; will get replaced if there is an error
+               :tempids      tempids-map                    ;; will get replaced if there is an error
+               :bytes        tx-bytes                       ;; will get replaced if there is an error
+               :remove-preds (tx-schema/remove-from-post-result tx-state) ;; will get replaced if there is an error
+               :fuel         nil                            ;; additional fuel will be consumed while processing validations, fill in at end
+               :type         tx-type}
+
+              ;; replace response with error response if errors detected
+              spec-errors
+              (-> (tx-error/spec-error spec-errors tx-state) <?)
+
+              ;; only care about permission errors if no spec errors exist
+              perm-errors
+              (-> (tx-error/spec-error perm-errors tx-state) <?)
+
+              ;; add fuel at end
+              true
+              (#(assoc % :fuel (+ (:spent @fuel) tx-bytes (count all-flakes) 1)))))))
 
 
 (defn transact
