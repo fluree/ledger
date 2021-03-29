@@ -547,7 +547,8 @@
   (go-try
     (let []
       (->> tx
-           (mapcat #(extract-children % tx-state))
+           (pmap #(extract-children % tx-state))
+           (apply concat)
            (statements-pipeline tx-state)
            <?
            (tempid/assign-subject-ids tx-state)
