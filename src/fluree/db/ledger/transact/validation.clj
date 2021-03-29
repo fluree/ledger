@@ -59,17 +59,13 @@
   [fn-subjects db promise fn-type]
   (async/go
     (try
-      (let [fn-str    (if (sequential? fn-subjects)
-                        (->> fn-subjects                    ;; combine multiple functions with an (and ...) wrapper
-                             (map #(query-range/index-range db :spot = [% const/$_fn:code]))
-                             async/merge
-                             (async/into [])
-                             (<?)
-                             (map #(if (util/exception? %) (throw %) (.-o ^Flake (first %))))
-                             dbfunctions/combine-fns)
-                        (-> (<? (query-range/index-range db :spot = [fn-subjects const/$_fn:code]))
-                            ^Flake first
-                            (.-o)))
+      (let [fn-str    (->> fn-subjects                      ;; combine multiple functions with an (and ...) wrapper
+                           (map #(query-range/index-range db :spot = [% const/$_fn:code]))
+                           async/merge
+                           (async/into [])
+                           (<?)
+                           (map #(if (util/exception? %) (throw %) (.-o ^Flake (first %))))
+                           dbfunctions/combine-fns)
             fn-parsed (<? (dbfunctions/parse-fn db fn-str fn-type nil))]
         (deliver promise fn-parsed))
       (catch Exception e (deliver promise e)))))
@@ -128,8 +124,11 @@
                   retracted?  (contains? flakes check-flake)]
               (when-not retracted?
                 (throw (ex-info (str "Unique predicate " (pred-info :name) " with value: "
-                                     object " matched an existing subject: " (.-s ^Flake existing-flake) ".")
-                                {:status 400 :error :db/invalid-tx :tempid _id})))))]
+                                     object " matched an existing subject.")
+                                {:status   400
+                                 :error    :db/invalid-tx
+                                 :cause    [_id (pred-info :name) object]
+                                 :conflict [(.-s ^Flake existing-flake)]})))))]
     (queue-validation-fn :unique tx-state f nil nil)))
 
 
@@ -159,12 +158,11 @@
                   ;; one match as expected... extra check here as match .-s should always equal the _id*,
                   ;; else something strange happened
                   (or (= _id* (.-s ^Flake (first matches)))
-                      (throw (ex-info (str "Unique predicate " (pred-info :name) " with a tempid value: "
-                                           (:user-string tempid) " resolved to subject: " tempid-sid
-                                           ", but matching flake unexpectedly is not the subject of "
-                                           "the original transaction item! Transaction item subject: " _id*
-                                           " matching flake: " (vec (first matches)))
-                                      {:status 500 :error :db/unexpected-error :tempid tempid})))))))]
+                      (throw (ex-info (str "Unique predicate resolved to mis-matched subject.")
+                                      {:status   500
+                                       :error    :db/unexpected-error
+                                       :cause    [(:user-string tempid) (pred-info :name)]
+                                       :conflict (vec (first matches))})))))))]
     (queue-validation-fn :unique tx-state f nil nil)))
 
 
@@ -177,12 +175,14 @@
   (cond
     ;; some error in processing happened, don't allow transaction but communicate internal error
     (util/exception? response)
-    (ex-info (str "Internal execution error for predicate spec: " predicate-name " and Flake: " (vec flake)
-                  ". Error: " (.getMessage ^Exception response) ". specDoc: "
-                  (or specDoc (str "Object " (.-o flake) " does not conform to the spec for predicate: " predicate-name)))
-             {:status 400
-              :error  :db/invalid-tx
-              :cause  response})
+    (ex-info (str "Internal execution error for predicate spec: " (.getMessage response) ". "
+                  "Predicate spec failed for predicate: " predicate-name "." (when specDoc (str " " specDoc)))
+             {:status     400
+              :error      :db/predicate-spec
+              :cause      (vec flake)
+              :specDoc    specDoc
+              :ex-message (ex-message response)
+              :ex-data    (ex-data response)})
 
     ;; any truthy value, spec succeeded - allow transaction
     response
@@ -190,11 +190,10 @@
 
     ;; non truthy value, spec failed - do not allow transaction
     :else
-    (ex-info (str (if specDoc
-                    (str specDoc " Flake: " (vec flake))
-                    (str "Object " (.-o flake) " does not conform to the spec for predicate: " predicate-name)))
+    (ex-info (str "Predicate spec failed for predicate: " predicate-name "." (when specDoc (str " " specDoc)))
              {:status 400
-              :error  :db/invalid-tx})))
+              :error  :db/predicate-spec
+              :cause  (vec flake)})))
 
 
 (defn run-predicate-spec
@@ -227,11 +226,17 @@
 (defn queue-pred-spec
   "Flakes param flows through, queues spec for flake"
   [flakes flake pred-info {:keys [validate-fn db-root] :as tx-state}]
-  (let [spec           (pred-info :spec)
+  (let [fn-sids        (pred-info :spec)
         specDoc        (pred-info :specDoc)
         predicate-name (pred-info :name)
-        fn-promise     (resolve-function spec db-root validate-fn "predSpec")
-        pred-spec-fn   (partial run-predicate-spec fn-promise flake predicate-name specDoc)]
+        fn-promise     (resolve-function fn-sids db-root validate-fn "predSpec")
+        pred-spec-fn   (-> run-predicate-spec
+                           (partial fn-promise flake predicate-name specDoc)
+                           (with-meta {:type      :predicate-spec
+                                       :predicate predicate-name
+                                       :target    flake
+                                       :fn-sid    fn-sids
+                                       :doc       specDoc}))]
     (queue-validation-fn :predicate tx-state pred-spec-fn nil nil)
     flakes))
 
@@ -239,22 +244,25 @@
 ;; predicate tx-spec
 
 (defn- pred-tx-spec-response
-  [pred-name tx-spec-doc response]
+  [pred-name flakes tx-spec-doc response]
   (cond
     (util/exception? response)
     (ex-info (str "Internal execution error for predicate txSpec: " (.getMessage ^Exception response) ". "
-                  "The predicate " pred-name " does not conform to the txSpec. " tx-spec-doc)
-             {:status 400
-              :error  :db/invalid-tx
-              :cause  response})
+                  "Predicate txSpec failed for: " pred-name "." (when tx-spec-doc (str " " tx-spec-doc)))
+             {:status     400
+              :error      :db/predicate-tx-spec
+              :cause      flakes
+              :ex-message (ex-message response)
+              :ex-data    (ex-data response)})
 
     response
     true
 
     :else
-    (ex-info (str "The predicate " pred-name " does not conform to the txSpec. " tx-spec-doc)
+    (ex-info (str "Predicate txSpec failed for: " pred-name "." (when tx-spec-doc (str " " tx-spec-doc)))
              {:status 400
-              :error  :db/invalid-tx})))
+              :error  :db/predicate-tx-spec
+              :cause  flakes})))
 
 
 (defn run-predicate-tx-spec
@@ -279,9 +287,9 @@
       (update-tx-spent-fuel fuel (:spent @fuel-atom))
 
       (if (async-util/channel? res)
-        (async-response-wrapper res (partial pred-tx-spec-response pred-name tx-spec-doc))
-        (pred-tx-spec-response pred-name tx-spec-doc res)))
-    (catch Exception e (pred-tx-spec-response pred-name tx-spec-doc e))))
+        (async-response-wrapper res (partial pred-tx-spec-response pred-name pid-flakes tx-spec-doc))
+        (pred-tx-spec-response pred-name pid-flakes tx-spec-doc res)))
+    (catch Exception e (pred-tx-spec-response pred-name (get-in @validate-fn [:tx-spec pid]) tx-spec-doc e))))
 
 
 (defn- build-predicate-tx-spec-fn
@@ -292,15 +300,15 @@
         pred-name   (pred-info :name)
         tx-spec-doc (pred-info :txSpecDoc)
         pid         (pred-info :id)
-        fn-sid      (pred-info :txSpec)
+        fn-sids     (pred-info :txSpec)
         queue-fn    (-> run-predicate-tx-spec
                         (partial pid pred-tx-fn pred-name tx-spec-doc)
-                        (with-meta {:type   :predicate-tx-spec
-                                    :target pred-name
-                                    :fn-sid fn-sid}))]
+                        (with-meta {:type    :predicate-tx-spec
+                                    :target  pred-name
+                                    :fn-sids fn-sids}))]
 
     ;; kick off building function, will put realized function into pred-tx-fn promise
-    (build-function fn-sid db pred-tx-fn "predSpec")
+    (build-function fn-sids db pred-tx-fn "predSpec")
     ;; return function
     queue-fn))
 
@@ -330,13 +338,13 @@
 ;; collection specs
 
 (defn- collection-spec-response
-  [flakes c-spec-fn c-spec-doc response]
+  [flakes collection c-spec-fn c-spec-doc response]
   (cond
     (util/exception? response)
     (ex-info (str "Internal execution error for collection spec: " (.getMessage ^Exception response) ". "
-                  "Transaction does not adhere to the collection spec: " c-spec-doc)
+                  "Collection spec failed for: " collection "." (when c-spec-doc (str " " c-spec-doc)))
              {:status 400
-              :error  :db/invalid-tx
+              :error  :db/collection-spec
               :flakes flakes
               :cause  response})
 
@@ -344,16 +352,16 @@
     true
 
     :else
-    (ex-info (str "Transaction does not adhere to the collection spec: " c-spec-doc)
+    (ex-info (str "Collection spec failed for: " collection "." (when c-spec-doc (str " " c-spec-doc)))
              {:status 400
-              :error  :db/invalid-tx
+              :error  :db/collection-spec
               :flakes flakes})))
 
 
 (defn run-collection-spec
   "Runs a collection spec. Will only execute collection spec if there are still flakes for
   the subject that exist."
-  [sid c-spec-fn c-spec-doc {:keys [db-after instant validate-fn auth t fuel] :as tx-state}]
+  [collection sid c-spec-fn c-spec-doc {:keys [db-after instant validate-fn auth t fuel] :as tx-state}]
   (async/go
     (try
       (let [subject-flakes (get-in @validate-fn [:c-spec sid])
@@ -377,8 +385,8 @@
 
             ;; update main tx fuel count with the fuel spent to execute this tx function
             (update-tx-spent-fuel fuel (:spent @fuel-atom))
-            (collection-spec-response subject-flakes c-spec-fn c-spec-doc res*))))
-      (catch Exception e (collection-spec-response (get-in @validate-fn [:c-spec sid]) c-spec-fn c-spec-doc e)))))
+            (collection-spec-response subject-flakes collection c-spec-fn c-spec-doc res*))))
+      (catch Exception e (collection-spec-response (get-in @validate-fn [:c-spec sid]) collection c-spec-fn c-spec-doc e)))))
 
 
 (defn queue-collection-spec
@@ -387,7 +395,7 @@
         c-spec-fn  (resolve-function c-spec-fn-ids db-root validate-fn "collectionSpec")
         c-spec-doc (or (dbproto/-c-prop db-root :specDoc collection) collection) ;; use collection name as default specDoc
         execute-fn (-> run-collection-spec
-                       (partial sid c-spec-fn c-spec-doc)
+                       (partial collection sid c-spec-fn c-spec-doc)
                        (with-meta {:type   :collection-spec
                                    :target sid
                                    :fn-sid c-spec-fn-ids
@@ -457,10 +465,60 @@
                                       (dbproto/-p-prop db-before :name (.-p flake))
                                       (dbproto/-c-prop db-before :name (flake/sid->cid (.-s flake))))
                               {:status 400
-                               :error  :db/write-permission}))))
+                               :error  :db/tx-permission}))))
           (if r
             (recur r)
             true))))))
+
+(defn run-permissions-checks
+  [all-flakes {:keys [db-before db-after] :as tx-state} parallelism]
+  (go-try
+    (let [db-after       @db-after
+          queue-ch       (async/chan parallelism)
+          result-ch      (async/chan parallelism)
+          tx-permissions (:permissions db-before)
+          af             (fn [^Flake flake res-chan]
+                           (async/go
+                             (try
+                               (let [fn-res (if (.-op flake)
+                                              (async/<! (perm-validate/allow-flake? db-after flake tx-permissions))
+                                              (async/<! (perm-validate/allow-flake? db-before flake tx-permissions)))
+                                     res    (or fn-res      ;; any truthy value means valid
+                                                (ex-info (format "Insufficient permissions for predicate: %s within collection: %s."
+                                                                 (dbproto/-p-prop db-before :name (.-p flake))
+                                                                 (dbproto/-c-prop db-before :name (flake/sid->cid (.-s flake))))
+                                                         {:status 400
+                                                          :error  :db/write-permission
+                                                          :cause  (vec flake)}))]
+                                 (async/put! res-chan res)
+                                 (async/close! res-chan))
+                               (catch Exception e (async/put! res-chan e)
+                                                  (async/close! res-chan)))))]
+
+      (->> all-flakes
+           (filter (fn [^Flake flake] (> (.-s flake) const/$maxSystemPredicates))) ;; skip all system predicates
+           (async/onto-chan! queue-ch))
+
+      (async/pipeline-async parallelism result-ch af queue-ch)
+
+      (loop [errors []]
+        (let [next-res (async/<! result-ch)]
+          (cond
+            ;; no more functions, complete - queue-ch closed as queue was exhausted
+            (nil? next-res)
+            (->> errors
+                 (map #(let [ex (ex-data %)]
+                         (when (= 500 (:status ex))
+                           (log/error % "Unexpected validation error in transaction! Flakes:" (pr-str all-flakes)))
+                         (assoc ex :message (.getMessage %))))
+                 (not-empty))
+
+            (util/exception? next-res)
+            (recur (conj errors next-res))
+
+            ;; anything else, all good - keep going
+            :else (recur errors)))))))
+
 
 ;; dependencies
 
@@ -491,25 +549,7 @@
 
 ;; Runtime
 
-(defn flush-fn-queue
-  "Flushes the validation function queue onto queue-ch."
-  [queue-ch queue]
-  (async/go-loop [[queue-fn & r] queue]
-    (cond
-      ;; not more functions to process, close queue-ch which will trigger result-ch to close once finished processing
-      (nil? queue-fn)
-      (async/close! queue-ch)
-
-      ;; >! will return true if channel isn't closed and put successful, recur
-      (true? (async/>! queue-ch queue-fn))
-      (recur r)
-
-      ;; put was not successful, queue-ch got closed due to an error result
-      :else
-      ::closed)))
-
-
-(defn run
+(defn run-queued-specs
   "Runs validation functions in parallel according to parallelism. Will return
   'true' if all functions pass (or if there were no functions to process)
 
@@ -521,8 +561,7 @@
   [all-flakes {:keys [validate-fn] :as tx-state} parallelism]
   (go-try
     (let [{:keys [queue]} @validate-fn]
-      (if (empty? queue)                                    ;; if nothing in queue, return true for success.
-        true
+      (when (not-empty queue)                               ;; if nothing in queue, return
         (let [tx-state* (assoc tx-state :flakes all-flakes)
 
               queue-ch  (async/chan parallelism)
@@ -535,24 +574,26 @@
                               (async/close! res-chan))))]
 
           ;; kicks off process to push queue onto queue-ch
-          (flush-fn-queue queue-ch queue)
+          (async/onto-chan! queue-ch queue)
 
           ;; start executing functions, pushing results to result-ch. result-ch will close once queue-ch closes
           (async/pipeline-async parallelism result-ch af queue-ch)
 
-          ;; read results. If an exception occurs, close the queue-ch to stop execution
-          (loop []
+          ;; read results, for now we collection all errors
+          (loop [errors []]
             (let [next-res (async/<! result-ch)]
               (cond
                 ;; no more functions, complete - queue-ch closed as queue was exhausted
                 (nil? next-res)
-                true
+                (->> errors
+                     (map #(let [ex (ex-data %)]
+                             (when (= 500 (:status ex))
+                               (log/error % "Unexpected validation error in transaction! Flakes:" (pr-str all-flakes)))
+                             (assoc ex :message (.getMessage %))))
+                     (not-empty))
 
-                ;; exception, close channels and return exception
                 (util/exception? next-res)
-                (do (async/close! queue-ch)
-                    (async/close! result-ch)
-                    next-res)
+                (recur (conj errors next-res))
 
                 ;; anything else, all good - keep going
-                :else (recur)))))))))
+                :else (recur errors)))))))))
