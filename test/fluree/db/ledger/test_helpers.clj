@@ -79,6 +79,14 @@
       (println "Not a throwable:" (pr-str v))
       v)))
 
+(defn extract-errors [v]
+  (if (isa? (class v) Throwable)
+    (or (some-> (ex-data v) (assoc :message (ex-message v)))
+        (Throwable->map v))
+    (do
+      (println "Not a throwable:" (pr-str v))
+      v)))
+
 
 (defn get-tempid-count
   "Returns count of tempids within a collection, given the tempid map from the returned transaction

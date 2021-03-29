@@ -17,7 +17,7 @@
         test-resp     (-> (async/<!! (fdb/transact-async (basic/get-conn) test/ledger-chat test-spec))
                           test/safe-Throwable->map :cause)]
 
-   (is (= "Transaction does not adhere to the collection spec: A person is required to have a fullName."
+   (is (= "Collection spec failed for: person. A person is required to have a fullName."
           test-resp))))
 
 (deftest collection-spec-test

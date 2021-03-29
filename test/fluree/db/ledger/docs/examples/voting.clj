@@ -192,11 +192,18 @@
 
 (deftest invalid-change
   (let [attemptChange [{:_id ["_user/username" "softCell"], :username "hardCell"}]
-        changeResp    (-> (async/<!! (fdb/transact-async (basic/get-conn) test/ledger-voting attemptChange soft-cell-opts))
-                          test/safe-Throwable->map :cause)]
+        changeRespErrors    (-> (async/<!! (fdb/transact-async (basic/get-conn) test/ledger-voting attemptChange soft-cell-opts))
+                          test/extract-errors
+                          :meta
+                          :errors)]
 
-    (is (= changeResp "Object hardCell does not conform to the spec for predicate: _user/username"))))
+    (is (= 1 (count changeRespErrors)))
 
+    (is (= (first changeRespErrors)
+           {:status 400
+            :error :db/predicate-spec
+            :cause [87960930223082 50 "hardCell" -23 true nil]
+            :message "Predicate spec failed for predicate: _user/username."}))))
 
 
 ;; Add Votes
