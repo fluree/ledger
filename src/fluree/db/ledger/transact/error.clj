@@ -54,6 +54,47 @@
        :type         tx-type
        :remove-preds nil})))
 
+
+(defn error-priority-sort
+  "Comparison function for sorting errors by priority.
+  This enables multiple servers to always produce the idential set of errors for a given
+  transaction that they each may compute independently.
+  - higher error status comes first (i.e. 403 error preceeds a 400 error)
+  - equal errors alphabetically sort by error message"
+  [a b]
+  (let [status-cmp (compare (:status b) (:status a))]
+    (if (= 0 status-cmp)
+      (compare (:message a) (:message b))
+      status-cmp)))
+
+
+(defn spec-error
+  [return-map errors {:keys [db-before] :as tx-state}]
+  (go-try
+    (let [sorted-errors    (sort error-priority-sort errors)
+          reported-error   (first sorted-errors)            ;; we only report a single error in the ledger
+          {:keys [message status error]} reported-error
+          flake-err-msg    (str/join " " [status (util/keyword->str error) message])
+          flakes           (->> (tx-meta/tx-meta-flakes tx-state flake-err-msg)
+                                (into (flake/sorted-set-by flake/cmp-flakes-block)))
+          hash-flake       (tx-meta/generate-hash-flake flakes tx-state)
+          all-flakes       (conj flakes hash-flake)
+          fast-forward-db? (:tt-id db-before)
+          db-after         (if fast-forward-db?
+                             (<? (dbproto/-forward-time-travel db-before all-flakes))
+                             (<? (dbproto/-with-t db-before all-flakes)))
+          tx-bytes         (- (get-in db-after [:stats :size]) (get-in db-before [:stats :size]))]
+      (assoc return-map :error error
+                        :errors sorted-errors
+                        :db-after db-after
+                        :status status
+                        :flakes all-flakes
+                        :hash (.-o ^Flake hash-flake)
+                        :tempids nil
+                        :bytes tx-bytes
+                        :remove-preds nil))))
+
+
 (defn throw-validation-exception
   "This should not happen, but somehow the cmd-date could not be parsed.
   Because of this we don't have basic information about the transaction
@@ -63,8 +104,8 @@
   (try
     (let [{:keys [message status error]} (decode-exception e)
           {:keys [sig cmd]} (:command cmd-data)
-          txid (crypto/sha3-256 cmd)
-          tx-state {:tx-string cmd :signature sig :t t :txid txid :fuel (atom {:spent 0})}
+          txid             (crypto/sha3-256 cmd)
+          tx-state         {:tx-string cmd :signature sig :t t :txid txid :fuel (atom {:spent 0})}
           flakes           (->> (tx-meta/tx-meta-flakes tx-state message)
                                 (into (flake/sorted-set-by flake/cmp-flakes-block)))
           hash-flake       (tx-meta/generate-hash-flake flakes tx-state)
@@ -92,7 +133,7 @@
     (catch Exception e
       (log/error e "Exiting!! Fatal exception trying to process command validation. Unable to extract anything useful"
                  {:cmd-data cmd-data
-                  :t t})
+                  :t        t})
       (System/exit 1))))
 
 
@@ -117,6 +158,6 @@
                       :authority-id authority
                       :tx-string    cmd
                       :signature    sig
-                      :tx-type      type}]
+                      :tx-type      type
+                      :errors       (atom nil)}]
         (handler e tx-state)))))
-
