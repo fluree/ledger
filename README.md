@@ -53,7 +53,7 @@ You can run the integration tests like this:
 
 ### Building
 
-1. Set the version you want in `pom.xml`
+1. Set the version you want in `deps.edn` (in the `:mvn/version` alias)
 1. Run `make`
 
 This will generate `build/fluree-$(VERSION).zip`.
@@ -85,6 +85,13 @@ You can override this with `make release RELEASE_BUCKET=fluree-releases-test`
 
 You'll need the AWS command line tools installed and a `fluree` profile configured in your
 `~/.aws/` directory.
+
+1. Make sure the version in `deps.edn` (in the `:mvn/version` alias) is set to
+what you want.
+    1. Commit any changes you needed to make there and push to GitHub.
+1. Tag the commit with the same version prefixed with `v`. For example, if the
+version is `1.0.1`, run this command: `git tag -s v1.0.1`.
+1. Push the tag to GitHub: `git push --tags`.
 
 #### Release types
 

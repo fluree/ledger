@@ -1,9 +1,9 @@
 FROM clojure:tools-deps-1.10.3.814-slim-buster AS builder
 
-RUN apt-get update && apt-get install -y curl git
+RUN apt-get update && apt-get install --assume-yes --no-install-recommends curl
 
 RUN curl -sL https://deb.nodesource.com/setup_14.x | bash -
-RUN apt-get update && apt-get install -y nodejs
+RUN apt-get update && apt-get install --assume-yes --no-install-recommends nodejs zip git
 
 RUN mkdir -p /usr/src/fluree-ledger
 WORKDIR /usr/src/fluree-ledger
