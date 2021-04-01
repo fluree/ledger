@@ -135,10 +135,15 @@
 
   Ident is a two-tuple of [pred-id object/value]"
   [ident {:keys [uniques] :as tx-state}]
-  (if (contains? @uniques ident)
-    false                                                   ;; already registered, should throw downstream
-    (do (swap! uniques conj ident)
-        true)))
+  ;; uniques is a set/#{} wrapped in an atom
+  (let [uniques* (swap! uniques
+                        (fn [uniques-set]
+                          (if (contains? uniques-set ident)
+                            (conj uniques-set ::duplicate-detected) ;; check for this special keyword in result
+                            (conj uniques-set ident))))]
+    (if (contains? uniques* ::duplicate-detected)
+      false                                                 ;; already registered, should throw downstream
+      true)))
 
 
 (defn resolve-unique
