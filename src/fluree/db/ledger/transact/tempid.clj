@@ -100,10 +100,9 @@
   "Assigns any unresolved tempids with a permanent subject id."
   [{:keys [tempids tempids-ordered upserts db-before t] :as tx-state} tx]
   (try
-    (let [ecount      (assoc (:ecount db-before) -1 t)      ;; make sure to set current _tx ecount to 't' value, even if no tempids in transaction
+    (let [ecount      (assoc (:ecount db-before) const/$_tx t) ;; make sure to set current _tx ecount to 't' value, even if no tempids in transaction
           tempids-map @tempids]
       (loop [[tempid & r] @tempids-ordered
-             ;[[tempid resolved-id] & r] @tempids
              tempids-map* tempids-map
              upserts*     #{}
              ecount*      ecount]
@@ -115,7 +114,7 @@
               tx-state)
           (if (nil? (get tempids-map tempid))
             (let [cid      (dbproto/-c-prop db-before :id (:collection tempid))
-                  next-id  (if (= -1 cid)
+                  next-id  (if (= const/$_tx cid)
                              t                              ; _tx collection has special handling as we decrement. Current value held in 't'
                              (if-let [last-sid (get ecount* cid)]
                                (inc last-sid)
