@@ -55,9 +55,7 @@
 
         (txi? predicate-value)
         (let [tempid (tempid/new (:_id predicate-value) tx-state)]
-          [tempid (assoc predicate-value :_id tempid)])
-
-        :else nil))
+          [tempid (assoc predicate-value :_id tempid)])))
 
 
 (defn resolve-ident-strict

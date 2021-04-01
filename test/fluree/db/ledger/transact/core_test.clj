@@ -7,6 +7,10 @@
             [fluree.db.util.json :as json])
   (:import (java.time Instant)))
 
+;; TODO - some specific tests that we should consider including beyond the Fluree docs/examples tests we currently run.
+;;      - many of those current tests will likely cover the below, but may not cover all of them... and sometimes the
+;;      - underlying issue is difficult to discern.
+
 ;; test these things:
 ;; tag is properly resolved (add a new _predicate - the 'type' is a tag and can be compared with its repective const/$... value
 ;; - if unique predicate resolves to a different existing subject, allow transaction to happen only if a different part of tx retracts existing flake

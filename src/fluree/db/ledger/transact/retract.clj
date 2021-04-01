@@ -11,6 +11,15 @@
 
 (declare subject)
 
+(defn- component-flake?
+  "Returns true if the predicate in the flake is defined as
+  :component true, meaning its value points to subject that
+  directly a 'component' of this subject and would need to be
+  deleted if this flake."
+  [db flake]
+  (true? (dbproto/-p-prop db :component (.-p flake))))
+
+
 (defn retract-components
   "Checks flakes to see if any are a component, and if so, finds additional retractions and returns."
   [flakes {:keys [db-root] :as tx-state}]
@@ -19,12 +28,11 @@
            components #{}]
       (if (nil? flake)
         components
-        (let [component? (true? (dbproto/-p-prop db-root :component (.-p flake)))]
-          (if component?
-            ;; If components, calls itself again (via 'subject' fn) to continue to recur components until there are none
-            (let [c-flakes (<? (subject (.-o flake) tx-state))]
-              (recur r (into components c-flakes)))
-            (recur r components)))))))
+        (if (component-flake? db-root flake)
+          ;; If component, calls itself again (via 'subject' fn) to continue to recur components until there are none
+          (let [c-flakes (<? (subject (.-o flake) tx-state))]
+            (recur r (into components c-flakes)))
+          (recur r components))))))
 
 
 (defn subject

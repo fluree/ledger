@@ -89,11 +89,9 @@
 
 
 (defn- async-response-wrapper
-  "Wraps an async response with a formatted response."
-  [async-response function]
-  (async/go
-    (let [res (async/<! async-response)]
-      (function res))))
+  "Wraps a core.async response coming off a port with a formatted response."
+  [port response-fn]
+  (async/pipe port (async/chan 1 (map response-fn))))
 
 
 (defn update-tx-spent-fuel

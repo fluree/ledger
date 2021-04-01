@@ -5,7 +5,8 @@
             [fluree.db.ledger.transact.tempid :as tempid]
             [fluree.db.flake :as flake]
             [fluree.db.constants :as const]
-            [fluree.db.util.log :as log]))
+            [fluree.db.util.log :as log]
+            [clojure.string :as str]))
 
 ;; operations related to resolving and creating new tags
 
@@ -49,7 +50,7 @@
                                         {:status 400
                                          :error  :db/invalid-tx
                                          :tags   tag})))
-          tag-name  (if (.contains tag "/") tag (str pred-name ":" tag))
+          tag-name  (if (str/includes? tag "/") tag (str pred-name ":" tag))
 
           ;; find tag in cache for this transaction, or attempt to resolve in database
           resolved  (or (get @tags tag-name)
