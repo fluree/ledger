@@ -235,7 +235,7 @@
                            (str/split new-db-name #"/"))
           _             (when (or (txproto/ledger-exists? group network dbid)
                                   ;; also check for block 1 on disk as a precaution
-                                  (<? (storage/block conn network dbid 1)))
+                                  (<? (storage/read-block conn network dbid 1)))
                           (throw (ex-info (str "Ledger " network "/$" dbid " already exists! Create unsuccessful.")
                                           {:status 500
                                            :error  :db/unexpected-error})))
