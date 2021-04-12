@@ -52,9 +52,11 @@
                     async/<!!)]
       (is (= 3 (count res)))
 
-      (is (= (-> res first keys set) #{:block :hash :instant :txns :block-bytes :cmd-types :t :sigs :flakes}))
+      (is (= (-> res first keys set)
+             #{:block :hash :instant :txns :t :sigs :flakes}))
 
-      (is (= (-> res second keys set) #{:block :hash :instant :txns :block-bytes :cmd-types :t :sigs :flakes}))
+      (is (= (-> res second keys set)
+             #{:block :hash :instant :txns :t :sigs :flakes}))
 
       (is (nil? (nth res 2))))))
 
@@ -66,9 +68,11 @@
 
       (is (= 2 (count res)))
 
-      (is (= (-> res first keys set) #{:block :hash :instant :txns :block-bytes :cmd-types :t :sigs :flakes}))
+      (is (= (-> res first keys set)
+             #{:block :hash :instant :txns :t :sigs :flakes}))
 
-      (is (= (-> res second keys set) #{:block :hash :instant :txns :block-bytes :cmd-types :t :sigs :flakes})))))
+      (is (= (-> res second keys set)
+             #{:block :hash :instant :txns  :t :sigs :flakes})))))
 
 
 (deftest query-block-range-pretty-print
@@ -80,9 +84,11 @@
 
       (is (= 2 (count res)))
 
-      (is (= (-> res first keys set) #{:block :hash :instant :txns :block-bytes :cmd-types :t :sigs :flakes}))
+      (is (= (-> res first keys set)
+             #{:block :hash :instant :txns :t :sigs :flakes}))
 
-      (is (= (-> res second keys set) #{:block :hash :instant :txns :block-bytes :cmd-types :t :sigs :flakes}))
+      (is (= (-> res second keys set)
+             #{:block :hash :instant :txns :t :sigs :flakes}))
 
       (is (= flakeKeys3 #{:asserted :retracted})))))
 
