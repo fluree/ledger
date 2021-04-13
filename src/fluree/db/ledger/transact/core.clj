@@ -1,4 +1,4 @@
-(ns fluree.db.ledger.transact.json
+(ns fluree.db.ledger.transact.core
   (:require [fluree.db.util.async :refer [<? <?? go-try merge-into? channel?]]
             [fluree.db.util.core :as util]
             [fluree.db.util.log :as log]
