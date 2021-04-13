@@ -432,6 +432,9 @@
   (let [tx        (case (:type tx-map)                      ;; command type is either :tx or :new-db
                     :tx (:tx tx-map)
                     :new-db (tx-util/create-new-db-tx tx-map))
+        format    (cond
+                    (get-in tx [0 "_id"]) :json
+                    (get-in tx [0 "@id"]) :json-ld)
         db-before (cond-> db
                           tx-permissions (assoc :permissions tx-permissions))]
     {:db-before        db-before
@@ -447,6 +450,7 @@
      :instant          block-instant
      :txid             txid
      :tx-type          type
+     :format           format
      :tx               tx
      :tx-string        cmd
      :signature        sig
