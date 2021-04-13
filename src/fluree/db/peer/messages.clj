@@ -4,10 +4,12 @@
             [clojure.string :as str]
             [fluree.db.util.json :as json]
             [fluree.crypto :as crypto]
+            [fluree.db.auth :as auth]
             [fluree.db.session :as session]
             [fluree.db.api :as fdb]
             [fluree.db.util.core :as util]
             [fluree.db.event-bus :as event-bus]
+            [fluree.db.ledger.delete :as ledger-delete]
             [fluree.db.ledger.txgroup.txgroup-proto :as txproto]
             [fluree.db.peer.password-auth :as pw-auth]
             [fluree.db.token-auth :as token-auth]
@@ -24,7 +26,7 @@
   "Does sanity checks for a new command and if valid, propagates it.
   Returns command-id/txid upon successful persistence to network, else
   throws."
-  [system {:keys [cmd sig] :as signed-cmd}]
+  [{:keys [conn] :as system}  {:keys [cmd sig] :as signed-cmd}]
   (when-not (and (string? cmd) (string? sig))
     (throw-invalid-command (str "Command map requires keys of 'cmd' and 'sig', with a json string command map and signature of the command map respectively. Provided: " (pr-str signed-cmd))))
   (when (> (count cmd) 2000000)
@@ -42,13 +44,10 @@
     (case cmd-type
       :tx (let [{:keys [db tx deps expire nonce]} cmd-data
                 _ (when-not db (throw-invalid-command "No db specified for transaction."))
-                [network dbid] (session/resolve-ledger (:conn system) db)]
-                ;db*     (async/<!! (fdb/db (:conn system) (str network "/" dbid) {:connect? true}))
-                ;sub-id  (async/<!! (dbproto/-subid db* ["_tx/id" id]))
+                [network dbid] (session/resolve-ledger conn db)]
 
-            (when-not tx (throw-invalid-command "No tx specified for transaction."))
-            ;(when sub-id
-            ;  (throw-invalid-command (format "Transaction id %s, duplicates an existing transaction id." id)))
+            (when-not tx
+              (throw-invalid-command "No tx specified for transaction."))
             (when (and deps (or (not (sequential? deps)) (not (every? string? deps))))
               (throw-invalid-command (format "Transaction 'deps', when provided, must be a sequence of txid(s). Provided: %s" deps)))
             (when (and expire (or (not (pos-int? expire)) (< expire (System/currentTimeMillis))))
@@ -68,12 +67,11 @@
                      (throw-invalid-command (format "Signed query 'expire', when provided, must be epoch millis and be later than now. expire: %s current time: %s" expire (System/currentTimeMillis))))
             _      (when (and nonce (not (int? nonce)))
                      (throw-invalid-command (format "Nonce, if provided, must be an integer. Provided: %s" nonce)))
-            [network dbid] (session/resolve-ledger (:conn system) db)
+            [network dbid] (session/resolve-ledger conn db)
             _      (when-not (txproto/ledger-exists? (:group system) network dbid)
                      (throw-invalid-command (str "The database does not exist within this ledger group: " db)))
             action (keyword (:action cmd-data))
             meta   (if (nil? meta) false meta)
-            conn   (:conn system)
             db*    (if (= action :block)
                      nil
                      (fdb/db conn db {:auth (when auth-id ["_auth/id" auth-id])}))]
@@ -142,8 +140,13 @@
                 id)
       :delete-db (let [{:keys [db auth expire nonce]} cmd-data
                        [network dbid] (if (sequential? db) db (str/split db #"/"))
-                       old-session (session/session (:conn system) db)]
-                   (async/<!! (txproto/delete-ledger-async (:group system) network dbid id signed-cmd))
+                       old-session    (session/session conn db)
+                       db*            (async/<!! (session/current-db old-session))
+                       _ (when-not (or (-> system :group :open-api)
+                                       (async/<!! (auth/root-role? db* ["_auth/id" auth-id])))
+                           (throw (ex-info (str "To delete a ledger, must be using an open API or an auth record with a root role.")
+                                           {:status 401 :error :db/invalid-auth})))]
+                   (async/<!! (ledger-delete/process conn network dbid))
                    (session/close old-session))
       :default-key (let [{:keys [expire nonce network dbid private-key]} cmd-data
                          default-auth-id (some-> (txproto/get-shared-private-key (:group system))
