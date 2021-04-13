@@ -18,7 +18,8 @@
             [fluree.db.ledger.transact.tx-meta :as tx-meta]
             [fluree.db.ledger.transact.validation :as tx-validate]
             [fluree.db.ledger.transact.error :as tx-error]
-            [fluree.db.ledger.transact.schema :as tx-schema])
+            [fluree.db.ledger.transact.schema :as tx-schema]
+            [clojure.string :as str])
   (:import (fluree.db.flake Flake)))
 
 
@@ -33,7 +34,7 @@
 (defn- txi?
   "Returns true if a transaction item - must be a map and have _id as one of the keys"
   [x]
-  (and (map? x) (contains? x :_id)))
+  (and (map? x) (contains? x "_id")))
 
 (defn- txi-list?
   "Returns true if a sequential? list of txis"
@@ -50,12 +51,12 @@
    we must make them unique so they point to the correct subjects once flattened."
   [predicate-value tx-state]
   (cond (txi-list? predicate-value)
-        (let [txis (map #(assoc % :_id (tempid/new (:_id %) tx-state)) predicate-value)]
-          [(map :_id txis) txis])
+        (let [txis (map #(assoc % "_id" (tempid/new (get % "_id") tx-state)) predicate-value)]
+          [(map #(get % "_id") txis) txis])
 
         (txi? predicate-value)
-        (let [tempid (tempid/new (:_id predicate-value) tx-state)]
-          [tempid (assoc predicate-value :_id tempid)])))
+        (let [tempid (tempid/new (get predicate-value "_id") tx-state)]
+          [tempid (assoc predicate-value "_id" tempid)])))
 
 
 (defn resolve-ident-strict
@@ -96,9 +97,9 @@
 (defn predicate-details
   "Returns function for predicate to retrieve any predicate details"
   [predicate collection db]
-  (let [full-name (if-let [a-ns (namespace predicate)]
-                    (str a-ns "/" (name predicate))
-                    (str collection "/" (name predicate)))]
+  (let [full-name (if (str/includes? predicate "/")
+                    predicate
+                    (str collection "/" predicate))]
     (if-let [pred-id (get-in db [:schema :pred full-name :id])]
       (fn [property] (dbproto/-p-prop db property pred-id))
       (throw (throw (ex-info (str "Predicate does not exist: " predicate)
@@ -288,10 +289,13 @@
                    if the tempid is resolved via a ':unique true' predicate
                    need to look up and retract any existing flakes with same subject+predicate
   - _temp-multi-flakes - multi-flakes that need permanent ids yet, but then act like _multi-flakes"
-  [{:keys [db-before t tempids] :as tx-state} {:keys [_id _action _meta] :as txi} res-chan]
+  [{:keys [db-before t tempids] :as tx-state} txi res-chan]
   (async/go
     (try
-      (let [_p-o-pairs (dissoc txi :_id :_action :_meta)
+      (let [_id        (get txi "_id")
+            _action    (get txi "_action")
+            _meta      (get txi "_meta")
+            _p-o-pairs (dissoc txi "_id" "_action" "_meta")
             _id*       (if (util/pred-ident? _id)
                          (<? (resolve-ident-strict _id tx-state))
                          _id)
@@ -385,8 +389,8 @@
   [updated-txi nested-txi-list] if nested (children) transactions are found.
   If none found, will return [txi nil] where txi will be unaltered."
   [txi tx-state]
-  (let [txi+tempid (if (util/temp-ident? (:_id txi))
-                     (assoc txi :_id (tempid/new (:_id txi) tx-state))
+  (let [txi+tempid (if (util/temp-ident? (get txi "_id"))
+                     (assoc txi "_id" (tempid/new (get txi "_id") tx-state))
                      txi)]
     (reduce-kv
       (fn [acc k v]
@@ -425,7 +429,7 @@
 
 (defn ->tx-state
   [db t block-instant {:keys [auth auth-sid authority authority-sid tx-permissions txid cmd sig nonce type] :as tx-map}]
-  (let [tx        (case (keyword (:type tx-map))            ;; command type is either :tx or :new-db
+  (let [tx        (case (:type tx-map)                      ;; command type is either :tx or :new-db
                     :tx (:tx tx-map)
                     :new-db (tx-util/create-new-db-tx tx-map))
         db-before (cond-> db
