@@ -44,15 +44,17 @@ release: prep-release
 	aws s3 sync build/release-staging/ s3://$(RELEASE_BUCKET)/ --size-only --cache-control max-age=300 --acl public-read --profile fluree
 
 release-stable: prep-release
-	cp build/fluree-$(VERSION).zip build/release-staging/fluree-stable.zip
+	cp build/release-staging/fluree-$(VERSION).zip build/release-staging/fluree-stable.zip
+	cp build/release-staging/fluree-$(VERSION).zip build/release-staging/fluree-$(MAJOR_VERSION).$(MINOR_VERSION)-latest.zip
 	aws s3 sync build/release-staging/ s3://$(RELEASE_BUCKET)/ --size-only --cache-control max-age=300 --acl public-read --profile fluree
 
 release-latest: prep-release
-	cp build/fluree-$(VERSION).zip build/release-staging/fluree-latest.zip
+	cp build/release-staging/fluree-$(VERSION).zip build/release-staging/fluree-latest.zip
+	cp build/release-staging/fluree-$(VERSION).zip build/release-staging/fluree-$(MAJOR_VERSION).$(MINOR_VERSION)-latest.zip
 	aws s3 sync build/release-staging/ s3://$(RELEASE_BUCKET)/ --size-only --cache-control max-age=300 --acl public-read --profile fluree
 
 release-version-latest: prep-release
-	cp build/fluree-$(VERSION).zip build/release-staging/fluree-$(MAJOR_VERSION).$(MINOR_VERSION)-latest.zip
+	cp build/release-staging/fluree-$(VERSION).zip build/release-staging/fluree-$(MAJOR_VERSION).$(MINOR_VERSION)-latest.zip
 	aws s3 sync build/release-staging/ s3://$(RELEASE_BUCKET)/ --size-only --cache-control max-age=300 --acl public-read --profile fluree
 
 deps: deps.edn

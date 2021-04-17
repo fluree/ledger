@@ -184,7 +184,7 @@
                      indexed-db)                            ;; final index if any novelty
                    db))
              (let [{:keys [flakes]} block-data
-                   db*          (<? (dbproto/-with db block flakes))
+                   db*          (<? (dbproto/-with db block flakes {:reindex? true}))
                    novelty-size (get-in db* [:novelty :size])]
                (log/info (str "  -> Reindex dbid: " dbid " block: " block " containing " (count flakes) " flakes. Novelty size: " novelty-size "."))
                (if (>= novelty-size max-novelty)

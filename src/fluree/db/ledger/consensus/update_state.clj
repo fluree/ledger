@@ -208,7 +208,7 @@
         (event-bus/publish :new-index [network dbid] index)
         true)
       (do
-        (log/warn (str "Attempt to update index failed. Index must be more current and submission server must be currently assigned"
+        (log/warn (str "Skipping index update (maybe reindexing?). Index must be more current and submission server must be currently assigned"
                        " Current index: " current-index
                        " Proposed index: " index
                        " Submission server: " submission-server
