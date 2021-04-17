@@ -87,7 +87,7 @@
                         (= last-leaf (+ leaf-i n)))))]
       (loop [n   1
              his []]
-        (let [combine-node     (-> (nth all-leaves (skip-fn leaf-i n)) val)
+        (let [combine-node     (val (nth all-leaves (skip-fn leaf-i n)))
               resolved         (<? (dbproto/-resolve-to-t combine-node t idx-novelty false remove-preds))
               history          (<? (dbproto/-resolve-history-range combine-node nil t idx-novelty))
               comparator       (.comparator (:flakes resolved))
@@ -118,9 +118,10 @@
            fflake      (:first node)
            idx-type    (:index-type config)
            resolved    (<? resolved-ch)
-           node-bytes  (flake/size-bytes (:flakes resolved))
+           node-bytes  (-> resolved :flakes flake/size-bytes)
            overflow?   (overflow? node-bytes)
-           underflow?  (and (underflow? node-bytes) (not= 1 (count all-leaves)))
+           underflow?  (and (underflow? node-bytes)
+                            (not= 1 (count all-leaves)))
            history     (<? history-ch)]
        (cond
          overflow?
@@ -139,11 +140,17 @@
                                                            flakes his-split))
                    child-leftmost? (and leftmost? (zero? split-i))
                    child-node      (storage/map->UnresolvedNode
-                                     {:conn      conn :config config
-                                      :dbid      dbid :id id :leaf true
-                                      :first     first-flake :rhs rhs'
-                                      :size      size :block block :t t
-                                      :leftmost? child-leftmost?})
+                                    {:conn      conn
+                                     :config    config
+                                     :dbid      dbid
+                                     :id        id
+                                     :leaf      true
+                                     :first     first-flake
+                                     :rhs       rhs'
+                                     :size      size
+                                     :block     block
+                                     :t         t
+                                     :leftmost? child-leftmost?})
                    acc*            (conj acc child-node)]
                (if (zero? split-i)
                  [acc* nil nil]
@@ -151,28 +158,28 @@
 
          underflow?
          ;;; First determine skip direction
-         (let [[skip n combine-leaf combine-bytes
-                combine-his] (cond leftmost?
-                                   (let [[n combine-leaf combine-bytes combine-his]
-                                         (<? (find-combine-leaf all-leaves leaf-i t idx-novelty idx-type :previous remove-preds))]
-                                     [:previous n combine-leaf combine-bytes combine-his])
+         (let [[skip n combine-leaf combine-bytes combine-his]
+               (cond leftmost?
+                     (let [[n combine-leaf combine-bytes combine-his]
+                           (<? (find-combine-leaf all-leaves leaf-i t idx-novelty idx-type :previous remove-preds))]
+                       [:previous n combine-leaf combine-bytes combine-his])
 
-                                   ;; rightmost
-                                   (= leaf-i (-> all-leaves count dec))
-                                   (let [[n combine-leaf combine-bytes combine-his]
-                                         (<? (find-combine-leaf all-leaves leaf-i t idx-novelty idx-type :next remove-preds))]
-                                     [:next n combine-leaf combine-bytes combine-his])
+                     ;; rightmost
+                     (= leaf-i (-> all-leaves count dec))
+                     (let [[n combine-leaf combine-bytes combine-his]
+                           (<? (find-combine-leaf all-leaves leaf-i t idx-novelty idx-type :next remove-preds))]
+                       [:next n combine-leaf combine-bytes combine-his])
 
-                                   ;; in the middle
-                                   :else (let [;; prev-leaf could be empty
-                                               [prev-n prev-leaf prev-bytes prev-combine-his]
-                                               (<? (find-combine-leaf all-leaves leaf-i t idx-novelty idx-type :previous remove-preds))
-                                               ;; next-leaf could be empty
-                                               [next-n next-leaf next-bytes next-combine-his]
-                                               (<? (find-combine-leaf all-leaves leaf-i t idx-novelty idx-type :next remove-preds))]
-                                           (if (> prev-bytes next-bytes)
-                                             [:next next-n next-leaf next-bytes next-combine-his]
-                                             [:previous prev-n prev-leaf prev-bytes prev-combine-his])))
+                     ;; in the middle
+                     :else (let [;; prev-leaf could be empty
+                                 [prev-n prev-leaf prev-bytes prev-combine-his]
+                                 (<? (find-combine-leaf all-leaves leaf-i t idx-novelty idx-type :previous remove-preds))
+                                 ;; next-leaf could be empty
+                                 [next-n next-leaf next-bytes next-combine-his]
+                                 (<? (find-combine-leaf all-leaves leaf-i t idx-novelty idx-type :next remove-preds))]
+                             (if (> prev-bytes next-bytes)
+                               [:next next-n next-leaf next-bytes next-combine-his]
+                               [:previous prev-n prev-leaf prev-bytes prev-combine-his])))
                base-id          (str (util/random-uuid))
                comparator       (.comparator (:flakes resolved))
                current-node-his (get-history-in-range history fflake rhs comparator)
@@ -260,6 +267,14 @@
 
 (declare index-branch)
 
+(defn contains-pred?
+  [node pred]
+  (let [lower (-> node :first flake/p)
+        upper (some-> node :rhs flake/p)]
+    (and (>= pred lower)
+         (or (nil? upper)
+             (<= pred upper)))))
+
 (defn index-children
   [conn network dbid progress children block t rhs idx-novelty remove-preds]
   (let [child-count (count children)
@@ -272,26 +287,25 @@
          acc
          (let [child          (-> children (nth current) val)
                child-rhs      (:rhs child)
-               _              (when-not (or (= (dec current) child-count) (= child-rhs rhs))
+               _              (when-not (or (= child-count (dec current))
+                                            (= child-rhs rhs))
                                 (throw (ex-info (str "Something went wrong. Child-rhs does not equal rhs: " {:child-rhs child-rhs :rhs rhs})
                                                 {:status 500
                                                  :error  :db/unexpected-error})))
-               child-first    (:first child)
-               novelty        (novelty-subrange idx-novelty child)
-               child-rhs-pred (some-> child-rhs flake/p)
-               remove-preds?  (->> remove-preds
-                                   (filter (fn [pred]
-                                             (and (>= pred (flake/p child-first))
-                                                  (or (nil? child-rhs-pred)
-                                                      (<= pred child-rhs-pred)))))
-                                   (into #{}))
-               dirty?         (or (seq novelty) (seq remove-preds?))
+
+               child-novelty      (novelty-subrange idx-novelty child)
+               child-remove-preds (->> remove-preds
+                                       (filter (partial contains-pred? child))
+                                       set)
+
+               dirty?         (or (seq child-novelty)
+                                  (seq child-remove-preds))
 
                [new-nodes skip n]
                (if dirty?
                  (if at-leaf?
-                   (<? (index-leaf conn network dbid child block t idx-novelty child-rhs children current remove-preds?))
-                   [(<? (index-branch conn network dbid child idx-novelty block t child-rhs progress remove-preds?)) nil nil])
+                   (<? (index-leaf conn network dbid child block t idx-novelty child-rhs children current child-remove-preds))
+                   [(<? (index-branch conn network dbid child idx-novelty block t child-rhs progress child-remove-preds)) nil nil])
                  [[child] nil nil])
 
                new-rhs       (:first (first new-nodes))
@@ -318,8 +332,7 @@
   ([conn network dbid node idx-novelty block t rhs progress remove-preds]
    (let [base-id (str (util/random-uuid))]
      (go-try
-      (let [{:keys [config children]}
-            (<? (dbproto/-resolve node))
+      (let [{:keys [config children]} (<? (dbproto/-resolve node))
 
             children*  (<? (index-children conn network dbid progress children block t rhs idx-novelty remove-preds))
             idx-type   (:index-type config)
