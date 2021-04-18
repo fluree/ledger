@@ -8,55 +8,55 @@
 (use-fixtures :once test/test-system)
 
 (deftest basic-graphql
-  (testing "Basic GraphQL query of chat collection")
-  (let [graphql-query      {:query "{ graph {\n  chat {\n    _id\n    message\n  }\n}\n}"}
-        res (async/<!! (fdb/graphql-async (basic/get-conn) test/ledger-chat graphql-query))]
-    (is (coll? (:chat res)))
-    (is (every? #(get % "_id") (:chat res)))))
+  (testing "Basic GraphQL query of chat collection"
+    (let [graphql-query      {:query "{ graph {\n  chat {\n    _id\n    message\n  }\n}\n}"}
+          res (async/<!! (fdb/graphql-async (basic/get-conn) test/ledger-chat graphql-query))]
+      (is (coll? (:chat res)))
+      (is (every? #(get % "_id") (:chat res))))))
 
 (deftest graphql-crawl-query
-  (testing "GraphQL query that crawls from chat to referenced person")
-  (let [graphql-query      {:query "{ graph {\n  chat {\n    _id\n    message\n    person {\n        _id\n        handle\n    }\n  }\n}\n}"}
-        res (async/<!! (fdb/graphql-async (basic/get-conn) test/ledger-chat graphql-query))]
-    (is (-> res :chat first (get-in ["person" "handle"]) string?))
-    (is (-> res :chat first (get-in ["person" :_id]) number?))))
+  (testing "GraphQL query that crawls from chat to referenced person"
+    (let [graphql-query      {:query "{ graph {\n  chat {\n    _id\n    message\n    person {\n        _id\n        handle\n    }\n  }\n}\n}"}
+          res (async/<!! (fdb/graphql-async (basic/get-conn) test/ledger-chat graphql-query))]
+      (is (-> res :chat first (get-in ["person" "handle"]) string?))
+      (is (-> res :chat first (get-in ["person" :_id]) number?)))))
 
 (deftest graphql-wildcard-query
-  (testing "GraphQL query that implements a non-GraphQL-supported wildcard operator")
-  (let [graphql-query      {:query "{ graph {\n  person {\n    *\n  }\n}\n}"}
-        res (async/<!! (fdb/graphql-async (basic/get-conn) test/ledger-chat graphql-query))]
+  (testing "GraphQL query that implements a non-GraphQL-supported wildcard operator"
+    (let [graphql-query      {:query "{ graph {\n  person {\n    *\n  }\n}\n}"}
+          res (async/<!! (fdb/graphql-async (basic/get-conn) test/ledger-chat graphql-query))]
 
-    (is (every? #(get % "_id") (:person res)))))
+      (is (every? #(get % "_id") (:person res))))))
 
 (deftest graphql-reverse-crawl-query
-  (testing "GraphQL query that reverse-crawls from person back to chat")
-  (let [graphql-query      {:query "{ graph {\n  person {\n    chat_Via_person {\n      _id\n      instant\n      message\n    }\n  }\n}\n}"}
-        res (async/<!! (fdb/graphql-async (basic/get-conn) test/ledger-chat graphql-query))]
+  (testing "GraphQL query that reverse-crawls from person back to chat"
+    (let [graphql-query      {:query "{ graph {\n  person {\n    chat_Via_person {\n      _id\n      instant\n      message\n    }\n  }\n}\n}"}
+          res (async/<!! (fdb/graphql-async (basic/get-conn) test/ledger-chat graphql-query))]
 
-    (is (-> res :person first (get "chat/_person") vector?))))
+      (is (-> res :person first (get "chat/_person") vector?)))))
 
 (deftest graphql-query-single-block
-  (testing "GraphQL query that specifies single block")
-  (let [graphql-query      {:query "query  {\n  block(from: 3, to: 3)\n}"}
-        res (first (async/<!! (fdb/graphql-async (basic/get-conn) test/ledger-chat graphql-query)))]
+  (testing "GraphQL query that specifies single block"
+    (let [graphql-query      {:query "query  {\n  block(from: 3, to: 3)\n}"}
+          res (first (async/<!! (fdb/graphql-async (basic/get-conn) test/ledger-chat graphql-query)))]
 
-    (is (= (:block res) 3))
-    (is (every? #(= (type %) fluree.db.flake.Flake) (-> res :flakes)))))
+      (is (= (:block res) 3))
+      (is (every? #(= (type %) fluree.db.flake.Flake) (-> res :flakes))))))
 
 (deftest graphql-query-range-blocks
-  (testing "GraphQL query that specifies a range of blocks")
-  (let [graphql-query      {:query "query  {\n  block(from: 3, to: 5)\n}"}
-        res (async/<!! (fdb/graphql-async (basic/get-conn) test/ledger-chat graphql-query))
-        blocks (filter #(not (nil? %)) res)]
+  (testing "GraphQL query that specifies a range of blocks"
+    (let [graphql-query      {:query "query  {\n  block(from: 3, to: 5)\n}"}
+          res (async/<!! (fdb/graphql-async (basic/get-conn) test/ledger-chat graphql-query))
+          blocks (filter #(not (nil? %)) res)]
 
-    (is (every? #(get % :block) blocks))))
+      (is (every? #(get % :block) blocks)))))
 
 (deftest graphql-query-blocks-lower-limit
-  (testing "GraphQL query that specifies a range of blocks from lower limit")
-  (let [graphql-query      {:query "query  {\n  block(from: 3)\n}"}
-        res (async/<!! (fdb/graphql-async (basic/get-conn) test/ledger-chat graphql-query))]
+  (testing "GraphQL query that specifies a range of blocks from lower limit"
+    (let [graphql-query      {:query "query  {\n  block(from: 3)\n}"}
+          res (async/<!! (fdb/graphql-async (basic/get-conn) test/ledger-chat graphql-query))]
 
-    (is (every? #(get % :block) res))))
+      (is (every? #(get % :block) res)))))
 
 (deftest graphql-test
   (basic-graphql)
@@ -73,4 +73,3 @@
   (basic/add-sample-data)
   (basic/graphql-txn)
   (graphql-test))
-

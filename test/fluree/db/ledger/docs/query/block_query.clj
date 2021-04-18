@@ -96,7 +96,7 @@
   (query-single-block)
   (query-single-block-with-ISO-string)
   (query-single-block-with-duration))
-  ;; (query-block-range)
+  ;(query-block-range)
   ;(query-block-range-lower-limit)
   ;(query-block-range-pretty-print)
 

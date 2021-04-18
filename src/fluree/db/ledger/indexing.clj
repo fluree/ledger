@@ -553,7 +553,7 @@
           post-comp (.comparator (-> db :novelty :post))
           psot-comp (.comparator (-> db :novelty :psot))
           opst-comp (.comparator (-> db :novelty :opst))
-          opst-comp (.comparator (-> db :novelty :tspo))]
+          tspo-comp (.comparator (-> db :novelty :tspo))]
       (do (validate-idx-continuity (:spot db) true spot-comp)
           (validate-idx-continuity (:post db) true post-comp)
           (validate-idx-continuity (:psot db) true psot-comp)
