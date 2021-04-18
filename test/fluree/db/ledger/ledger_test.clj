@@ -112,12 +112,13 @@
 
   ;; Can call the below tests like function - each needs to be run separately
 
-  ;; (run-tests) runs all tests in this namespace - has the best logging, returns a
-  ;; summary and logs out "FAIL in ...." for each failure.
+  ;; (run-tests) runs all tests in this namespace - has the best logging,
+  ;; returns a summary and logs out "FAIL in ...." for each failure.
   (run-tests)
 
-  ;; this needs to be run separately- closed api test harness
-  ;; Best to follow this to the page, and run the test, otherwise the results are not visible for some reason?
+  ;; this needs to be run separately- closed api test harness. Best to follow
+  ;; this to the page, and run the test, otherwise the results are not visible
+  ;; for some reason?
   (signatures/Signatures-export)
 
   ;; This one can
