@@ -221,16 +221,16 @@
 
 
 (defn novelty-subrange
-  [novelty {:keys [first rhs leftmost?] :as child}]
+  [novelty first-flake rhs leftmost?]
   (try
     (cond
       (and leftmost? rhs) (avl/subrange novelty < rhs)
-      rhs (avl/subrange novelty >= first < rhs)
+      rhs (avl/subrange novelty >= first-flake < rhs)
       leftmost? novelty                                     ;; at left and no rhs... all novelty applies
-      :else (avl/subrange novelty >= first))
+      :else (avl/subrange novelty >= first-flake))
     (catch Exception e
       (log/error (str "Error indexing. Novelty subrange error: " (.getMessage e))
-                 (pr-str {:first-flake first :rhs rhs :leftmost? leftmost? :novelty novelty}))
+                 (pr-str {:first-flake first-flake :rhs rhs :leftmost? leftmost? :novelty novelty}))
       (throw e))))
 
 
@@ -243,17 +243,7 @@
     (swap! progress-atom update :garbage (fn [g]
                                            (cond-> (conj g idx-key)
                                                    ;; if at leaf, add history node too
-                                             leaf? (conj (str idx-key "-his")))))))
-
-(defn add-skipped-garbage
-  [progress skip-fn children current-child n]
-  (let [at-leaf? (->> children first val :leaf)]
-    (->> (range 1 (inc n))
-         (map #(skip-fn current-child %))
-         (map (fn [rm]
-                (let [id (-> children (nth rm) val :id)]
-                  (add-garbage id at-leaf? progress))))
-         dorun)))
+                                                   leaf? (conj (str idx-key "-his")))))))
 
 (comment
 
@@ -266,124 +256,97 @@
              (conj %1 %2)
              %1) #{} myset))
 
-(declare index-branch)
 
-(defn contains-pred?
-  [node pred]
-  (let [lower (-> node :first flake/p)
-        upper (some-> node :rhs flake/p)]
-    (and (>= pred lower)
-         (or (nil? upper)
-             (<= pred upper)))))
-
-(defn index-children
-  [conn network dbid progress children block t rhs idx-novelty remove-preds]
-  (let [child-count (count children)
-        at-leaf?    (->> children first val :leaf)]
-    (go-try
-     (loop [child-i   (dec child-count)
-            rhs       rhs
-            children* (empty children)]
-       (if (< child-i 0)                   ;; at end of result set
-         children*
-         (let [child         (val (nth children child-i))
-               child-rhs     (:rhs child)
-               _             (when-not (or (= (dec child-i) child-count) (= child-rhs rhs))
-                               (throw (ex-info (str "Something went wrong. Child-rhs does not equal rhs: " {:child-rhs child-rhs :rhs rhs})
-                                               {:status 500
-                                                :error  :db/unexpected-error})))
-               child-first   (:first child)
-               novelty       (novelty-subrange idx-novelty child-first child-rhs (:leftmost? child))
-               remove-preds? (if remove-preds
-                               (let [child-first-pred (.-p child-first)
-                                     child-rhs-pred   (when child-rhs (.-p child-rhs))]
-                                 (reduce #(if (and (>= %2 child-first-pred)
-                                                   (if child-rhs-pred
-                                                     (<= %2 child-rhs-pred) true))
-                                            (conj %1 %2) %1) #{} remove-preds))
-                               #{})
-               dirty?        (or (not (empty? novelty)) (not (empty? remove-preds?)))
-               [new-nodes skip n] (if dirty?
-                                    (if at-leaf?
-                                      (<? (index-leaf conn network dbid child block t idx-novelty child-rhs children children* child-i remove-preds?))
-                                      [(<? (index-branch conn network dbid child idx-novelty block t child-rhs progress remove-preds?)) nil nil])
-                                    [[child] nil nil])
-               new-rhs       (:first (first new-nodes))
-               next-i        (if (= :next skip)
-                               (- child-i (inc n)) ;; already combined with at least the next left node, so skip
-                               (dec child-i))
-               acc*          (cond-> (reduce #(assoc %1 (:first %2) %2) children* new-nodes)
-                               ;; if we had underflow and went right/:previous, we have to remove the previous node from children*
-                               (= :previous skip) (dissoc (key (first children*))))]
-
-           ;; add dirty node indexes to garbage
-           (when dirty?
-             (add-garbage (:id child) at-leaf? progress))
-           (when skip                      ;; combined this node with nodes to the left or right, add those to garbage
-             (case skip
-               :previous (add-garbage (:id (val (first children*))) at-leaf? progress)
-               ;; when going left/:next, could be multiple nodes if immediate left node was also empty
-               :next (doseq [i (range (inc next-i) child-i)]
-                       (add-garbage (:id (val (nth children i))) at-leaf? progress))))
-
-           (recur next-i new-rhs acc*)))))))
 
 (defn index-branch
   "Gets called when a root index is dirty, and for all sub-roots."
   ([conn network dbid node idx-novelty block t rhs progress]
    (index-branch conn network dbid node idx-novelty block t rhs progress #{}))
   ([conn network dbid node idx-novelty block t rhs progress remove-preds]
-   (let [base-id (str (util/random-uuid))]
-     (go-try
-      (let [{:keys [config children]} (<? (dbproto/-resolve node))
-            idx-type   (:index-type config)
-            children*  (<? (index-children conn network dbid progress children block t rhs idx-novelty remove-preds))
-            node-bytes (-> children*
-                           keys
-                           flake/size-bytes)
-            id         (<? (storage/write-branch conn network dbid idx-type base-id children*))
-            new-node   (storage/map->UnresolvedNode
-                        {:conn      conn
-                         :config    config
-                         :network   network
-                         :dbid      dbid
-                         :id        id
-                         :leaf      false
-                         :first     (key (first children*))
-                         :rhs       rhs
-                         :size      node-bytes
-                         :block     block
-                         :t         t
+   (go-try
+     (let [resolved   (<? (dbproto/-resolve node))
+           base-id    (str (util/random-uuid))
+           {:keys [config children]} resolved
+           idx-type   (:index-type config)
+           child-n    (count children)
+           at-leaf?   (:leaf (val (first children)))
+           children*  (loop [child-i   (dec child-n)
+                             rhs       rhs
+                             children* (empty children)]
+                        (if (< child-i 0)                   ;; at end of result set
+                          children*
+                          (let [child         (val (nth children child-i))
+                                child-rhs     (:rhs child)
+                                _             (when-not (or (= (dec child-i) child-n) (= child-rhs rhs))
+                                                (throw (ex-info (str "Something went wrong. Child-rhs does not equal rhs: " {:child-rhs child-rhs :rhs rhs})
+                                                                {:status 500
+                                                                 :error  :db/unexpected-error})))
+                                child-first   (:first child)
+                                novelty       (novelty-subrange idx-novelty child-first child-rhs (:leftmost? child))
+                                remove-preds? (if remove-preds
+                                                (let [child-first-pred (.-p child-first)
+                                                      child-rhs-pred   (when child-rhs (.-p child-rhs))]
+                                                  (reduce #(if (and (>= %2 child-first-pred)
+                                                                    (if child-rhs-pred
+                                                                      (<= %2 child-rhs-pred) true))
+                                                             (conj %1 %2) %1) #{} remove-preds))
+                                                #{})
+                                dirty?        (or (not (empty? novelty)) (not (empty? remove-preds?)))
+                                [new-nodes skip n] (if dirty?
+                                                     (if at-leaf?
+                                                       (<? (index-leaf conn network dbid child block t idx-novelty child-rhs children children* child-i remove-preds?))
+                                                       [(<? (index-branch conn network dbid child idx-novelty block t child-rhs progress remove-preds?)) nil nil])
+                                                     [[child] nil nil])
+                                new-rhs       (:first (first new-nodes))
+                                next-i        (if (= :next skip)
+                                                (- child-i (inc n)) ;; already combined with at least the next left node, so skip
+                                                (dec child-i))
+                                acc*          (cond-> (reduce #(assoc %1 (:first %2) %2) children* new-nodes)
+                                                      ;; if we had underflow and went right/:previous, we have to remove the previous node from children*
+                                                      (= :previous skip) (dissoc (key (first children*))))]
+
+                            ;; add dirty node indexes to garbage
+                            (when dirty?
+                              (add-garbage (:id child) at-leaf? progress))
+                            (when skip                      ;; combined this node with nodes to the left or right, add those to garbage
+                              (case skip
+                                :previous (add-garbage (:id (val (first children*))) at-leaf? progress)
+                                ;; when going left/:next, could be multiple nodes if immediate left node was also empty
+                                :next (doseq [i (range (inc next-i) child-i)]
+                                        (add-garbage (:id (val (nth children i))) at-leaf? progress))))
+
+                            (recur next-i new-rhs acc*))))
+           node-bytes (-> (keys children*)
+                          (flake/size-bytes))
+           id         (<? (storage/write-branch conn network dbid idx-type base-id children*))
+           new-node   (storage/map->UnresolvedNode
+                        {:conn      conn :config config
+                         :network   network :dbid dbid
+                         :id        id :leaf false
+                         :first     (key (first children*)) :rhs rhs
+                         :size      node-bytes :block block :t t
                          :leftmost? (:leftmost? node)})]
-        new-node)))))
+       new-node))))
 
 
 (defn index-root
   "Indexes an index-type root (one of fluree.db.index/types).
-
   Progress atom tracks progress and retains list of garbage indexes."
   ([db progress-atom idx-type]
    (index-root db progress-atom idx-type #{}))
   ([db progress-atom idx-type remove-preds]
-   (assert (contains? index/types idx-type)
-           (str "Reindex attempt on unknown index type: " idx-type))
-   (let [{:keys [conn novelty block t network dbid]} db
-         idx-novelty (get novelty idx-type)
-         dirty?      (or (not (empty? idx-novelty)) remove-preds)
-         idx-root    (get db idx-type)
-         out         (chan)]
-     (go
-       (if-not dirty?
-         (>! out idx-root)
-         (do
-           ;; add main index node key to garbage for collection
-           (add-garbage (:id idx-root) false progress-atom)
-           (-> conn
-               (index-branch network dbid idx-root idx-novelty
-                             block t nil progress-atom
-                             remove-preds)
-               (async/pipe out)))))
-     out)))
+   (go-try
+    (assert (index/types  idx-type) (str "Reindex attempt on unknown index type: " idx-type))
+    (let [{:keys [conn novelty block t network dbid]} db
+          idx-novelty (get novelty idx-type)
+          dirty?      (or (not (empty? idx-novelty)) remove-preds)
+          idx-root    (get db idx-type)]
+      (if-not dirty?
+        idx-root
+        (do
+          ;; add main index node key to garbage for collection
+          (add-garbage (:id idx-root) false progress-atom)
+          (<? (index-branch conn network dbid idx-root idx-novelty block t nil progress-atom remove-preds))))))))
 
 ;; TODO - should track new index segments and if failure, garbage collect them
 
