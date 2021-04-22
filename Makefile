@@ -20,18 +20,23 @@ RESOURCES := $(shell find resources)
 
 DESTDIR ?= /usr/local
 
-build/fluree-$(VERSION).zip: stage-release
+RELEASE_TARGETS := build/release-staging build/fluree-ledger.standalone.jar \
+                   build/fluree_start.sh build/logback.xml \
+                   build/fluree_sample.properties build/LICENSE \
+                   build/CHANGELOG.md
+
+build/fluree-$(VERSION).zip: $(RELEASE_TARGETS)
 	cd build && zip -r fluree-$(VERSION).zip * -x 'data/' 'data/**' 'release-staging/' 'release-staging/**'
 
 build/fluree-$(VERSION).zip.sha256: build/fluree-$(VERSION).zip
 	cd $(@D) && $(SHACMD) $(<F) > $(@F)
 
-stage-release: build/release-staging build/fluree-ledger.standalone.jar build/fluree_start.sh build/logback.xml build/fluree_sample.properties build/LICENSE build/CHANGELOG.md
+stage-release: $(RELEASE_TARGETS)
 
 print-version:
 	@echo $(VERSION)
 
-run: stage-release
+run: $(RELEASE_TARGETS)
 	cd build && ./fluree_start.sh
 
 check-release-jdk-version:
@@ -63,11 +68,11 @@ deps: deps.edn
 package-lock.json: package.json
 	npm install
 
-node_modules: package.json package-lock.json
-	npm install && touch $@
+node_modules/%: package.json package-lock.json
+	npm install
 
-resources/adminUI: node_modules
-	ln -nsf ../node_modules/@fluree/admin-ui/build $@
+resources/adminUI: | node_modules/@fluree/admin-ui/build
+	ln -nsf ../$| $@
 
 build:
 	mkdir -p build
@@ -144,6 +149,6 @@ clean:
 	@# only delete contents of build dir if full delete fails (e.g. b/c we're mounting it as a Docker volume)
 	rm -rf build 2>/dev/null || rm -rf build/*
 	rm -rf target
-	rm -rf resources/adminUI
+	rm -f resources/adminUI
 	rm -rf node_modules
 	rm -f pom.xml
