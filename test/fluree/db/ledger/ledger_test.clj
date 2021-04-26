@@ -13,6 +13,7 @@
             [fluree.db.ledger.docs.query.analytical-query :as analytical-query]
             [fluree.db.ledger.docs.query.sparql :as sparql]
             [fluree.db.ledger.docs.query.graphql :as graphql]
+            [fluree.db.ledger.docs.query.sql-query :as sql]
 
             [fluree.db.ledger.docs.smart-functions.intro :as intro]
             [fluree.db.ledger.docs.smart-functions.predicate-spec :as predicate-spec]
@@ -72,6 +73,7 @@
              (analytical-query/analytical-query-test)
              (sparql/sparql-test)
              (graphql/graphql-test)
+             (sql/query-tests)
 
              ;; 4- Transact
 
