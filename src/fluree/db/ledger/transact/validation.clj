@@ -223,7 +223,7 @@
 
 (defn queue-pred-spec
   "Flakes param flows through, queues spec for flake"
-  [flakes flake pred-info {:keys [validate-fn db-root] :as tx-state}]
+  [flake pred-info {:keys [validate-fn db-root] :as tx-state}]
   (let [fn-sids        (pred-info :spec)
         specDoc        (pred-info :specDoc)
         predicate-name (pred-info :name)
@@ -236,7 +236,7 @@
                                        :fn-sid    fn-sids
                                        :doc       specDoc}))]
     (queue-validation-fn :predicate tx-state pred-spec-fn nil nil)
-    flakes))
+    true))
 
 
 ;; predicate tx-spec
@@ -324,13 +324,13 @@
   For each predicate that requires a txSpec function to be run, we store
   a two-tuple of the function (as a promise) and a list of flakes for that predicate
   that must be validated."
-  [flakes predicate-flakes pred-info {:keys [validate-fn db-root] :as tx-state}]
+  [predicate-flakes pred-info {:keys [validate-fn db-root] :as tx-state}]
   (let [pid        (pred-info :id)
         tx-spec-fn (when (empty? (get-in @validate-fn [:tx-spec pid]))
                      ;; first time called (no existing flakes for this tx-spec), generate and queue fn also
                      (build-predicate-tx-spec-fn pred-info db-root))]
     (queue-validation-fn :predicate-tx tx-state tx-spec-fn predicate-flakes pid)
-    flakes))
+    true))
 
 
 ;; collection specs
@@ -438,7 +438,7 @@
       (tx-schema/validate-collection-name subject-flakes)
 
       :else nil)
-    subject-flakes))
+    true))
 
 ;; Permissions
 

@@ -54,24 +54,10 @@
   "Retracts one or more flakes given a subject, predicate, and optionally an object value."
   [subject-id predicate-id object {:keys [db-root t] :as tx-state}]
   (go-try
-    (let [flakes     (if (= :delete object)                 ;; case will only exist if ':_action delete', else delete handled elsewhere
-                       (<? (query-range/index-range db-root :spot = [subject-id predicate-id]))
-                       (<? (query-range/index-range db-root :spot = [subject-id predicate-id object])))
+    (let [flakes     (<? (query-range/index-range db-root :spot = [subject-id predicate-id object]))
           components (when (dbproto/-p-prop db-root :component predicate-id)
                        (<? (retract-components flakes tx-state)))]
       (->> flakes
            (map #(flake/flip-flake % t))
            (into components)))))
 
-
-;; TODO - below, instead of async/into,could use a transducer to return a single clean channel that concats, and not need to use go-try here
-(defn multi
-  "Like retract flake, but takes a list of objects that must be retracted"
-  [subject-id predicate-id objects tx-state]
-  (go-try
-    (->> objects
-         (map #(flake subject-id predicate-id % tx-state))
-         async/merge
-         (async/into [])
-         <?
-         (apply concat))))
