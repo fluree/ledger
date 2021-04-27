@@ -91,13 +91,12 @@
 (defn predicate-details
   "Returns function for predicate to retrieve any predicate details"
   [predicate collection db]
-  (let [full-name (if (str/includes? predicate "/")
-                    predicate
-                    (str collection "/" predicate))]
-    (if-let [pred-id (get-in db [:schema :pred full-name :id])]
-      (fn [property] (dbproto/-p-prop db property pred-id))
-      (throw (throw (ex-info (str "Predicate does not exist: " predicate)
-                             {:status 400 :error :db/invalid-tx}))))))
+  (if-let [pred-id (or
+                     (get-in db [:schema :pred (str collection "/" predicate) :id])
+                     (get-in db [:schema :pred predicate :id]))]
+    (fn [property] (dbproto/-p-prop db property pred-id))
+    (throw (throw (ex-info (str "Predicate does not exist: " predicate)
+                           {:status 400 :error :db/invalid-tx})))))
 
 
 (defn conform-object-value
