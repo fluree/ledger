@@ -191,7 +191,7 @@
 
 (defn resolve-object-item
   "Resolves object into its final state so can be used for consistent comparisons with existing data."
-  [tx-state {:keys [pred-info id o unique?] :as smt}]
+  [tx-state {:keys [pred-info id o] :as smt}]
   (go-try
     (let [type (pred-info :type)
           o*   (if (txfunction/tx-fn? o)                    ;; should only happen for multi-cardinality objects
@@ -209,7 +209,7 @@
                  (= :tag type) (<? (tags/resolve o* pred-info tx-state))
 
                  :else (conform-object-value o* type))]
-      (when (and unique? (not (nil? o**)))
+      (when (and (pred-info :unique) (not (nil? o**)))
         (<? (resolve-unique o** id pred-info tx-state)))
       (cond-> (assoc smt :o o**)
               (nil? o**) (assoc :action :retract)
@@ -288,21 +288,15 @@
                         :id         _id*
                         :tempid?    (= :tempid _id-type)
                         :action     action
-                        :collection collection}]
+                        :collection collection
+                        :o-tempid?  nil}]
     (if (= :retract-subject action)
       [base-statement]                                      ;; no k-v pairs to iterate over
       (reduce-kv (fn [acc pred obj]
                    (let [pred-info (predicate-details pred collection db-before)
-                         smt       (merge base-statement
-                                          {:multi?    (pred-info :multi)
-                                           :unique?   (pred-info :unique)
-                                           :s         nil
-                                           :p         nil
-                                           :o         obj
-                                           :o-tempid? nil
-                                           :p-name    (pred-info :name)
-                                           :pred-info pred-info
-                                           :flakes    []})]
+                         smt       (assoc base-statement :pred-info pred-info
+                                                         :p (pred-info :id)
+                                                         :o obj)]
                      ;; for multi-cardinality, create a statement for each object
                      (if (pred-info :multi)
                        (reduce #(conj %1 (assoc smt :o %2)) acc (if (sequential? obj) (into #{} obj) [obj]))
@@ -451,24 +445,23 @@
 
 (defn finalize-flakes
   [{:keys [tempids upserts t] :as tx-state}
-   {:keys [id action pred-info o o-tempid? tempid? multi? collection] :as statement}]
+   {:keys [id action pred-info p o o-tempid? tempid? collection] :as statement}]
   (go-try
     (cond
       (= :retract-subject action)
       (<? (tx-retract/subject id tx-state))
 
       (= :retract action)
-      (<? (tx-retract/flake id (pred-info :id) o tx-state))
+      (<? (tx-retract/flake id p o tx-state))
 
       ;; (= :add action) below
       :else
       (let [s             (if tempid? (get @tempids id) id)
             o*            (if o-tempid? (get @tempids o) o) ;; object may be a tempid, if so resolve to permanent id
-            p             (pred-info :id)
             new-flake     (flake/->Flake s p o* t true nil)
             ;; retractions do not need to be checked for tempids (except when tempid resolved via an :upsert true)
             retract-flake (when (or (not tempid?) (contains? @upserts s))
-                            (first (<? (tx-retract/flake s p (when multi? o*) tx-state)))) ;; for multi-cardinality, only retract exact matches
+                            (first (<? (tx-retract/flake s p (when (pred-info :multi) o*) tx-state)))) ;; for multi-cardinality, only retract exact matches
             flakes        (add-singleton-flake new-flake retract-flake pred-info)]
 
         (when (not-empty flakes)

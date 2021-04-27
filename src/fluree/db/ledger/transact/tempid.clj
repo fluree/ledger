@@ -98,7 +98,7 @@
 
 (defn assign-subject-ids
   "Assigns any unresolved tempids with a permanent subject id."
-  [{:keys [tempids tempids-ordered upserts db-before t] :as tx-state} tx]
+  [{:keys [tempids tempids-ordered upserts db-before t] :as tx-state} statements]
   (try
     (let [ecount      (assoc (:ecount db-before) const/$_tx t) ;; make sure to set current _tx ecount to 't' value, even if no tempids in transaction
           tempids-map @tempids]
@@ -122,7 +122,7 @@
                   ecount** (assoc ecount* cid next-id)]
               (recur r (assoc tempids-map* tempid next-id) upserts* ecount**))
             (recur r tempids-map* (conj upserts* (get tempids-map tempid)) ecount*))))
-      tx)
+      statements)
     (catch Exception e
       (log/error e (str "Unexpected error assigning permanent id to tempids."
                         "with error: " (.getMessage e))
