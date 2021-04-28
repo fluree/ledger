@@ -320,13 +320,21 @@
       (async/close! res-ch))))
 
 
+(defmulti generate-statements (fn [tx-state _] (:format tx-state)))
+
+(defmethod generate-statements :json
+  [tx-state tx]
+  (->> tx
+       (mapcat #(tx-json/extract-children % tx-state))
+       (mapcat (partial tx-json/generate-statements tx-state))))
+
+
 (defn do-transact
   [tx-state tx]
   (go-try
     (let [flakes-set (flake/sorted-set-by flake/cmp-flakes-block)]
       (->> tx
-           (mapcat #(tx-json/extract-children % tx-state))
-           (mapcat (partial tx-json/generate-statements tx-state))
+           (generate-statements tx-state)
            (pipeline-aggregator (resolve-statement-af tx-state) :conj []) ;; conforms all object (.-o) values, resolves :uniques/:uperts to final _id
            <?
            (tempid/assign-subject-ids tx-state)
