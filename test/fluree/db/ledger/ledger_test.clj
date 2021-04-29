@@ -32,11 +32,6 @@
             [fluree.db.ledger.docs.examples.voting :as voting]
             [fluree.db.ledger.general.todo-permissions :as todo-perm]))
 
-(Thread/setDefaultUncaughtExceptionHandler
- (reify Thread$UncaughtExceptionHandler
-   (uncaughtException [_ thread ex]
-     (log/error ex "Uncaught exception on" (.getName thread)))))
-
 ;; TODO - tests fail - commented out for convenience:
 ;; API - (test-gen-flakes-query-transact-with)
         ; look at query-with, test-transact-with
@@ -56,6 +51,12 @@
 
 ;; AUTH
         ; Have a not that create-authority sometimes fails. Run many times to check if it was fixed.
+
+;; Log any uncaught exceptions
+(Thread/setDefaultUncaughtExceptionHandler
+ (reify Thread$UncaughtExceptionHandler
+   (uncaughtException [_ thread ex]
+     (log/error ex "Uncaught exception on" (.getName thread)))))
 
 (deftest all-open-tests
   (is (= :success

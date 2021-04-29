@@ -1,6 +1,7 @@
 {:deps {org.clojure/clojure {:mvn/version "1.10.3"}
         org.clojure/data.xml {:mvn/version "0.2.0-alpha6"}
-        com.fluree/db {:mvn/version "1.0.0-rc17"}
+        ;; com.fluree/db {:mvn/version "1.0.0-rc17"}
+        com.fluree/db {:local/root "../db/"}
         com.fluree/raft {:mvn/version "1.0.0-beta1"}
         com.fluree/crypto {:mvn/version "0.3.5"}
 

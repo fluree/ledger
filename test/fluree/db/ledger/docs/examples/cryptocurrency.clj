@@ -9,7 +9,7 @@
 
 (use-fixtures :once test/test-system)
 
-;; Cryptocurrency xample
+;; Cryptocurrency example
 
 (def crypto-man-opts {:auth "TfDao2xAPN1ewfoZY6BJS16NfwZ2QYJ2cF2"
                       :private-key "745f3040cbfba59ba158fc4ab295d95eb4596666c4c275380491ac658cf8b60c"})
