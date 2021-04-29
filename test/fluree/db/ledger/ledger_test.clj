@@ -20,6 +20,8 @@
             [fluree.db.ledger.docs.smart-functions.rule-example :as rule-example]
             [fluree.db.ledger.docs.smart-functions.in-transactions :as in-transactions]
 
+            [fluree.db.ledger.docs.transact.transactions :as transactions]
+
             [fluree.db.ledger.docs.identity.auth :as auth]
             [fluree.db.ledger.docs.identity.signatures :as signatures]
 
@@ -73,7 +75,9 @@
              (sparql/sparql-test)
              (graphql/graphql-test)
 
-             ;; 4- Transact
+             ;; 4- Transactions
+             (test/print-banner "Transaction Tests")
+             (transactions/transaction-basics)
 
              ;; 5- Identity
              (test/print-banner "Identity Tests")
