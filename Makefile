@@ -105,6 +105,21 @@ target/fluree-ledger.standalone.jar: resources/adminUI $(SOURCES) $(RESOURCES)
 
 uberjar: target/fluree-ledger.standalone.jar
 
+# ideally depstar would allow generating the pom.xml as a standalone task
+# but right now we just have it build a JAR and get the pom.xml as a
+# side effect
+pom.xml: deps.edn target/fluree-ledger.jar
+
+# ideally we would just generate the project.clj from the deps.edn
+# but there is already code to do it from pom.xml;
+# we delete pom.xml & fluree-ledger.jar to ensure project.clj is up to date
+# FIXME: gross hack to remove the duplicate test-paths
+project.clj: deps.edn pom.xml
+	clojure -M:project.clj
+	rm -f pom.xml target/fluree-ledger.jar
+	sed -i.bak '/:test-paths \[nil\]/d' project.clj
+	rm project.clj.bak
+
 ifneq ($(strip $(shell which git)),)
   ifeq ($(strip $(shell git status --porcelain)),)
     git_tag := $(shell git rev-parse HEAD)

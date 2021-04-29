@@ -16,3 +16,7 @@ default_private_key.txt
 /resources/adminUI
 /node_modules
 /pom.xml
+/.eastwood
+/.scannerwork
+/project.clj
+/projectFilesBackup

@@ -16,6 +16,7 @@
         com.cognitect.aws/s3 {:mvn/version "810.2.817.0"}
 
         ;; web server
+        aleph/aleph {:mvn/version "0.4.7-alpha7"}
         aleph-middleware/aleph-middleware {:mvn/version "0.2.0"}
         ring/ring-core {:mvn/version "1.9.1"}
         ring-cors/ring-cors {:mvn/version "0.1.13"}
@@ -64,4 +65,17 @@
                :sync-pom true}}
 
   :meta
-  {:main-opts ["-m" "fluree.db.meta"]}}}
+  {:main-opts ["-m" "fluree.db.meta"]}
+
+  :project.clj
+  {:extra-deps {com.fluree/tools-cli-pom2project {:local/root "../tools-cli-pom2project"}}
+   :main-opts ["-m" "fluree.tools-cli-pom2project"]
+   :pom2project/injections
+   {:test-paths ["test"]
+    :test-selectors {:default (fn [m]
+                                (= (-> m :ns ns-name) 'fluree.db.ledger.ledger-test))}
+    :plugins [[jonase/eastwood "0.3.6"]
+              [lein-kibit "0.1.8"]
+              [lein-ancient "0.6.15"]
+              [lein-cloverage "1.1.2"]
+              [lein-nvd "1.4.0"]]}}}}
