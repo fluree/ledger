@@ -293,7 +293,16 @@
 
 
 (def bootstrap-txn
-  [{:_id     ["_collection" const/$_predicate]
+  [; @id
+   {:_id    ["_predicate" const/$iri]
+    :name   "@id"
+    :doc    "The unique id IRI for a node."
+    ;; TODO - make type iri!!!
+    :type   "string"
+    :unique true}
+
+   ;; collections
+   {:_id     ["_collection" const/$_predicate]
     :name    "_predicate"
     :doc     "Schema predicate definition"
     :version "1"}
@@ -337,6 +346,11 @@
     :name    "_prefix"
     :doc     "Prefix settings."
     :version "1"}
+   {:_id     ["_collection" const/$_default]
+    :name    "_default"
+    :doc     "Default collection for any new subjects."
+    :version "1"
+    :baseIRI ""}
 
 
    ;; value type tags
@@ -617,7 +631,6 @@
     :type               "ref"
     :multi              true
     :restrictCollection "_fn"}
-
    ;; _collection/specDoc
    {:_id  ["_predicate" const/$_collection:specDoc]
     :name "_collection/specDoc"
@@ -629,8 +642,12 @@
     :doc                "The shard that this collection is assigned to. If none assigned, defaults to 'default' shard."
     :type               "ref"
     :restrictCollection "_shard"}
-
-
+   {:_id    ["_predicate" const/$_collection:baseIRI]
+    :name   "_collection/baseIRI"
+    :doc    "Default base IRI for this collection."
+    :type   "string"
+    :unique true
+    :upsert true}
 
 
    ;; _user predicates

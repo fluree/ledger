@@ -28,11 +28,11 @@
    we must make them unique so they point to the correct subjects once flattened."
   [predicate-value tx-state]
   (cond (txi-list? predicate-value)
-        (let [txis (map #(assoc % "_id" (tempid/new (get % "_id") tx-state)) predicate-value)]
+        (let [txis (map #(assoc % "_id" (tempid/construct (get % "_id") tx-state)) predicate-value)]
           [(map #(get % "_id") txis) txis])
 
         (txi? predicate-value)
-        (let [tempid (tempid/new (get predicate-value "_id") tx-state)]
+        (let [tempid (tempid/construct (get predicate-value "_id") tx-state)]
           [tempid (assoc predicate-value "_id" tempid)])))
 
 (defn- extract-children*
@@ -41,7 +41,7 @@
   If none found, will return [txi nil] where txi will be unaltered."
   [txi tx-state]
   (let [txi+tempid (if (util/temp-ident? (get txi "_id"))
-                     (assoc txi "_id" (tempid/new (get txi "_id") tx-state))
+                     (assoc txi "_id" (tempid/construct (get txi "_id") tx-state))
                      txi)]
     (reduce-kv
       (fn [acc k v]

@@ -2,7 +2,12 @@
   (:require [fluree.db.dbproto :as dbproto]
             [fluree.db.util.async :refer [<? <?? go-try merge-into? channel?]]
             [fluree.db.ledger.transact.tempid :as tempid]
-            [fluree.db.util.core :as util]))
+            [fluree.db.util.core :as util]
+            [fluree.db.query.range :as query-range]
+            [fluree.db.constants :as const]
+            [fluree.db.flake :as flake]
+            [fluree.db.util.log :as log])
+  (:import (fluree.db.flake Flake)))
 
 
 (defn resolve-ident-strict
@@ -19,13 +24,30 @@
             (swap! idents assoc ident resolved)
             resolved))))))
 
+
+(defn resolve-iri
+  [iri {:keys [db-root idents] :as tx-state}]
+  (log/warn "resolve-iri:" iri "idents: " @idents)
+  (go-try
+    (if-let [id (contains? @idents iri)]
+      id
+      (let [resolved (some-> (<? (query-range/index-range db-root :post = [const/$iri iri]))
+                             ^Flake first
+                             (.-s))
+            _        (log/warn "resolve-iri - resolved:" resolved)
+            id       (or resolved (tempid/construct iri tx-state true))]
+        (log/warn "resolve-iri - id:" id)
+        (swap! idents assoc iri id)
+        id))))
+
+
 (defn id-type
   "Returns id-type as either:
-  - tempid
-  - pred-ident (i.e. [_user/username 'janedoe']
-  - sid (long integer)
+  - :tempid
+  - :pred-ident (i.e. [_user/username 'janedoe']
+  - :sid (long integer)
 
-  Throws if none of thse valid types."
+  Else throws."
   [_id]
   (cond
     (tempid/TempId? _id) :tempid
@@ -33,3 +55,15 @@
     (int? _id) :sid
     :else (throw (ex-info (str "Invalid _id: " _id)
                           {:status 400 :error :db/invalid-transaction}))))
+
+(defn- temp-flake->flake
+  "Transforms a TempId iri flake into a flake."
+  [{:keys [tempids t] :as tx-state} [iri tempid]]
+  (flake/->Flake (get @tempids tempid) const/$iri iri t true nil))
+
+(defn generate-tempid-flakes
+  "Returns a set of flakes for new IRIs"
+  [{:keys [idents] :as tx-state}]
+  (->> @idents
+       (filter #(tempid/TempId? (val %)))
+       (map (partial temp-flake->flake tx-state))))

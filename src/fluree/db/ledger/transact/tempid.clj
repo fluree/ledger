@@ -27,26 +27,30 @@
   true)
 
 
-(defn new*
-  [tempid]
-  (let [[collection id] (str/split tempid #"[^\._a-zA-Z0-9]" 2)
-        key (if id
-              (keyword collection id)
-              (keyword collection (str (util/random-uuid))))]
+(defn construct*
+  [tempid {:keys [collector] :as tx-state} iri?]
+  (let [[collection id] (if iri?
+                          [(collector tempid) tempid]
+                          (str/split tempid #"[^\._a-zA-Z0-9]" 2))
+        key (cond
+              iri? tempid
+              id (keyword collection id)
+              :else (keyword collection (str (util/random-uuid))))]
     (->TempId tempid collection key (boolean id))))
 
 
-(defn new
+(defn construct
   "Generates a new tempid record from tempid string. Registers tempid in :tempids atom within
   tx-state to track all tempids in tx, and also their final resolution value.
 
   defrecord equality will consider tempids with identical values the same, even if constructed separately.
   We therefore construct a tempid regardless if it has already been created, but are careful not to
   update any existing subject id that might have already been mapped to the tempid."
-  [tempid tx-state]
-  (let [TempId (new* tempid)]
-    (register TempId tx-state)
-    TempId))
+  ([tempid tx-state] (construct tempid tx-state false))
+  ([tempid tx-state iri?]
+   (let [TempId (construct* tempid tx-state iri?)]
+     (register TempId tx-state)
+     TempId)))
 
 
 (defn use
@@ -54,7 +58,7 @@
   it already exists. If it does not exist, it means it is a tempid used as a value, but it was never used
   as a subject."
   [tempid {:keys [tempids] :as tx-state}]
-  (let [TempId (new* tempid)]
+  (let [TempId (construct* tempid tx-state false)]
     (if (contains? @tempids TempId)
       TempId
       (throw (ex-info (str "Tempid " tempid " used as a value, but there is no corresponding subject in the transaction")

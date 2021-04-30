@@ -19,6 +19,7 @@
             [fluree.db.ledger.transact.error :as tx-error]
             [fluree.db.ledger.transact.schema :as tx-schema]
             [fluree.db.ledger.transact.json :as tx-json]
+            [fluree.db.ledger.transact.json-ld :as tx-json-ld]
             [fluree.db.ledger.transact.identity :as identity])
   (:import (fluree.db.flake Flake)))
 
@@ -81,7 +82,7 @@
   resolve it to a different subject!)
 
   If error is not thrown, returns the provided object argument."
-  [object _id pred-info {:keys [db-before] :as tx-state}]
+  [object id pred-info {:keys [db-before] :as tx-state}]
   (go-try
     (let [pred-id        (pred-info :id)
           existing-flake (when-not (tempid/TempId? object)
@@ -93,38 +94,38 @@
                              "in the transaction with the value of: " object ".")
                         {:status 400 :error :db/invalid-tx})))
       (if (tempid/TempId? object)
-        (tx-validate/queue-check-unique-tempid-still-unique object _id pred-info tx-state)
+        (tx-validate/queue-check-unique-tempid-still-unique object id pred-info tx-state)
         (cond
           ;; no matching existing flake, move on
           (nil? existing-flake) nil
 
           ;; lookup subject matches subject, will end up ignoring insert downstream unless :retractDuplicates is true
-          (= (.-s ^Flake existing-flake) _id) _id
+          (= (.-s ^Flake existing-flake) id) id
 
           ;; found existing subject and tempid, so set tempid value (or throw if already set to different subject)
-          (and (tempid/TempId? _id) (pred-info :upsert))
+          (and (tempid/TempId? id) (pred-info :upsert))
           (do
-            (tempid/set _id (.-s ^Flake existing-flake) tx-state) ;; will throw if tempid was already set to a different subject
+            (tempid/set id (.-s ^Flake existing-flake) tx-state) ;; will throw if tempid was already set to a different subject
             (.-s ^Flake existing-flake))
 
           ;; tempid, but not upsert - throw
-          (tempid/TempId? _id)
+          (tempid/TempId? id)
           (throw (ex-info (str "Unique predicate " (pred-info :name) " with value: "
                                object " matched an existing subject: " (.-s ^Flake existing-flake) ".")
-                          {:status 400 :error :db/invalid-tx :tempid _id}))
+                          {:status 400 :error :db/invalid-tx :tempid id}))
 
           ;; not a tempid, but subjects don't match
           ;; this can be OK assuming a different txi is retracting the existing flake
           ;; register a validating fn for post-processing to check this and throw if not the case
-          (not= (.-s ^Flake existing-flake) _id)
+          (not= (.-s ^Flake existing-flake) id)
           (do
-            (tx-validate/queue-check-unique-match-retracted existing-flake _id pred-info object tx-state)
-            _id))))))
+            (tx-validate/queue-check-unique-match-retracted existing-flake id pred-info object tx-state)
+            id))))))
 
 
 (defn resolve-object-item
   "Resolves object into its final state so can be used for consistent comparisons with existing data."
-  [tx-state {:keys [pred-info id o] :as smt}]
+  [tx-state {:keys [pred-info id o iri] :as smt}]
   (go-try
     (let [type (pred-info :type)
           o*   (if (txfunction/tx-fn? o)                    ;; should only happen for multi-cardinality objects
@@ -135,6 +136,7 @@
 
                  (= :ref type) (cond
                                  (tempid/TempId? o*) o*     ;; tempid, don't need to resolve yet
+                                 (and (string? o*) iri) (identity/resolve-iri o* tx-state) ;; since this is JSON-ld, any ref should be an iri as well.
                                  (string? o*) (tempid/use o* tx-state)
                                  (int? o*) (<? (identity/resolve-ident-strict o* tx-state))
                                  (util/pred-ident? o*) (<? (identity/resolve-ident-strict o* tx-state)))
@@ -178,56 +180,60 @@
                     :new-db (tx-util/create-new-db-tx tx-map))
         format    (cond
                     (get-in tx [0 "_id"]) :json
-                    (get-in tx [0 "@id"]) :json-ld)
+                    (tx-json-ld/tx? tx) :json-ld
+                    :else (throw (ex-info (str "Invalid transaction format.")
+                                          {:status 400 :error :db/invalid-transaction})))
         db-before (cond-> db
                           tx-permissions (assoc :permissions tx-permissions))]
-    {:db-before        db-before
-     :db-root          db
-     :db-after         (atom nil)                           ;; store updated db here
-     :flakes           nil                                  ;; holds final list of flakes for tx once complete
-     :permissions      tx-permissions
-     :auth-id          auth                                 ;; auth id string in _auth/id
-     :auth             auth-sid                             ;; auth subject-id integer
-     :authority-id     authority                            ;; authority id string as per _auth/id (or nil if no authority)
-     :authority        authority-sid                        ;; authority subject-id integer (or nil if no authority)
-     :t                t
-     :instant          block-instant
-     :txid             txid
-     :tx-type          type
-     :format           format
-     :tx               tx
-     :tx-string        cmd
-     :signature        sig
-     :nonce            nonce
-     :fuel             (atom {:stack   []
-                              :credits 1000000
-                              :spent   0})
-     ;; hold map of all tempids to their permanent ids. After initial processing will use this to fill
-     ;; all tempids with the permanent ids.
-     :tempids          (atom {})
-     ;; hold same tempids as :tempids above, but stores them in insertion order to ensure when
-     ;; assigning permanent ids, it will be done in a predicable order
-     :tempids-ordered  (atom [])
-     ;; idents (two-tuples of unique predicate + value) may be used multiple times in same tx
-     ;; we keep the ones we've already resolved here as a cache
-     :idents           (atom {})
-     ;; if a tempid resolves to existing subject via :upsert predicate, set it here. tempids don't need
-     ;; to check for existing duplicate values, but if a tempid resolves via upsert, we need to check it
-     :upserts          (atom nil)                           ;; cache of resolved identities
-     ;; Unique predicate + value used in transaction kept here, to ensure the same unique is not used
-     ;; multiple times within the transaction
-     :uniques          (atom #{})
-     ;; If a predicate schema change removes an index (either by turning off index:true or unique:true)
-     ;; then we capture the subject ids here and pass back in the transaction result for indexing
-     :remove-from-post (atom nil)
-     ;; we may generate new tags as part of the transaction. Holds those new tags, but also a cache
-     ;; of tag lookups to speed transaction by avoiding full lookups of the same tag multiple times in same tx
-     :tags             (atom nil)
-     ;; Some predicates may require extra validation after initial processing, we register functions
-     ;; here for that purpose, 'cache' holds cached functions that are ready to execute
-     :validate-fn      (atom {:queue   (list) :cache {}
-                              ;; need to track respective flakes for predicates (for tx-spec) and subject changes (collection-specs)
-                              :tx-spec nil :c-spec nil})}))
+    (cond-> {:db-before        db-before
+             :db-root          db
+             :db-after         (atom nil)                   ;; store updated db here
+             :flakes           nil                          ;; holds final list of flakes for tx once complete
+             :permissions      tx-permissions
+             :auth-id          auth                         ;; auth id string in _auth/id
+             :auth             auth-sid                     ;; auth subject-id integer
+             :authority-id     authority                    ;; authority id string as per _auth/id (or nil if no authority)
+             :authority        authority-sid                ;; authority subject-id integer (or nil if no authority)
+             :t                t
+             :instant          block-instant
+             :txid             txid
+             :tx-type          type
+             :format           format
+             :tx               tx
+             :tx-string        cmd
+             :signature        sig
+             :nonce            nonce
+             :fuel             (atom {:stack   []
+                                      :credits 1000000
+                                      :spent   0})
+             ;; hold map of all tempids to their permanent ids. After initial processing will use this to fill
+             ;; all tempids with the permanent ids.
+             :tempids          (atom {})
+             ;; hold same tempids as :tempids above, but stores them in insertion order to ensure when
+             ;; assigning permanent ids, it will be done in a predicable order
+             :tempids-ordered  (atom [])
+             ;; idents (two-tuples of unique predicate + value) may be used multiple times in same tx
+             ;; we keep the ones we've already resolved here as a cache
+             :idents           (atom {})
+             ;; if a tempid resolves to existing subject via :upsert predicate, set it here. tempids don't need
+             ;; to check for existing duplicate values, but if a tempid resolves via upsert, we need to check it
+             :upserts          (atom nil)                   ;; cache of resolved identities
+             ;; Unique predicate + value used in transaction kept here, to ensure the same unique is not used
+             ;; multiple times within the transaction
+             :uniques          (atom #{})
+             ;; If a predicate schema change removes an index (either by turning off index:true or unique:true)
+             ;; then we capture the subject ids here and pass back in the transaction result for indexing
+             :remove-from-post (atom nil)
+             ;; we may generate new tags as part of the transaction. Holds those new tags, but also a cache
+             ;; of tag lookups to speed transaction by avoiding full lookups of the same tag multiple times in same tx
+             :tags             (atom nil)
+             ;; Some predicates may require extra validation after initial processing, we register functions
+             ;; here for that purpose, 'cache' holds cached functions that are ready to execute
+             :validate-fn      (atom {:queue   (list) :cache {}
+                                      ;; need to track respective flakes for predicates (for tx-spec) and subject changes (collection-specs)
+                                      :tx-spec nil :c-spec nil})}
+            (= :json-ld format) (assoc :tx-context (tx-json-ld/get-tx-context tx)
+                                       :collector (tx-json-ld/build-collector-fn db-before)))))
 
 
 (defn pipeline-aggregator
@@ -328,6 +334,10 @@
        (mapcat #(tx-json/extract-children % tx-state))
        (mapcat (partial tx-json/generate-statements tx-state))))
 
+(defmethod generate-statements :json-ld
+  [tx-state tx]
+  (tx-json-ld/generate-statements tx-state tx))
+
 
 (defn do-transact
   [tx-state tx]
@@ -352,14 +362,14 @@
 (defn build-transaction
   [tx-state]
   (go-try
-    (let [{:keys [db-before auth-id authority-id txid tx t tx-type fuel permissions]} tx-state
+    (let [{:keys [db-before auth-id authority-id txid tx t tx-type fuel permissions format]} tx-state
           tx-flakes        (<? (do-transact tx-state tx))
           tx-meta-flakes   (tx-meta/tx-meta-flakes tx-state nil)
           tempids-map      (tempid/result-map tx-state)
           all-flakes       (cond-> (into tx-flakes tx-meta-flakes)
                                    (not-empty tempids-map) (conj (tempid/flake tempids-map t))
-                                   @(:tags tx-state) (into (tags/create-flakes tx-state)))
-
+                                   @(:tags tx-state) (into (tags/create-flakes tx-state))
+                                   (= :json-ld format) (into (identity/generate-tempid-flakes tx-state)))
           ;; kick off hash process in the background, it can take a while
           hash-flake       (future (tx-meta/generate-hash-flake all-flakes tx-state))
           fast-forward-db? (:tt-id db-before)
