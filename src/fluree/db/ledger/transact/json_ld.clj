@@ -2,22 +2,13 @@
   (:require [fluree.db.util.async :refer [<? <?? go-try merge-into? channel?]]
             [fluree.db.util.log :as log]
             [fluree.db.dbproto :as dbproto]
-            [fluree.db.flake :as flake]
             [fluree.db.query.range :as query-range]
-            [fluree.db.util.json :as json]
             [fluree.db.constants :as const]
             [fluree.db.api :as fdb]
             [fluree.db.ledger.transact.identity :as identity]
-            [fluree.db.ledger.transact.tempid :as tempid])
+            [fluree.db.ledger.transact.tempid :as tempid]
+            [fluree.db.util.iri :as iri-util])
   (:import (fluree.db.flake Flake)))
-
-
-(defn parse-prefix
-  [s]
-  (let [[_ prefix rest] (re-find #"([^:]+):(.+)" s)]
-    (if (nil? prefix)
-      nil
-      [prefix rest])))
 
 
 (defn resolve-prefix
@@ -27,7 +18,7 @@
 
   If no prefix detected, returns [iri nil]"
   [db compact-iri]
-  (if-let [[prefix rest] (parse-prefix compact-iri)]
+  (if-let [[prefix rest] (iri-util/parse-prefix compact-iri)]
     (if-let [iri (some-> (<?? (query-range/index-range db :spot = [["_prefix/prefix" prefix] const/$_prefix:iri]))
                          ^Flake first
                          .-o)]
@@ -35,24 +26,6 @@
       [nil prefix])
     [compact-iri nil]))
 
-
-(defn system-context
-  "Returns map of system context."
-  [db]
-  (let [prefix-cid    (dbproto/-c-prop db :partition "_prefix")
-        prefix-flakes (<?? (query-range/index-range db :spot
-                                                    >= [(flake/max-subject-id prefix-cid)]
-                                                    <= [(flake/min-subject-id prefix-cid)]))]
-    (->> prefix-flakes
-         (group-by #(.-s ^Flake %))
-         (reduce (fn [acc [_ p-flakes]]
-                   (let [prefix (some #(when (= const/$_prefix:prefix (.-p %))
-                                         (.-o %)) p-flakes)
-                         iri    (some #(when (= const/$_prefix:iri (.-p %))
-                                         (.-o %)) p-flakes)]
-                     (if (and prefix iri)
-                       (assoc acc prefix iri)
-                       acc))) {}))))
 
 (defn system-collections
   "Returns map of defined base-iris -> collection."
@@ -66,69 +39,12 @@
        (reduce #(assoc %1 (:base-iri %2) (:name %2)) {})))
 
 
-(defn expanded-context
-  "Returns a fully expanded context map from a source map"
-  ([context] (expanded-context context nil))
-  ([context default-context]
-   (merge default-context
-          (->> context
-               (reduce-kv
-                 (fn [acc prefix iri]
-                   (if-let [[val-prefix rest] (parse-prefix iri)]
-                     (if-let [iri-prefix (or (get acc val-prefix)
-                                             (get default-context val-prefix))]
-                       (assoc acc prefix (str iri-prefix rest))
-                       acc)
-                     acc))
-                 context)))))
-
-(defn expand
-  "Expands a compacted iri string to full iri.
-
-  If the iri is not compacted, returns original iri string."
-  [compact-iri context]
-  (if-let [[prefix rest] (parse-prefix compact-iri)]
-    (if-let [p-iri (get context prefix)]
-      (str p-iri rest)
-      compact-iri)
-    compact-iri))
-
 (defn normalize-txi
   "Expands transaction item from compacted iris to full iri."
   [txi context]
   (reduce-kv (fn [acc k v]
-               (assoc acc (expand k context) (expand v context)))
+               (assoc acc (iri-util/expand k context) (iri-util/expand v context)))
              {} txi))
-
-
-(defn reverse-context
-  "Flips context map from prefix -> iri, to iri -> prefix"
-  [context]
-  (reduce-kv #(assoc %1 %3 %2) {} context))
-
-(defn compact-fn
-  "Returns a single prefix-resolving function based on the system context.
-
-  If a prefix can be resolved, returns a 3-tuple of:
-  [compacted-iri prefix base-iri]"
-  [sys-context]
-  (let [flipped    (reverse-context sys-context)            ;; flips context map
-        match-iris (->> flipped
-                        keys
-                        (sort-by #(* -1 (count %))))        ;; want longest iris checked first
-        match-fns  (mapv
-                     (fn [base-iri]
-                       (let [count  (count base-iri)
-                             re     (re-pattern (str "^" base-iri))
-                             prefix (get flipped base-iri)]
-                         (fn [iri]
-                           (when (re-find re iri)
-                             [(str prefix ":" (subs iri count)) prefix base-iri]))))
-                     match-iris)]
-    (fn [iri]
-      (some (fn [match-fn]
-              (match-fn iri))
-            match-fns))))
 
 
 (defn collector-fn
@@ -209,11 +125,11 @@
   [{:keys [db-before tx-context collector] :as tx-state} txi]
   (log/warn "Generate statement: " txi)
   (let [local-context  (if-let [txi-context (get txi "@context")]
-                         (merge tx-context (expanded-context txi-context))
+                         (iri-util/expanded-context txi-context tx-context)
                          tx-context)
         _              (log/warn "generate-statement - local-context: " local-context)
         iri            (get txi "@id")
-        expanded-iri   (expand iri local-context)           ;; first expand iri with local context
+        expanded-iri   (iri-util/expand iri local-context)           ;; first expand iri with local context
         _              (log/warn "generate-statement - expanded-iri: " expanded-iri)
         collection     (collector expanded-iri)
         _              (log/warn "generate-statement - collection: " collection)
@@ -254,11 +170,13 @@
 
 
 (defn get-tx-context
-  "When a context is provided as part of a transaction, expands
-  it so it can be carried in tx-state."
-  [tx]
-  (when-let [ctx (get tx "@context")]
-    (expanded-context ctx)))
+  "Returns the context to be used for the transaction.
+  If there is a @context defined for the tx, merges it into the db's context,
+  else returns the db's context."
+  [db tx]
+  (if-let [tx-ctx (get tx "@context")]
+    (iri-util/expanded-context tx-ctx (-> db :schema :prefix))
+    (-> db :schema :prefix)))
 
 
 (defn generate-statements
@@ -279,30 +197,28 @@
 (comment
   (def db (<?? (fdb/db (:conn user/system) "prefix/d")))
 
-  (def sys-ctx (system-context db))
-  sys-ctx
   (def sys-coll (system-collections db))
   sys-coll
 
 
-  (def prefix-resolver (compact-fn sys-context))
+  (def prefix-resolver (iri-util/compact-fn sys-context))
   (prefix-resolver "http://www.w3.org/2000/01/rdf-schema#subClass")
 
-  (def context (expanded-context {"nc"        "http://release.niem.gov/niem/niem-core/4.0/#",
-                                  "j"         "http://release.niem.gov/niem/domains/jxdm/6.0/#",
-                                  "age"       "nc:PersonAgeMeasure",
-                                  "value"     "nc:MeasureIntegerValue",
-                                  "units"     "nc:TimeUnitCode",
-                                  "hairColor" "j:PersonHairColorCode",
-                                  "name"      "nc:PersonName",
-                                  "given"     "nc:PersonGivenName",
-                                  "surname"   "nc:PersonSurName",
-                                  "suffix"    "nc:PersonNameSuffixText",
-                                  "nickname"  "nc:PersonPreferredName",}
-                                 #_sys-context))
+  (def context (iri-util/expanded-context {"nc"        "http://release.niem.gov/niem/niem-core/4.0/#",
+                                           "j"         "http://release.niem.gov/niem/domains/jxdm/6.0/#",
+                                           "age"       "nc:PersonAgeMeasure",
+                                           "value"     "nc:MeasureIntegerValue",
+                                           "units"     "nc:TimeUnitCode",
+                                           "hairColor" "j:PersonHairColorCode",
+                                           "name"      "nc:PersonName",
+                                           "given"     "nc:PersonGivenName",
+                                           "surname"   "nc:PersonSurName",
+                                           "suffix"    "nc:PersonNameSuffixText",
+                                           "nickname"  "nc:PersonPreferredName",}
+                                          #_sys-context))
 
   context
-  (def ctx-compactor (compact-fn context))
+  (def ctx-compactor (iri-util/compact-fn context))
 
   (ctx-compactor "http://release.niem.gov/niem/niem-core/4.0/#2PersonName")
 

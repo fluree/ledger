@@ -181,7 +181,7 @@
      (flake/new-flake (flake/->sid const/$_prefix 4) (get pred->id "_prefix/iri") "http://www.w3.org/ns/shacl#" t true)
      ;; fluree examples
      (flake/new-flake (flake/->sid const/$_prefix 5) (get pred->id "_prefix/prefix") "fluree" t true)
-     (flake/new-flake (flake/->sid const/$_prefix 5) (get pred->id "_prefix/iri") "http://www.flur.ee/ns/example#" t true)
+     (flake/new-flake (flake/->sid const/$_prefix 5) (get pred->id "_prefix/iri") "http://www.flur.ee/ns/ledger#" t true)
      ]))
 
 (defn boostrap-memory-db

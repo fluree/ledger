@@ -232,7 +232,7 @@
              :validate-fn      (atom {:queue   (list) :cache {}
                                       ;; need to track respective flakes for predicates (for tx-spec) and subject changes (collection-specs)
                                       :tx-spec nil :c-spec nil})}
-            (= :json-ld format) (assoc :tx-context (tx-json-ld/get-tx-context tx)
+            (= :json-ld format) (assoc :tx-context (tx-json-ld/get-tx-context db-before tx)
                                        :collector (tx-json-ld/build-collector-fn db-before)))))
 
 
