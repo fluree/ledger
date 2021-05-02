@@ -878,7 +878,7 @@
     ;; TODO - Need slightly more complicated handling. If a server joins, close, and tries to restart with join = false, will fail
     (if join?
       ;; If joining an existing network, connects to all other servers
-      (let [connect-servers (filter #(not= (:server-id this-server) %) server-configs)
+      (let [connect-servers (filter #(not= this-server (:server-id %)) server-configs)
             handler-fn      (partial message-consume (:raft raft-instance) (:storage-read raft-configs))]
         (doseq [connect-to connect-servers]
           (ftcp/launch-client-connection this-server-cfg connect-to handler-fn)))
