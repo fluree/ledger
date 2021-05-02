@@ -137,7 +137,7 @@
                                        responseKeys)))))
 
     ; Are all the collection names what we expect?
-    (is (= collections #{"_rule" "nestedComponent" "_fn" "_predicate" "_setting" "chat" "_auth" "_user" "person" "_shard" "_tag" "comment" "_role" "_collection" "_prefix"}))))
+    (is (= collections #{"_rule" "nestedComponent" "_fn" "_predicate" "_setting" "chat" "_auth" "_user" "person" "_shard" "_tag" "comment" "_role" "_collection" "_prefix" "_default"}))))
 
 
 (deftest query-collections*
@@ -197,7 +197,7 @@
                                        responseKeys)))))
 
     ; Are all the predicates what we expect?
-    (is (= collections #{"_rule" "nestedComponent" "_fn" "_predicate" "_setting" "chat" "_auth" "_user" "person" "_shard" "_tag" "comment" "_role" "_collection" "_prefix"}))
+    (is (= collections #{"_rule" "nestedComponent" "_fn" "_predicate" "_setting" "chat" "_auth" "_user" "person" "_shard" "_tag" "comment" "_role" "_collection" "_prefix" "_default"}))
 
     ; Are some of the predicates we expect returned?
     (is (every? boolean (map #(predicates %) ["comment/nestedComponent" "person/stringUnique"])))))

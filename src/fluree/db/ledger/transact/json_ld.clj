@@ -165,7 +165,7 @@
   [tx]
   (boolean
     (or
-      (and (get tx "@context") (get tx "@graph"))
+      (get tx "@graph")
       (get-in tx [0 "@id"]))))
 
 
