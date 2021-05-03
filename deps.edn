@@ -68,7 +68,7 @@
   {:main-opts ["-m" "fluree.db.meta"]}
 
   :project.clj
-  {:extra-deps {com.fluree/tools-cli-pom2project {:local/root "../tools-cli-pom2project"}}
+  {:replace-deps {com.fluree/tools-cli-pom2project {:mvn/version "0.1.0"}}
    :main-opts ["-m" "fluree.tools-cli-pom2project"]
    :pom2project/injections
    {:test-paths ["test"]
