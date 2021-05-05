@@ -1,12 +1,9 @@
 (ns fluree.db.ledger.docs.transact.transactions
   (:require [clojure.test :refer :all]
             [fluree.db.ledger.docs.getting-started.basic-schema :as basic]
-            [fluree.db.ledger.main-test :as test]
+            [fluree.db.ledger.test-helpers :as test]
             [fluree.db.api :as fdb]
-            [clojure.core.async :as async]
-            [clojure.java.io :as io]
-            [clojure.tools.reader.edn :as edn]
-            [fluree.db.util.log :as log]))
+            [clojure.core.async :as async]))
 
 (use-fixtures :once test/test-system)
 
@@ -20,18 +17,6 @@
   []
   (:conn test/system))
 
-(defn issue-consecutive-transactions
-  ([ledger txns]
-   (issue-consecutive-transactions ledger txns {}))
-  ([ledger txns opts]
-   (let [conn (get-conn)]
-     (async/go-loop [results []
-                     [txn & r] txns]
-       (let [resp    (async/<!! (fdb/transact-async conn ledger txn opts))
-             results (conj results resp)]
-         (if r
-           (recur results r)
-           results))))))
 
 ;; Add collections
 
