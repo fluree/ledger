@@ -14,19 +14,13 @@
            (java.time Instant)))
 
 
-;;; run an indexing processing a database
-
 (def ^:dynamic *overflow-bytes* 500000)
-(def ^:dynamic *underflow-bytes* 50000)
-
-;; an index is dirty if there is any novelty associated with it
-
-
 (defn overflow?
   [size-bytes]
   (> size-bytes *overflow-bytes*))
 
 
+(def ^:dynamic *underflow-bytes* 50000)
 (defn underflow?
   [size-bytes]
   (< size-bytes *underflow-bytes*))
@@ -138,21 +132,21 @@
                                      (first flakes))
                    base-id         (str (util/random-uuid))
                    his-split       (get-history-in-range history first-flake rhs' comparator)
+                   his-flakes      (into flakes his-split)
                    id              (<? (storage/write-leaf conn network dbid idx-type base-id
-                                                           flakes his-split))
+                                                           his-flakes his-split))
                    child-leftmost? (and leftmost? (zero? split-i))
-                   child-node      (storage/map->UnresolvedNode
-                                    {:conn      conn
-                                     :config    config
-                                     :dbid      dbid
-                                     :id        id
-                                     :leaf      true
-                                     :first     first-flake
-                                     :rhs       rhs'
-                                     :size      size
-                                     :block     block
-                                     :t         t
-                                     :leftmost? child-leftmost?})
+                   child-node      {:conn      conn
+                                    :config    config
+                                    :dbid      dbid
+                                    :id        id
+                                    :leaf      true
+                                    :first     first-flake
+                                    :rhs       rhs'
+                                    :size      size
+                                    :block     block
+                                    :t         t
+                                    :leftmost? child-leftmost?}
                    acc*            (conj acc child-node)]
                (if (zero? split-i)
                  [acc* nil nil]
@@ -187,8 +181,9 @@
                current-node-his (get-history-in-range history fflake rhs comparator)
                his-in-range     (into current-node-his combine-his)
                flakes           (into (:flakes resolved) (:flakes combine-leaf))
+               his-flakes       (into flakes his-in-range)
                id               (<? (storage/write-leaf conn network dbid idx-type base-id
-                                                        flakes his-in-range))
+                                                        his-flakes his-in-range))
                size             (+ node-bytes combine-bytes)
                ;; current node might be empty, so we need to get first and rhs from node, NOT resolved
                [first-flake rhs] (if (= skip :previous)
@@ -198,25 +193,24 @@
                leftmost?        (or leftmost?
                                     (when (= :next skip) (= 0 (- leaf-i n)))
                                     false)
-               child-node       (storage/map->UnresolvedNode
-                                  {:conn  conn :config config
-                                   :dbid  dbid :id id :leaf true
-                                   :first first-flake :rhs rhs
-                                   :size  size :block block
-                                   :t     t :leftmost? leftmost?})]
+               child-node       {:conn  conn :config config
+                                 :dbid  dbid :id id :leaf true
+                                 :first first-flake :rhs rhs
+                                 :size  size :block block
+                                 :t     t :leftmost? leftmost?}]
            [[child-node] skip n])
 
          :else
          (let [base-id    (str (util/random-uuid))
                flakes     (:flakes resolved)
+               his-flakes (into flakes history)
                id         (<? (storage/write-leaf conn network dbid idx-type base-id
-                                                  flakes history))
-               child-node (storage/map->UnresolvedNode
-                            {:conn      conn :config config
-                             :dbid      dbid :id id :leaf true
-                             :first     fflake :rhs rhs
-                             :size      node-bytes :block block :t t
-                             :leftmost? leftmost?})]
+                                                  his-flakes history))
+               child-node {:conn      conn :config config
+                           :dbid      dbid :id id :leaf true
+                           :first     fflake :rhs rhs
+                           :size      node-bytes :block block :t t
+                           :leftmost? leftmost?}]
            [[child-node] nil nil]))))))
 
 
@@ -264,7 +258,7 @@
    (index-branch conn network dbid node idx-novelty block t rhs progress #{}))
   ([conn network dbid node idx-novelty block t rhs progress remove-preds]
    (go-try
-     (let [resolved   (<? (dbproto/-resolve node))
+    (let [resolved   (<? (dbproto/resolve conn node))
            base-id    (str (util/random-uuid))
            {:keys [config children]} resolved
            idx-type   (:index-type config)
@@ -319,14 +313,13 @@
            node-bytes (-> (keys children*)
                           (flake/size-bytes))
            id         (<? (storage/write-branch conn network dbid idx-type base-id children*))
-           new-node   (storage/map->UnresolvedNode
-                        {:conn      conn :config config
-                         :network   network :dbid dbid
-                         :id        id :leaf false
-                         :first     (key (first children*)) :rhs rhs
-                         :size      node-bytes :block block :t t
-                         :leftmost? (:leftmost? node)})]
-       new-node))))
+           new-node   {:config config
+                       :network   network :dbid dbid
+                       :id        id :leaf false
+                       :first     (key (first children*)) :rhs rhs
+                       :size      node-bytes :block block :t t
+                       :leftmost? (:leftmost? node)}]
+      new-node))))
 
 
 (defn index-root
@@ -462,17 +455,17 @@
 
 (defn validate-idx-continuity
   "Checks continuity of provided index in that the 'rhs' is equal to the first-flake of the following segment."
-  ([idx-root] (validate-idx-continuity idx-root false))
-  ([idx-root throw?] (validate-idx-continuity idx-root throw? nil))
-  ([idx-root throw? compare]
-   (let [node     (async/<!! (dbproto/-resolve idx-root))
+  ([conn idx-root] (validate-idx-continuity idx-root false))
+  ([conn idx-root throw?] (validate-idx-continuity idx-root throw? nil))
+  ([conn idx-root throw? compare]
+   (let [node     (async/<!! (dbproto/resolve conn idx-root))
          children (:children node)
          last-i   (dec (count children))]
      (println "Idx children: " (inc last-i))
      (loop [i        0
             last-rhs nil]
        (let [child       (-> children (nth i) val)
-             resolved    (async/<!! (dbproto/-resolve child))
+             resolved    (async/<!! (dbproto/resolve conn child))
              {:keys [id rhs leftmost?]} child
              child-first (:first child)
              resv-first  (first (:flakes resolved))
@@ -511,17 +504,17 @@
   (def db (async/<!! (fluree.db.api/db conn "test/two")))
 
   (defn check-ctnty
-    [db]
+    [{:keys [conn] :as db}]
     (let [spot-comp (.comparator (-> db :novelty :spot))
           post-comp (.comparator (-> db :novelty :post))
           psot-comp (.comparator (-> db :novelty :psot))
           opst-comp (.comparator (-> db :novelty :opst))
           tspo-comp (.comparator (-> db :novelty :tspo))]
-      (do (validate-idx-continuity (:spot db) true spot-comp)
-          (validate-idx-continuity (:post db) true post-comp)
-          (validate-idx-continuity (:psot db) true psot-comp)
-          (validate-idx-continuity (:opst db) true opst-comp)
-          (validate-idx-continuity (:tspo db) true tspo-comp))))
+      (do (validate-idx-continuity conn (:spot db) true spot-comp)
+          (validate-idx-continuity conn (:post db) true post-comp)
+          (validate-idx-continuity conn (:psot db) true psot-comp)
+          (validate-idx-continuity conn (:opst db) true opst-comp)
+          (validate-idx-continuity conn (:tspo db) true tspo-comp))))
 
   (check-ctnty db)
 

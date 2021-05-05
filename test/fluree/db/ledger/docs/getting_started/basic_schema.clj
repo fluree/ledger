@@ -34,27 +34,27 @@
 ;; Add collections
 
 (deftest add-collections*
-  (testing "Add the person, chat, comment, artist, and movie collections")
-  (let [collection-txn  [{:_id "_collection"
-                          :name "person"}
-                         {:_id "_collection"
-                          :name "chat"}
-                         {:_id "_collection"
-                          :name "comment"}
-                         {:_id "_collection"
-                          :name "artist"}
-                         {:_id "_collection"
-                          :name "movie"}]
-        collection-resp  (async/<!! (fdb/transact-async (get-conn) test/ledger-chat collection-txn))]
+  (testing "Add the person, chat, comment, artist, and movie collections"
+    (let [collection-txn  [{:_id "_collection"
+                            :name "person"}
+                           {:_id "_collection"
+                            :name "chat"}
+                           {:_id "_collection"
+                            :name "comment"}
+                           {:_id "_collection"
+                            :name "artist"}
+                           {:_id "_collection"
+                            :name "movie"}]
+          collection-resp  (async/<!! (fdb/transact-async (get-conn) test/ledger-chat collection-txn))]
+      (println collection-resp)
+      ;; status should be 200
+      (is (= 200 (:status collection-resp)))
 
-    ;; status should be 200
-    (is (= 200 (:status collection-resp)))
+      ;; block should be 2
+      (is (= 2 (:block collection-resp)))
 
-    ;; block should be 2
-    (is (= 2 (:block collection-resp)))
-
-    ;; there should be 5 tempids
-    (is (= 5 (count (:tempids collection-resp))))))
+      ;; there should be 5 tempids
+      (is (= 5 (count (:tempids collection-resp)))))))
 
 ;; Add predicates
 
@@ -108,4 +108,3 @@
   (add-predicates)
   (add-sample-data)
   (graphql-txn))
-
