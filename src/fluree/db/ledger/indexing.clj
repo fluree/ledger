@@ -56,101 +56,116 @@
         boolean)))
 
 (defn mark-novel
+  "Mark that the index node map `node` has been changed from it's resolved value"
   [node]
   (assoc node ::novel true))
 
-(defn mark-existing
+(defn mark-unchanged
+  "Mark that the index node map `node` has not been changed from it's resolved
+  value"
   [node]
   (assoc node ::novel false))
 
+(defn unresolved?
+  "Returns true if the index node map `node` has not had all of it's referenced
+  data loaded from storage"
+  [node]
+  (-> node ::novel nil?))
+
 (defn novel?
+  "Returns true if the index node map `node` has been updated since it's reference
+  data was last stored"
   [node]
   (-> node ::novel true?))
 
 (defn unchanged?
+  "Returns true if the index node map `node` has not been updated since it's
+  reference data was last stored"
   [node]
   (-> node ::novel false?))
 
-(defn unresolved?
-  [node]
-  (-> node ::novel nil?))
+(defn mark-expanded
+  [branch]
+  (assoc node ::expanded true))
 
-(defn novel-node-xf
-  [node t novelty remove-preds]
-  (let [xfs (cond-> []
-              (index/leaf? node) (conj #(index/value-at-t % t novelty remove-preds))
-              :finally           (conj (map mark-novel)))]
-    (apply comp xfs)))
+(defn expanded?
+  (or (index/leaf? node)
+      (-> node ::expanded true?)))
 
 (defn resolve-if-novel
   [conn node t novelty remove-preds]
-  (if (or (seq novelty)
-          (seq remove-preds))
-    (let [out (async/chan 1 (novel-node-xf node t novelty
-                                           remove-preds))]
-      (-> conn
-          (dbproto/resolve node)
-          (async/pipe out)))
-    (->> node
-         mark-existing
-         (async/put! (async/chan)))))
+  (if (unresolved? node)
+    (let [node-novelty (index/node-subrange node t novelty)]
+      (if (or (seq node-novelty)
+              (seq remove-preds))
+        (go
+          (let [res (<? (dbproto/resolve conn node))]
+            (cond-> res
+              (index/leaf? res) (index/value-at-t t node-novelty remove-preds)
+              :finally mark-novel)))
+        (let [out (async/chan)]
+          (->> node
+               mark-unchanged
+               (async/put! out))
+          out)))
+    node))
 
-(defn extract-child-novelty
-  [branch novelty]
+(defn resolve-children
+  "Resolves a branch's children in parallel, and loads data for each child only if
+  there are novelty flakes associated with that child. The resolved children's
+  order is reversed so they have the correct order coming off of a lifo resolve
+  stack"
+  [conn branch t novelty remove-preds]
+  (defn [reverse-chan (async/chan 1 (map rseq))])
   (->> branch
        :children
        (mapv (fn [[_ child]]
-               (let [child-novelty (index/flakes-within child novelty)]
-                 {:existing child, :novelty child-novelty})))
-       rseq))
+               (resolve-if-novel conn child t novelty remove-preds)))
+       (async/map vec)
+       (async/pipe reverse-chan)))
 
 (defn resolve-tree
   [{:keys [conn novelty block t network dbid] :as db} idx remove-preds]
-  (let [index-root    (get db idx)
-        novelty-root  (get novelty idx)]
-    (go-loop [stack  [{:existing index-root, :novelty novelty-root}]
-              result []]
-      (if (empty? stack)
-        result
-        (let [{:keys [existing novelty]} (peek stack)
-              stack*                     (pop stack)]
-          (if (unresolved? existing)
-            (let [node (<? (resolve-if-novel conn existing t novelty remove-preds))]
-              (if (index/leaf? node)
-                (recur stack* (conj result node))
-                (let [child-entries (extract-child-novelty node novelty)
-                      stack**       (-> stack*
-                                        (conj {:existing node, :novelty novelty})
-                                        (into child-entries))]
-                  (recur stack** result))))
-            (recur stack* (conj result existing))))))))
-
-(defn split-overflow-leaf
-  [{:keys [flakes leftmost?] :as leaf}]
-  (let [target-size (/ *overflow-bytes* 2)]
-    (loop [[f & r]   flakes
-           cur-size  0
-           cur-first f
-           leaves    []]
-      (if (empty? r)
-        leaves
-        (let [new-size (-> f flake/size-flake (+ cur-size))]
-          (if (> new-size target-size)
-            (let [subrange (flake/subrange flakes >= cur-first < f)
-                  new-leaf (-> leaf
-                               (assoc :flakes subrange
-                                      :first-flake cur-first
-                                      :rhs f
-                                      :leftmost? (and (empty? leaves)
-                                                      leftmost?))
-                               (dissoc :id))]
-              (recur r 0 f (conj leaves new-leaf)))
-            (recur r new-size cur-first leaves)))))))
+  (go
+    (let [index-root   (get db idx)
+          root-node    (<? (resolve-if-novel conn index-root t novelty-root remove-preds))
+          novelty-root (get novelty idx)]
+      (loop [stack  [root-node]
+             result []]
+        (if (empty? stack)
+          result
+          (let [node   (peek stack)
+                stack* (pop stack)]
+            (if (expanded? node)
+              (recur stack* (conj result node))
+              (let [children (<? (resolve-children conn node t novelty-root remove-preds))
+                    stack**  (-> stack*
+                                 (conj (mark-expanded node))
+                                 (into children))]
+                (recur stack** result)))))))))
 
 (defn rebalance-leaf
-  [leaf]
-  (if (-> leaf :flakes flake/size-bytes overflow?)
-    (split-overflow-leaf leaf)
+  [{:keys [flakes leftmost?] :as leaf}]
+  (if (-> flakes flake/size-bytes overflow?)
+    (let [target-size (/ *overflow-bytes* 2)]
+      (loop [[f & r]   flakes
+             cur-size  0
+             cur-first f
+             leaves    []]
+        (if (empty? r)
+          leaves
+          (let [new-size (-> f flake/size-flake (+ cur-size))]
+            (if (> new-size target-size)
+              (let [subrange (flake/subrange flakes >= cur-first < f)
+                    new-leaf (-> leaf
+                                 (assoc :flakes subrange
+                                        :first-flake cur-first
+                                        :rhs f
+                                        :leftmost? (and (empty? leaves)
+                                                        leftmost?))
+                                 (dissoc :id))]
+                (recur r 0 f (conj leaves new-leaf)))
+              (recur r new-size cur-first leaves))))))
     [leaf]))
 
 (defn rebalance-branch
@@ -192,8 +207,8 @@
       (persistent! result)
       (if (index/leaf? node)
         (let [balanced-leaves (rebalance-leaf node)
-              result*         (reduce (fn [res [fflake leaf]]
-                                        (assoc! res fflake leaf))
+              result*         (reduce (fn [res {:keys [first-flake] :as leaf}]
+                                        (assoc! res first-flake leaf))
                                       result balanced-leaves)]
           (recur rst result*))
         (let [{:keys [first-flake rhs]} node
@@ -265,129 +280,12 @@
           indexed-db)
         db)))))
 
-(defn index-root
-  "Indexes an index-type root (one of fluree.db.index/types).
-  Progress atom tracks progress and retains list of garbage indexes."
-  ([db progress-atom idx-type]
-   (index-root db progress-atom idx-type #{}))
-  ([db progress-atom idx-type remove-preds]
-   (go-try
-    (assert (index/types  idx-type) (str "Reindex attempt on unknown index type: " idx-type))
-    (let [{:keys [conn novelty block t network dbid]} db
-          idx-novelty (get novelty idx-type)
-          dirty?      (or (not (empty? idx-novelty)) remove-preds)
-          idx-root    (get db idx-type)]
-      (if-not dirty?
-        idx-root
-        (do
-          ;; add main index node key to garbage for collection
-          (add-garbage (:id idx-root) false progress-atom)
-          (<? (index-branch conn network dbid idx-root idx-novelty block t nil progress-atom remove-preds))))))))
-
 ;; TODO - should track new index segments and if failure, garbage collect them
-
-
-(defn index
-  "Write each index type, writes happen from right to left in the tree
-  so we know the 'rhs' value of each node going into it."
-  ([db]
-   (index db {:status "ready"}))
-  ([db {:keys [status message ecount remove-preds]}]
-   (go-try
-     (let [{:keys [novelty block t network dbid]} db
-           db-dirty?    (or (some #(not-empty (get novelty %)) index/types)
-                            remove-preds)
-           novelty-size (:size novelty)
-           progress     (atom {:garbage   []                ;; hold keys of old index segments we can garbage collect
-                               :size      novelty-size
-                               :completed 0})
-           start-time   (Instant/now)]
-       (log/info (str "Index Update begin at: " start-time) {:network      network
-                                                             :dbid         dbid
-                                                             :t            t
-                                                             :block        block
-                                                             :novelty-size novelty-size})
-       (if-not db-dirty?
-         db
-         (let [spot-ch    (index-root db progress :spot)    ;; indexes run in parallel
-               psot-ch    (index-root db progress :psot)
-               post-ch    (index-root db progress :post remove-preds)
-               opst-ch    (index-root db progress :opst)
-               tspo-ch    (index-root db progress :tspo)
-               indexed-db (-> db
-                              (assoc :spot (<? spot-ch)
-                                     :psot (<? psot-ch)
-                                     :post (<? post-ch)
-                                     :opst (<? opst-ch)
-                                     :tspo (<? tspo-ch))
-                              (update-in [:novelty :spot] empty) ;; retain sort order of indexes
-                              (update-in [:novelty :psot] empty)
-                              (update-in [:novelty :post] empty)
-                              (update-in [:novelty :opst] empty)
-                              (update-in [:novelty :tspo] empty)
-                              (assoc-in [:novelty :size] 0)
-                              (assoc-in [:stats :indexed] block))]
-           ;; wait until confirmed writes before returning
-           ;; TODO - ideally issue garbage/root writes to RAFT together as a tx, currently requires waiting for both through raft sync
-           (<? (storage/write-garbage indexed-db @progress))
-           (<? (storage/write-db-root indexed-db ecount))
-           (log/info (str "Index Update end at: " (Instant/now)) {:network      network
-                                                                  :dbid         dbid
-                                                                  :block        block
-                                                                  :t            t
-                                                                  :idx-duration (- (.toEpochMilli (Instant/now))
-                                                                                   (.toEpochMilli start-time))})
-           indexed-db))))))
-
 
 (defn novelty-min
   "Given a db session, returns minimum novelty threshold for reindexing."
   [session]
   (-> session :conn :meta :novelty-min))
-
-
-(defn index*
-  ([session {:keys [remove-preds] :as opts}]
-   (go-try
-     (if (session/indexing? session)
-       false
-       (let [latest-db     (<? (session/current-db session))
-             novelty-size  (get-in latest-db [:novelty :size])
-             novelty-min   (novelty-min session)
-             remove-preds? (and (not (nil? remove-preds)) (not (empty? remove-preds)))
-             needs-index?  (or remove-preds? (>= novelty-size novelty-min))]
-         (if needs-index?
-           ;; kick off indexing with this DB
-           (<? (index* session latest-db opts))
-           ;; no index needed, return false
-           false)))))
-  ([session db opts]
-   (go-try
-     (let [{:keys [conn block network dbid]} db
-           last-index (session/indexed session)]
-       (cond
-         (and last-index (<= block last-index))
-         (do
-           (log/info "Index called on DB but last index isn't older."
-                     {:last-index last-index :block block :db (pr-str db) :session (pr-str session)})
-           false)
-
-         (session/acquire-indexing-lock! session block)
-         (let [updated-db (<? (index db opts))
-               group      (-> updated-db :conn :group)]
-           ;; write out index point
-           (<? (txproto/write-index-point-async group updated-db))
-           (session/clear-db! session)                      ;; clear db cache to force reload
-           (session/release-indexing-lock! session block)   ;; free up our lock
-           (<? (index* session opts))                       ;; run a new index check in case we need to start another one immediately
-           true)
-
-         :else
-         (do
-           (log/warn "Indexing process failed to obtain index lock. Extremely Unusual."
-                     {:network network :db (pr-str db) :block block :indexing? (session/indexing? session)})
-           false))))))
-
 
 ;;; =====================================
 ;;;
