@@ -278,7 +278,7 @@
   (str/split s #","))
 
 
-(defn- storage-type
+(defn- env-storage-type
   [env]
   (-> env :fdb-storage-type str/lower-case keyword))
 
@@ -327,7 +327,7 @@
 
 (defn- get-serializer
   [env]
-  (let [typ        (storage-type env)
+  (let [typ        (env-storage-type env)
         serde-type (case typ
                      :memory :none
                      ;; else
@@ -378,11 +378,11 @@
   "Once we remove support for :fdb-storage-file-directory, replace
   file-storage-path with this fn, adopt its docstring, and make it public."
   [type env]
-  (when (= :file (storage-type env))
-    (let [type-kw        (keyword (str "fdb-storage-file-" (name type) "-path"))
-          append-slash   #(str % "/")
-          config-dir     (:fdb-storage-file-root env)
-          canonical-dir  (canonicalize-path config-dir)]
+  (when (= :file (env-storage-type env))
+    (let [type-kw       (keyword (str "fdb-storage-file-" (name type) "-path"))
+          append-slash  #(str % "/")
+          config-dir    (:fdb-storage-file-root env)
+          canonical-dir (canonicalize-path config-dir)]
       (->> (type-kw env)
            (io/file canonical-dir)
            .toString
@@ -393,7 +393,7 @@
   "Returns the full canonicalized path for local FS storage of the given type.
   Returns nil if FS storage isn't being used."
   [type env]
-  (when (= :file (storage-type env))
+  (when (= :file (env-storage-type env))
     (if (= :ledger (keyword type))
       (if-let [old-ledger-dir (:fdb-storage-file-directory env)]
         (do
@@ -412,7 +412,7 @@
   (let [encryption-key           (encryption-secret->key settings)
         dev?                     (= "dev" (some-> settings :fdb-mode str/lower-case))
         is-transactor?           (boolean (#{"dev" "ledger"} (some-> settings :fdb-mode str/lower-case)))
-        storage-type             (storage-type settings)
+        storage-type             (env-storage-type settings)
         s3-conn                  (some-> settings :fdb-storage-s3-bucket s3store/connect)
         file-ledger-storage-path (file-storage-path :ledger settings)
         _                        (log/debug "generate-conn-settings file-ledger-storage-path:" file-ledger-storage-path)
@@ -548,7 +548,7 @@
                                                                (into %1 (str/split %2 #","))
                                                                (conj %1 %2)) []))))
         encryption-key           (encryption-secret->key settings)
-        storage-type             (-> settings :fdb-storage-type str/lower-case keyword)
+        storage-type             (env-storage-type settings)
         s3-conn                  (some-> settings :fdb-storage-s3-bucket s3store/connect)
         file-ledger-storage-path (file-storage-path :ledger settings)
         file-group-storage-path  (file-storage-path :group settings)
@@ -638,6 +638,7 @@
      :open-api              (-> settings :fdb-api-open env-boolean)
      :log-directory         (-> settings :fdb-group-log-directory canonicalize-path) ;; where to store raft logs for the group
      :snapshot-path         (:fdb-group-snapshot-path settings) ;; where in storage to store raft snapshots
+     :storage-type          storage-type
      :storage-ledger-write  storage-ledger-write
      :storage-ledger-read   storage-ledger-read
      :storage-ledger-rename storage-ledger-rename
