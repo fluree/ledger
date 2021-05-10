@@ -77,7 +77,7 @@
           (if (or (> block to-block) (nil? block-data))
             (do (log/info (str "-->> Forked db index finished: " ledger " block: " (dec block)))
                 (if (> (get-in db [:novelty :size]) 0)
-                  (->> (async/<! (indexing/index db "ready" nil))
+                  (->> (async/<! (indexing/refresh db "ready" nil))
                        (txproto/write-index-point-async (-> db :conn :group))
                        (async/<!))
                   db))
@@ -86,7 +86,7 @@
                   novelty-size (get-in db* [:novelty :size])]
               (log/info (str "  -> Reindex db: " ledger " block: " block " containing " (count flakes) " flakes. Novelty size: " novelty-size "."))
               (if (>= novelty-size max-novelty)
-                (recur (inc block) (let [indexed-db (async/<! (indexing/index db*))]
+                (recur (inc block) (let [indexed-db (async/<! (indexing/refresh db*))]
                                      (async/<!! (txproto/write-index-point-async (-> indexed-db :conn :group) indexed-db))
                                      indexed-db))
                 (recur (inc block) db*)))))))))
@@ -183,7 +183,7 @@
                        block (inc closest-index)]
                   (let [block-data (<? (storage/read-block conn fork-network fork-ledger-id block))]
                     (if (or (> block to-block*) (nil? block-data))
-                      (let [indexed-db (async/<!! (indexing/index db))]
+                      (let [indexed-db (async/<!! (indexing/refresh db))]
                         (async/<! (txproto/write-index-point-async (:group conn) indexed-db))
                         indexed-db)
                       (recur (<? (dbproto/-with db block (:flakes block-data))) (inc block))))))))
@@ -205,5 +205,3 @@
 ;      (storage/write-block conn network dbid block))
 ;    ;; now generate an index for the DB. This will return the final DB
 ;    (reindex/reindex conn network dbid "ready" nil)))
-
-

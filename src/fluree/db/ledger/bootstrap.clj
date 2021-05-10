@@ -247,7 +247,7 @@
           ;; todo - should create a new command to register new DB that first checks raft
           _             (<? (txproto/register-genesis-block-async (:group conn) network dbid))
           ;block-point-success? (async/<! (txproto/propose-new-block-async (:group conn) network dbid block-data))
-          indexed-db    (<? (indexing/index new-db))]
+          indexed-db    (<? (indexing/refresh new-db))]
       ;; write out new index point
       (<? (txproto/initialized-ledger-async (-> indexed-db :conn :group) txid (:network indexed-db) (:dbid indexed-db)
                                             (:block indexed-db) (:fork indexed-db) (get-in indexed-db [:stats :indexed])))
