@@ -1,7 +1,7 @@
 {:deps {org.clojure/clojure {:mvn/version "1.10.3"}
         org.clojure/data.xml {:mvn/version "0.2.0-alpha6"}
         com.fluree/db {:git/url "https://github.com/fluree/db"
-                       :sha "b31ce866fd14ee21fc7fb2fcd5ef1710285bc4d5"}
+                       :sha "a6b270ddae72a8ba8f8ba67deec90149323c74a0"}
         com.fluree/raft {:mvn/version "1.0.0-beta1"}
         com.fluree/crypto {:mvn/version "0.3.5"}
 

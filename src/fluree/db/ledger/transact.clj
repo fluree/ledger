@@ -39,7 +39,7 @@
                           (throw (ex-info (format "Unable to find a current db for: %s/%s." (:network session) (:dbid session))
                                           {:status 400 :error :db/invalid-transaction})))
           block         (inc (:block db-before))
-          block-instant (Instant/now)
+          block-instant (util/current-time-millis)
           prev-hash     (<? (fql/query db-before {:selectOne "?hash"
                                                   :where     [["?t" "_block/number" (:block db-before)]
                                                               ["?t" "_block/hash" "?hash"]]}))
@@ -58,7 +58,7 @@
              cmd-types        #{}
              txns             {}
              remove-preds-acc #{}]
-        (let [start-time    (System/currentTimeMillis)
+        (let [start-time    (util/current-time-millis)
               tx-result     (<? (tx-json/transact db cmd-data next-t block-instant))
               {:keys [db-after bytes fuel flakes tempids auth authority status error errors
                       hash remove-preds]} tx-result
@@ -76,7 +76,7 @@
                                                           :bytes     bytes
                                                           :id        (:id cmd-data)
                                                           :fuel      fuel
-                                                          :duration  (str (- (System/currentTimeMillis) start-time) "ms")
+                                                          :duration  (str (- (util/current-time-millis) start-time) "ms")
                                                           :auth      auth
                                                           :hash      hash
                                                           :authority authority
@@ -87,7 +87,7 @@
                    remove-preds*)
             (let [block-t             (dec next-t)
                   prevHash-flake      (flake/->Flake block-t const/$_block:prevHash prev-hash block-t true nil)
-                  instant-flake       (flake/->Flake block-t const/$_block:instant (.toEpochMilli ^Instant block-instant) block-t true nil)
+                  instant-flake       (flake/->Flake block-t const/$_block:instant block-instant block-t true nil)
                   number-flake        (flake/->Flake block-t const/$_block:number block block-t true nil)
                   tx-flakes           (mapv #(flake/->Flake block-t const/$_block:transactions % block-t true nil) (range block-t before-t))
                   block-flakes        (conj tx-flakes prevHash-flake instant-flake number-flake)
@@ -140,7 +140,7 @@
                                        :t           block-t
                                        :hash        hash
                                        :sigs        sigs
-                                       :instant     (.toEpochMilli ^Instant block-instant)
+                                       :instant     block-instant
                                        :flakes      (into [] all-flakes)
                                        :block-bytes (- (get-in db-after* [:stats :size]) (get-in db-before [:stats :size]))
                                        :txns        txns*}]
