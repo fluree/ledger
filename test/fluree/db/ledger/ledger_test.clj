@@ -13,12 +13,15 @@
             [fluree.db.ledger.docs.query.analytical-query :as analytical-query]
             [fluree.db.ledger.docs.query.sparql :as sparql]
             [fluree.db.ledger.docs.query.graphql :as graphql]
+            [fluree.db.ledger.docs.query.sql-query :as sql]
 
             [fluree.db.ledger.docs.smart-functions.intro :as intro]
             [fluree.db.ledger.docs.smart-functions.predicate-spec :as predicate-spec]
             [fluree.db.ledger.docs.smart-functions.collection-spec :as collection-spec]
             [fluree.db.ledger.docs.smart-functions.rule-example :as rule-example]
             [fluree.db.ledger.docs.smart-functions.in-transactions :as in-transactions]
+
+            [fluree.db.ledger.docs.transact.transactions :as transactions]
 
             [fluree.db.ledger.docs.identity.auth :as auth]
             [fluree.db.ledger.docs.identity.signatures :as signatures]
@@ -72,8 +75,11 @@
              (analytical-query/analytical-query-test)
              (sparql/sparql-test)
              (graphql/graphql-test)
+             (sql/query-tests)
 
-             ;; 4- Transact
+             ;; 4- Transactions
+             (test/print-banner "Transaction Tests")
+             (transactions/transaction-basics)
 
              ;; 5- Identity
              (test/print-banner "Identity Tests")
