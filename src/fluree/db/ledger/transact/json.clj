@@ -323,14 +323,6 @@
               (async/>! res-chan acc)
               (let [pid (pred-info :id)]
                 (cond
-                  ;; delete should have no tempids, so can register the final flakes in tx-state
-                  delete?
-                  (-> acc
-                      (update :_final-flakes into (if (pred-info :multi)
-                                                    (<? (tx-retract/multi _id** pid obj* tx-state))
-                                                    (<? (tx-retract/flake _id** pid obj* tx-state))))
-                      (recur r))
-
                   ;; deletion/nil - if tempid, then just ignore, else remove all existing values for s+p
                   (= :delete obj*)
                   (if tempid?
@@ -338,6 +330,14 @@
                     (-> acc
                         (update :_final-flakes into (<? (tx-retract/flake _id** pid nil tx-state)))
                         (recur r)))
+
+                  ;; delete should have no tempids, so can register the final flakes in tx-state
+                  delete?
+                  (-> acc
+                      (update :_final-flakes into (if (pred-info :multi)
+                                                    (<? (tx-retract/multi _id** pid obj* tx-state))
+                                                    (<? (tx-retract/flake _id** pid obj* tx-state))))
+                      (recur r))
 
                   ;; multi could have a tempid as one of the values, need to look at each independently
                   (pred-info :multi)
