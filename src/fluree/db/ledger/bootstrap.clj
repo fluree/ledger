@@ -305,10 +305,12 @@
    {:_id     ["_collection" const/$_predicate]
     :name    "_predicate"
     :doc     "Schema predicate definition"
+    :baseIRI "http://flur.ee/ns/ledger/Predicate#"
     :version "1"}
    {:_id     ["_collection" const/$_collection]
     :name    "_collection"
     :doc     "Schema collections list"
+    :baseIRI "http://flur.ee/ns/ledger/Collection#"
     :version "1"}
    {:_id     ["_collection" const/$_tag]
     :name    "_tag"
@@ -317,6 +319,7 @@
    {:_id     ["_collection" const/$_fn]
     :name    "_fn"
     :doc     "Database functions"
+    :baseIRI "http://flur.ee/ns/ledger/Function#"
     :version "1"}
    {:_id     ["_collection" const/$_user]
     :name    "_user"

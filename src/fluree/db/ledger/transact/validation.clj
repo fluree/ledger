@@ -13,7 +13,8 @@
             [fluree.db.permissions-validate :as perm-validate]
             [fluree.db.flake :as flake]
             [fluree.db.api :as fdb]
-            [fluree.db.ledger.transact.tempid :as tempid])
+            [fluree.db.ledger.transact.tempid :as tempid]
+            [fluree.db.dbfunctions.js :as js])
   (:import (fluree.db.flake Flake)))
 
 ;;; functions to validate transactions
@@ -59,15 +60,29 @@
   [fn-subjects db promise fn-type]
   (async/go
     (try
-      (let [fn-str    (->> fn-subjects                      ;; combine multiple functions with an (and ...) wrapper
+      (let [;; TODO - need to refactor function languages so logic happens upstream... for now
+            languages (->> fn-subjects
+                           (map #(query-range/index-range db :spot = [% const/$_fn:language]))
+                           async/merge
+                           (async/into [])
+                           (<?)
+                           (apply concat)
+                           (into #{}))
+            language  (cond
+                        (empty? languages) :lisp
+                        (not= 1 (count languages)) (throw (ex-info "Cannot combine function types for now." {}))
+                        :else :javascript)
+            fn-code   (->> fn-subjects                      ;; combine multiple functions with an (and ...) wrapper
                            (map #(query-range/index-range db :spot = [% const/$_fn:code]))
                            async/merge
                            (async/into [])
                            (<?)
-                           (map #(if (util/exception? %) (throw %) (.-o ^Flake (first %))))
-                           dbfunctions/combine-fns)
-            fn-parsed (<? (dbfunctions/parse-fn db fn-str fn-type nil))]
-        (deliver promise fn-parsed))
+                           (map #(if (util/exception? %) (throw %) (.-o ^Flake (first %)))))
+            fn-parsed (if (= :lisp language)
+                        (<? (dbfunctions/parse-fn db (dbfunctions/combine-fns fn-code) fn-type nil))
+                        (map (comp eval :fn js/parse) fn-code))]
+        (deliver promise {:language language
+                          :f        fn-parsed}))
       (catch Exception e (deliver promise e)))))
 
 
@@ -203,15 +218,32 @@
       (let [fuel-atom (atom {:stack   []
                              :credits (:credits @fuel)
                              :spent   0})
-            f         @fn-promise
-            res       (f {:db      @db-after
-                          :sid     sid
-                          :pid     pid
-                          :o       o
-                          :flakes  [flake]
-                          :auth_id auth
-                          :state   fuel-atom
-                          :t       t})]
+            {:keys [language f]} @fn-promise
+            res       (if (= :lisp language)
+                        (f {:db      @db-after
+                            :sid     sid
+                            :pid     pid
+                            :o       o
+                            :flakes  [flake]
+                            :auth_id auth
+                            :state   fuel-atom
+                            :t       t})
+                         (async/go
+                          (loop [[f* & r] f]
+                            (if (nil? f*)
+                              true
+                              (let [res (async/<! (f* {"db"      @db-after
+                                                       "sid"     sid
+                                                       "pid"     pid
+                                                       "o"       o
+                                                       "flakes"  [flake]
+                                                       "auth_id" auth
+                                                       "state"   fuel-atom
+                                                       "t"       t}))]
+                                (cond
+                                  (util/exception? res) res
+                                  (boolean res) (recur r)
+                                  :else res))))))]
         ;; update main tx fuel count with the fuel spent to execute this tx function
         (update-tx-spent-fuel fuel (:spent @fuel-atom))
 
@@ -273,14 +305,30 @@
           fuel-atom  (atom {:stack   []
                             :credits (:credits @fuel)
                             :spent   0})
-          f          @pred-tx-fn
-          res        (f {:db      db-root
-                         :pid     pid
-                         :instant instant
-                         :flakes  pid-flakes
-                         :auth_id auth
-                         :state   fuel-atom
-                         :t       t})]
+          {:keys [language f]} @pred-tx-fn
+          res        (if (= :lisp language)
+                       (f {:db      db-root
+                           :pid     pid
+                           :instant instant
+                           :flakes  pid-flakes
+                           :auth_id auth
+                           :state   fuel-atom
+                           :t       t})
+                       (async/go
+                         (loop [[f* & r] f]
+                           (if (empty? r)
+                             true
+                             (let [res (async/<! (f* {"db"      db-root
+                                                      "pid"     pid
+                                                      "instant" instant
+                                                      "flakes"  pid-flakes
+                                                      "auth_id" auth
+                                                      "state"   fuel-atom
+                                                      "t"       t}))]
+                               (cond
+                                 (util/exception? res) res
+                                 res (recur r)
+                                 :else res))))))]
       ;; update main tx fuel count with the fuel spent to execute this tx function
       (update-tx-spent-fuel fuel (:spent @fuel-atom))
 
@@ -371,14 +419,30 @@
           (let [fuel-atom (atom {:stack   []
                                  :credits (:credits @fuel)
                                  :spent   0})
-                f         @c-spec-fn
-                res       (f {:db      @db-after
-                              :instant instant
-                              :sid     sid
-                              :flakes  subject-flakes
-                              :auth_id auth
-                              :t       t
-                              :state   fuel-atom})
+                {:keys [language f]} @c-spec-fn
+                res        (if (= :lisp language)
+                             (f {:db      @db-after
+                                 :instant instant
+                                 :sid     sid
+                                 :flakes  subject-flakes
+                                 :auth_id auth
+                                 :t       t
+                                 :state   fuel-atom})
+                             (async/go
+                               (loop [[f* & r] f]
+                                 (if (empty? r)
+                                   true
+                                   (let [res (async/<! (f* {"db"      @db-after
+                                                            "sid"     sid
+                                                            "instant" instant
+                                                            "flakes"  subject-flakes
+                                                            "auth_id" auth
+                                                            "state"   fuel-atom
+                                                            "t"       t}))]
+                                     (cond
+                                       (util/exception? res) res
+                                       res (recur r)
+                                       :else res))))))
                 res*      (or (if (channel? res) (async/<! res) res))]
 
             ;; update main tx fuel count with the fuel spent to execute this tx function

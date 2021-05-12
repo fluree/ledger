@@ -306,7 +306,7 @@
 
           cmd-data      (fdb/tx->command ledger tx private-key {:auth auth})
           flakes'       (map flake/parts->Flake flakes)
-          block-instant (Instant/now)
+          block-instant (util/current-time-millis)
           db-with       (<? (dbproto/-forward-time-travel db flakes'))
           next-t        (- (:t db-with) 1)
           session       (session/session conn ledger)
