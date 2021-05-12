@@ -607,6 +607,7 @@
     :doc    "Schema collection name"
     :type   "string"
     :unique true}
+   ;; TODO - likely remove _collection/equivalentClass below
    {:_id    ["_predicate" const/$_collection:equivalentClass]
     :name   "_collection/equivalentClass"
     :doc    "Any number of unique alias' for collection that conforms to _collection/name rules."

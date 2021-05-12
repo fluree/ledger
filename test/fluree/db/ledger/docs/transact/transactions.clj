@@ -1,12 +1,9 @@
 (ns fluree.db.ledger.docs.transact.transactions
   (:require [clojure.test :refer :all]
             [fluree.db.ledger.docs.getting-started.basic-schema :as basic]
-            [fluree.db.ledger.main-test :as test]
+            [fluree.db.ledger.test-helpers :as test]
             [fluree.db.api :as fdb]
-            [clojure.core.async :as async]
-            [clojure.java.io :as io]
-            [clojure.tools.reader.edn :as edn]
-            [fluree.db.util.log :as log]))
+            [clojure.core.async :as async]))
 
 (use-fixtures :once test/test-system)
 
@@ -20,18 +17,6 @@
   []
   (:conn test/system))
 
-(defn issue-consecutive-transactions
-  ([ledger txns]
-   (issue-consecutive-transactions ledger txns {}))
-  ([ledger txns opts]
-   (let [conn (get-conn)]
-     (async/go-loop [results []
-                     [txn & r] txns]
-       (let [resp    (async/<!! (fdb/transact-async conn ledger txn opts))
-             results (conj results resp)]
-         (if r
-           (recur results r)
-           results))))))
 
 ;; Add collections
 
@@ -67,7 +52,7 @@
 
     (is (= 200 (:status collection-resp)))
     (is (= 3 (:block collection-resp)))
-    (is (= 4 (count (:tempids collection-resp))))))
+    (is (= 1 (count (:tempids collection-resp))))))
 
 (deftest transact-with-temp-ids
   (testing "Issue basic transactions with temporary ids")
@@ -95,7 +80,7 @@
         collection-resp (async/<!! (fdb/transact-async (get-conn) test/ledger-query+transact predicate-txn))]
 
    (is (= 200 (:status collection-resp)))
-   (is (and (-> collection-resp :tempids (get "person$1")) (-> collection-resp :tempids (get "_user$1"))))))
+   (is (and (-> collection-resp :tempids (get "person")) (-> collection-resp :tempids (get "_user"))))))
 
 
 (deftest upserting-data
