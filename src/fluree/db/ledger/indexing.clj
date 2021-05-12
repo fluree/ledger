@@ -37,8 +37,8 @@
   (when (and idx-key (not= :empty idx-key))
     (swap! progress-atom update :garbage (fn [g]
                                            (cond-> (conj g idx-key)
-                                                   ;; if at leaf, add history node too
-                                                   leaf? (conj (str idx-key "-his")))))))
+                                             ;; if at leaf, add history node too
+                                             leaf? (conj (str idx-key "-his")))))))
 
 (defn dirty?
   "Returns `true` if the index for `db` of type `idx` is out of date, or if `db` has
@@ -51,8 +51,7 @@
        boolean))
   ([db]
    (->> index/types
-        (map (partial dirty? db))
-        some
+        (some (partial dirty? db))
         boolean)))
 
 (defn mark-novel
@@ -100,14 +99,14 @@
 (defn resolve-if-novel
   ""
   [conn node t novelty remove-preds]
-  (let [node-novelty (index/node-subrange node t novelty)]
+  (let [node-novelty (index/novelty-subrange node t novelty)]
     (if (or (seq node-novelty) (seq remove-preds))
-      (let [out (async/chan 1 (novel-node-xf t novelty remove-preds))]
+      (let [novel-ch (async/chan 1 (novel-node-xf t novelty remove-preds))]
         (-> (dbproto/resolve conn node)
-            (async/pipe out)))
-      (let [out (async/chan 1 (map mark-unchanged))]
-        (async/put! out node)
-        out))))
+            (async/pipe novel-ch)))
+      (let [unchanged-ch (async/chan 1 (map mark-unchanged))]
+        (async/put! unchanged-ch node)
+        unchanged-ch))))
 
 (defn resolve-children
   "Resolves a branch's children in parallel, and loads data for each child only if
@@ -122,33 +121,34 @@
 
 (defn resolve-tree
   [{:keys [conn novelty block t network dbid] :as db} idx remove-preds]
-  (let [out-ch  (async/chan 64)
-        stat-ch (async/chan 1)]
+  (let [index-root   (get db idx)
+        novelty-root (get novelty idx)
+        out-ch       (async/chan 64)
+        stat-ch      (async/chan 1)]
     (go
-      (let [index-root   (get db idx)
-            novelty-root (get novelty idx)
-            root-node    (<? (resolve-if-novel conn index-root t novelty-root remove-preds))]
+      (let [root-node (<! (resolve-if-novel conn index-root t novelty-root remove-preds))]
         (loop [stack [root-node]
                stats {:idx idx, :stale []}]
           (if (empty? stack)
-            (async/close! out-ch)
+            (do (async/put! stat-ch stats)
+                (async/close! out-ch))
             (let [node   (peek stack)
                   stack* (pop stack)]
-              (if-not (expanded? node)
-                (let [children (<? (resolve-children conn node t novelty-root remove-preds))
-                      stack**  (-> stack*
-                                   (conj (mark-expanded node))
-                                   (into (rseq children)))]
-                  (recur stack** stats))
+              (if (expanded? node)
                 (let [stats* (if (novel? node)
                                (update stats :stale conj (:id node))
                                stats)]
                   (>! out-ch node)
-                  (recur stack* stats*))))))))
+                  (recur stack* stats*))
+                (let [children (<? (resolve-children conn node t novelty-root remove-preds))
+                      stack**  (-> stack*
+                                   (conj (mark-expanded node))
+                                   (into (rseq children)))]
+                  (recur stack** stats))))))))
     [out-ch stat-ch]))
 
 (defn rebalance-leaf
-  [{:keys [flakes leftmost? rhs] :as leaf}]
+  [{:keys [flakes leftmost? ciel] :as leaf}]
   (let [target-size (/ *overflow-bytes* 2)]
     (loop [[f & r]   flakes
            cur-size  0
@@ -158,8 +158,8 @@
         (let [subrange  (flake/subrange flakes >= cur-first)
               last-leaf (-> leaf
                             (assoc :flakes subrange
-                                   :first-flake cur-first
-                                   :rhs rhs)
+                                   :floor cur-first
+                                   :ciel ciel)
                             (dissoc :id :leftmost?))]
           (conj leaves last-leaf))
         (let [new-size (-> f flake/size-flake (+ cur-size))]
@@ -167,8 +167,8 @@
             (let [subrange (flake/subrange flakes >= cur-first < f)
                   new-leaf (-> leaf
                                (assoc :flakes subrange
-                                      :first-flake cur-first
-                                      :rhs f
+                                      :floor cur-first
+                                      :ciel f
                                       :leftmost? (and (empty? leaves)
                                                       leftmost?))
                                (dissoc :id))]
@@ -197,19 +197,19 @@
               (avl/split-at target-count remaining)
 
               split-point (nth remaining (inc target-count))
-              first-flake (-> child-map first key)
+              floor (-> child-map first key)
               new-branch  (assoc parent
                                  :children    child-map
-                                 :first-flake first-flake
-                                 :rhs         split-point)
+                                 :floor floor
+                                 :ciel         split-point)
               new-entry   (index/child-entry new-branch)]
           (recur (conj! new-branches new-entry) rst-map))
-        (let [first-flake (-> remaining first key)
-              rhs         (:rhs parent)
+        (let [floor (-> remaining first key)
+              ciel         (:ciel parent)
               last-child  (assoc parent
                                  :children    remaining
-                                 :first-flake first-flake
-                                 :rhs         rhs)]
+                                 :floor floor
+                                 :ciel         ciel)]
           (-> new-branches
               (conj! last-child)
               persistent!))))))
@@ -242,15 +242,13 @@
       children)))
 
 (defn descendant?
-  [{:keys [first-flake rhs] :as branch} node]
+  [{:keys [floor ciel] :as branch} node]
   (let [cmp (-> branch :config :comparator)]
-    (and (not (pos? (cmp first-flake
-                         (:first-flake node))))
-         (not (pos? (cmp (:rhs node)
-                         rhs))))))
+    (and (not (pos? (cmp floor (:floor node))))
+         (not (pos? (cmp (:ciel node) ciel))))))
 
 (defn pop-decendants
-  [{:keys [first-flake rhs] :as branch} in-stack]
+  [{:keys [floor ciel] :as branch} in-stack]
   (loop [child-nodes []
          stack       in-stack]
     (let [nxt    (peek stack)
@@ -267,12 +265,14 @@
         (recur (conj stack node))
         (let [[decendants stack*] (pop-decendants stack node)
               children (<? (write-decendants db idx node decendants))
-              branch   (assoc node :children children)]
+              branch   (assoc node
+                              :floor (-> children first key)
+                              :children children)]
           (recur (conj stack* branch))))
       (<! (write-if-novel conn network dbid idx (pop stack))))))
 
 (defn refresh-root
-  [{:keys [conn novelty block t network dbid] :as db} idx remove-preds]
+  [{:keys [conn novelty block t network dbid] :as db} remove-preds idx]
   (let [[tree-ch stat-ch] (resolve-tree db idx remove-preds)
         index-ch          (->> tree-ch
                                rebalance-leaves
@@ -287,11 +287,13 @@
       (update :stale into stale)))
 
 (defn refresh-all
-  [db]
-  (->> index/types
-       (map (partial refresh-root db))
-       async/merge
-       (async/reduce update-refresh-status {:db db, :indexes [], :stale []})))
+  ([db]
+   (refresh-all db #{}))
+  ([db remove-preds]
+   (->> index/types
+        (map (partial refresh-root db remove-preds))
+        async/merge
+        (async/reduce update-refresh-status {:db db, :indexes [], :stale []}))))
 
 (defn empty-novelty
   [db]
@@ -350,44 +352,44 @@
 (defn index*
   ([session {:keys [remove-preds] :as opts}]
    (go-try
-     (if (session/indexing? session)
-       false
-       (let [latest-db     (<? (session/current-db session))
-             novelty-size  (get-in latest-db [:novelty :size])
-             novelty-min   (novelty-min session)
-             remove-preds? (and (not (nil? remove-preds)) (not (empty? remove-preds)))
-             needs-index?  (or remove-preds? (>= novelty-size novelty-min))]
-         (if needs-index?
-           ;; kick off indexing with this DB
-           (<? (index* session latest-db opts))
-           ;; no index needed, return false
-           false)))))
+    (if (session/indexing? session)
+      false
+      (let [latest-db     (<? (session/current-db session))
+            novelty-size  (get-in latest-db [:novelty :size])
+            novelty-min   (novelty-min session)
+            remove-preds? (and (not (nil? remove-preds)) (not (empty? remove-preds)))
+            needs-index?  (or remove-preds? (>= novelty-size novelty-min))]
+        (if needs-index?
+          ;; kick off indexing with this DB
+          (<? (index* session latest-db opts))
+          ;; no index needed, return false
+          false)))))
   ([session db opts]
    (go-try
-     (let [{:keys [conn block network dbid]} db
-           last-index (session/indexed session)]
-       (cond
-         (and last-index (<= block last-index))
-         (do
-           (log/info "Index called on DB but last index isn't older."
-                     {:last-index last-index :block block :db (pr-str db) :session (pr-str session)})
-           false)
+    (let [{:keys [conn block network dbid]} db
+          last-index (session/indexed session)]
+      (cond
+        (and last-index (<= block last-index))
+        (do
+          (log/info "Index called on DB but last index isn't older."
+                    {:last-index last-index :block block :db (pr-str db) :session (pr-str session)})
+          false)
 
-         (session/acquire-indexing-lock! session block)
-         (let [updated-db (<? (refresh db opts))
-               group      (-> updated-db :conn :group)]
-           ;; write out index point
-           (<? (txproto/write-index-point-async group updated-db))
-           (session/clear-db! session)                      ;; clear db cache to force reload
-           (session/release-indexing-lock! session block)   ;; free up our lock
-           (<? (index* session opts))                       ;; run a new index check in case we need to start another one immediately
-           true)
+        (session/acquire-indexing-lock! session block)
+        (let [updated-db (<? (refresh db opts))
+              group      (-> updated-db :conn :group)]
+          ;; write out index point
+          (<? (txproto/write-index-point-async group updated-db))
+          (session/clear-db! session)                      ;; clear db cache to force reload
+          (session/release-indexing-lock! session block)   ;; free up our lock
+          (<? (index* session opts))                       ;; run a new index check in case we need to start another one immediately
+          true)
 
-         :else
-         (do
-           (log/warn "Indexing process failed to obtain index lock. Extremely Unusual."
-                     {:network network :db (pr-str db) :block block :indexing? (session/indexing? session)})
-           false))))))
+        :else
+        (do
+          (log/warn "Indexing process failed to obtain index lock. Extremely Unusual."
+                    {:network network :db (pr-str db) :block block :indexing? (session/indexing? session)})
+          false))))))
 
 ;;; =====================================
 ;;;
@@ -397,7 +399,8 @@
 
 
 (defn validate-idx-continuity
-  "Checks continuity of provided index in that the 'rhs' is equal to the first-flake of the following segment."
+  "Checks continuity of provided index in that the 'ciel' is equal to the
+  floor of the following segment."
   ([conn idx-root] (validate-idx-continuity idx-root false))
   ([conn idx-root throw?] (validate-idx-continuity idx-root throw? nil))
   ([conn idx-root throw? compare]
@@ -406,38 +409,37 @@
          last-i   (dec (count children))]
      (println "Idx children: " (inc last-i))
      (loop [i        0
-            last-rhs nil]
+            last-ciel nil]
        (let [child       (-> children (nth i) val)
              resolved    (async/<!! (dbproto/resolve conn child))
-             {:keys [id rhs leftmost?]} child
-             child-first (:first child)
-             resv-first  (first (:flakes resolved))
-             ;; If first-flake is deleted, it should STILL be the first/rhs
+             {:keys [id ciel leftmost?]} child
+             child-floor (:floor child)
+             resv-floor  (first (:flakes resolved))
+             ;; If floor is deleted, it should STILL be the first/ciel
              ;; for unresolved nodes to maintain continuity
-             continuous? (= last-rhs child-first)]
-         #_(println)
+             continuous? (= last-ciel child-floor)]
          (println "->>" id)
-         (println "         first: " child-first)
-         (println "    first-resv: " resv-first)
-         (println "      last-rhs: " last-rhs)
+         (println "         floor: " child-floor)
+         (println "    floor-resv: " resv-floor)
+         (println "      last-ciel: " last-ciel)
          (println "     leftmost?: " leftmost?)
-         (println "           rhs: " rhs)
+         (println "           ciel: " ciel)
          (when (and compare
-                    child-first rhs)
-           (println "         comp: " (compare child-first rhs)))
+                    child-floor ciel)
+           (println "         comp: " (compare child-floor ciel)))
          (when (and throw?
                     (not (zero? i))
                     (not continuous?))
            (throw (Exception. (str "NOT CONTINUOUS!!!: " (pr-str {:id             id
                                                                   :idx            i
-                                                                  :last-rhs       last-rhs
-                                                                  :first          child-first
-                                                                  :first-resolved resv-first
-                                                                  :rhs            rhs
+                                                                  :last-ciel      last-ciel
+                                                                  :floor          child-floor
+                                                                  :floor-resolved resv-floor
+                                                                  :ciel           ciel
                                                                   :leftmost?      leftmost?})))))
          (if (= i last-i)
            (println "Done validating idx-continuity")
-           (recur (inc i) (:rhs child))))))))
+           (recur (inc i) (:ciel child))))))))
 
 
 (comment

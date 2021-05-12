@@ -13,7 +13,7 @@
 
 
 (defn v1->v2
-  "Modifies index segments where the 'rhs' does not match the next segment's first-flake"
+  "Modifies index segments where the 'ciel' does not match the next segment's floor"
   [conn]
   (go-try
     (let [dbs        (txproto/ledger-list (:group conn))    ;; two-tuples of [network dbid]
@@ -36,7 +36,7 @@
                         branch-data  (<? (storage/read-branch conn root-idx-key))
                         new-children (loop [[child & r] (:children branch-data)
                                             i        0
-                                            last-rhs nil
+                                            last-ciel nil
                                             acc      []]
                                        (if-not child
                                          acc
@@ -48,15 +48,15 @@
                                                              (assoc child :first left-flake))
 
                                                            ;; need to update child, out of sync
-                                                           (and last-rhs (not= last-rhs (:first child)))
+                                                           (and last-ciel (not= last-ciel (:first child)))
                                                            (do
                                                              (log/info "   -> Updating index segment: " (:id child))
-                                                             (assoc child :first last-rhs))
+                                                             (assoc child :first last-ciel))
 
                                                            ;; no change
                                                            :else
                                                            child)]
-                                           (recur r (inc i) (:rhs child) (conj acc new-child)))))
+                                           (recur r (inc i) (:ciel child) (conj acc new-child)))))
                         branch-data* (assoc branch-data :children new-children)]
                     (<? (storage/write-branch-data conn root-idx-key branch-data*))))))))
         (log/info "Migration complete."))

@@ -14,7 +14,7 @@
    If children are branches, recursively deletes them."
   [conn idx-branch]
   (go-try
-    (let [idx      (<? (dbproto/-resolve idx-branch))
+    (let [idx      (<? (dbproto/resolve conn idx-branch))
           children (vals (:children idx))
           leaf?    (:leaf (first children))]
       (doseq [child children]

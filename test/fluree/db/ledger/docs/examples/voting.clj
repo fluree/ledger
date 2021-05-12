@@ -23,19 +23,19 @@
 ;; Add schema
 
 (deftest add-schema
-  (testing "Add schema for the voting app")
-  (let [filename    "../test/fluree/db/ledger/Resources/Voting/schema.edn"
-        txn         (edn/read-string (slurp (io/resource filename)))
-        schema-resp (async/<!! (fdb/transact-async (basic/get-conn) test/ledger-voting txn))]
+  (testing "Add schema for the voting app"
+    (let [filename    "../test/fluree/db/ledger/Resources/Voting/schema.edn"
+          txn         (edn/read-string (slurp (io/resource filename)))
+          schema-resp (async/<!! (fdb/transact-async (basic/get-conn) test/ledger-voting txn))]
 
-    ;; status should be 200
-    (is (= 200 (:status schema-resp)))
+      ;; status should be 200
+      (is (= 200 (:status schema-resp)))
 
-    ;; block should be 2
-    (is (= 2 (:block schema-resp)))
+      ;; block should be 2
+      (is (= 2 (:block schema-resp)))
 
-    ;; there should be 12 tempids
-    (is (= 12 (count (:tempids schema-resp))))))
+      ;; there should be 12 tempids
+      (is (= 12 (count (:tempids schema-resp)))))))
 
 ;; Add sample data
 
@@ -227,9 +227,3 @@
   (create-vote-smart-function)
   (invalid-change)
   (add-votes))
-
-
-
-
-
-

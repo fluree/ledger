@@ -59,36 +59,36 @@
 ;; Add predicates
 
 (deftest add-predicates
-  (testing "Add predicates for the chat app")
-  (let [filename  "../test/fluree/db/ledger/Resources/ChatApp/chatPreds.edn"
-        predicate-txn   (edn/read-string (slurp (io/resource filename)))
-        collection-resp  (async/<!! (fdb/transact-async (get-conn) test/ledger-chat predicate-txn))]
+  (testing "Add predicates for the chat app"
+    (let [filename  "../test/fluree/db/ledger/Resources/ChatApp/chatPreds.edn"
+          predicate-txn   (edn/read-string (slurp (io/resource filename)))
+          collection-resp  (async/<!! (fdb/transact-async (get-conn) test/ledger-chat predicate-txn))]
 
-    ;; status should be 200
-    (is (= 200 (:status collection-resp)))
+      ;; status should be 200
+      (is (= 200 (:status collection-resp)))
 
-    ;; block should be 3
-    (is (= 3 (:block collection-resp)))
+      ;; block should be 3
+      (is (= 3 (:block collection-resp)))
 
-    ;; there should be 16 tempids
-    (is (= 17 (count (:tempids collection-resp))))))
+      ;; there should be 16 tempids
+      (is (= 17 (count (:tempids collection-resp)))))))
 
 ;; Add sample data
 
 (deftest add-sample-data
-  (testing "Add sample data for the chat app")
-  (let [filename  "../test/fluree/db/ledger/Resources/ChatApp/chatAppData.edn"
-        predicate-txn   (edn/read-string (slurp (io/resource filename)))
-        collection-resp  (async/<!! (fdb/transact-async (get-conn) test/ledger-chat predicate-txn))]
+  (testing "Add sample data for the chat app"
+    (let [filename  "../test/fluree/db/ledger/Resources/ChatApp/chatAppData.edn"
+          predicate-txn   (edn/read-string (slurp (io/resource filename)))
+          collection-resp  (async/<!! (fdb/transact-async (get-conn) test/ledger-chat predicate-txn))]
 
-    ;; status should be 200
-    (is (= 200 (:status collection-resp)))
+      ;; status should be 200
+      (is (= 200 (:status collection-resp)))
 
-    ;; block should be 4
-    (is (= 4 (:block collection-resp)))
+      ;; block should be 4
+      (is (= 4 (:block collection-resp)))
 
-    ;; there should be 17 tempids
-    (is (= 17 (count (:tempids collection-resp))))))
+      ;; there should be 17 tempids
+      (is (= 17 (count (:tempids collection-resp)))))))
 
 
 (deftest graphql-txn
@@ -103,8 +103,8 @@
 
 
 (deftest basic-schema-test
-  (testing "Setting up the schema and sample data in the Getting Started section")
-  (add-collections*)
-  (add-predicates)
-  (add-sample-data)
-  (graphql-txn))
+  (testing "Setting up the schema and sample data in the Getting Started section"
+    (add-collections*)
+    (add-predicates)
+    (add-sample-data)
+    (graphql-txn)))
