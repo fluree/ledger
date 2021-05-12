@@ -331,30 +331,6 @@
                                                     (<? (tx-retract/flake _id** pid obj* tx-state))))
                       (recur r))
 
-                  ;; multi could have a tempid as one of the values, need to look at each independently
-                  (pred-info :multi)
-                  (let [acc** (loop [acc* acc
-                                     [o & r] obj*]
-                                (if (nil? o)
-                                  acc*
-                                  (let [new-flake (flake/->Flake _id** pid o t true nil)]
-                                    (cond
-                                      (= :delete obj*)
-                                      (throw (ex-info (str "Multi-cardinality values with nil not allowed in _id: " _id)
-                                                      {:status 400 :error :db/invalid-transaction}))
-
-                                      (or tempid? (tempid/TempId? o))
-                                      (-> acc*
-                                          (update :_temp-multi-flakes conj new-flake)
-                                          (recur r))
-
-                                      ;; multi-cardinality we only care if a flake matches exactly
-                                      :else
-                                      (let [retract-flake (first (<? (tx-retract/flake _id** pid o tx-state)))
-                                            final-flakes  (add-singleton-flake (:_final-flakes acc*) new-flake retract-flake pred-info tx-state)]
-                                        (recur (assoc acc* :_final-flakes final-flakes) r))))))]
-                    (recur acc** r))
-
                   ;; deletion/nil - if tempid, then just ignore, else remove all existing values for s+p
                   (= :delete obj*)
                   (if tempid?
@@ -362,6 +338,23 @@
                     (-> acc
                         (update :_final-flakes into (<? (tx-retract/flake _id** pid nil tx-state)))
                         (recur r)))
+
+                  ;; multi could have a tempid as one of the values, need to look at each independently
+                  (pred-info :multi)
+                  (let [acc** (loop [acc* acc
+                                     [o & r] obj*]
+                                (if (nil? o)
+                                  acc*
+                                  (let [new-flake (flake/->Flake _id** pid o t true nil)]
+                                    (if (or tempid? (tempid/TempId? o))
+                                      (-> acc*
+                                          (update :_temp-multi-flakes conj new-flake)
+                                          (recur r))
+                                      ;; multi-cardinality we only care if a flake matches exactly
+                                      (let [retract-flake (first (<? (tx-retract/flake _id** pid o tx-state)))
+                                            final-flakes  (add-singleton-flake (:_final-flakes acc*) new-flake retract-flake pred-info tx-state)]
+                                        (recur (assoc acc* :_final-flakes final-flakes) r))))))]
+                    (recur acc** r))
 
                   (or tempid? (tempid/TempId? obj*))
                   (-> acc
