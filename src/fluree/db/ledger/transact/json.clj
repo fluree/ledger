@@ -115,8 +115,8 @@
                      (get-in db [:schema :pred (str collection "/" predicate) :id])
                      (get-in db [:schema :pred predicate :id]))]
     (fn [property] (dbproto/-p-prop db property pred-id))
-    (throw (throw (ex-info (str "Predicate does not exist: " predicate)
-                           {:status 400 :error :db/invalid-tx})))))
+    (throw (ex-info (str "Predicate does not exist: " predicate)
+                    {:status 400 :error :db/invalid-tx}))))
 
 
 (defn generate-statements

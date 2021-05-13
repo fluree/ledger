@@ -129,7 +129,7 @@
                          tx-context)
         _              (log/warn "generate-statement - local-context: " local-context)
         iri            (get txi "@id")
-        expanded-iri   (iri-util/expand iri local-context)           ;; first expand iri with local context
+        expanded-iri   (iri-util/expand iri local-context)  ;; first expand iri with local context
         _              (log/warn "generate-statement - expanded-iri: " expanded-iri)
         collection     (collector expanded-iri)
         _              (log/warn "generate-statement - collection: " collection)
