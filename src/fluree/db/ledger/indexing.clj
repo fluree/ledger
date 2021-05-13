@@ -117,35 +117,38 @@
        :children
        (map (fn [[_ child]]
               (resolve-if-novel conn child t novelty remove-preds)))
-       (async/map vec)))
+       (async/map vector)))
 
 (defn resolve-tree
   [{:keys [conn novelty block t network dbid] :as db} idx remove-preds]
   (let [index-root   (get db idx)
         novelty-root (get novelty idx)
-        out-ch       (async/chan 64)
+        tree-ch       (async/chan 64)
         stat-ch      (async/chan 1)]
     (go
-      (let [root-node (<! (resolve-if-novel conn index-root t novelty-root remove-preds))]
+      (let [root-node (<! (resolve-if-novel conn index-root t novelty-root
+                                            remove-preds))]
         (loop [stack [root-node]
-               stats {:idx idx, :stale []}]
+               stats {:idx idx, :novel 0, :unchanged 0, :stale []}]
           (if (empty? stack)
             (do (async/put! stat-ch stats)
-                (async/close! out-ch))
+                (async/close! tree-ch))
             (let [node   (peek stack)
                   stack* (pop stack)]
               (if (expanded? node)
                 (let [stats* (if (novel? node)
-                               (update stats :stale conj (:id node))
-                               stats)]
-                  (>! out-ch node)
+                               (-> stats
+                                   (update :novel inc)
+                                   (update :stale conj (:id node)))
+                               (update stats :unchanged inc))]
+                  (>! tree-ch node)
                   (recur stack* stats*))
                 (let [children (<? (resolve-children conn node t novelty-root remove-preds))
                       stack**  (-> stack*
                                    (conj (mark-expanded node))
                                    (into (rseq children)))]
-                  (recur stack** stats))))))))
-    [out-ch stat-ch]))
+                (recur stack** stats))))))))
+    [tree-ch stat-ch]))
 
 (defn rebalance-leaf
   [{:keys [flakes leftmost? ciel] :as leaf}]
@@ -226,7 +229,7 @@
 
 (defn write-children
   [{:keys [conn network dbid] :as db} idx parent children]
-  (let [cmp (-> parent :config :comparator)]
+  (let [cmp (:comparator parent)]
     (->> children
          (map (fn [[_ child]]
                 (write-if-novel conn network dbid idx child)))
@@ -243,18 +246,22 @@
 
 (defn descendant?
   [{:keys [floor ciel] :as branch} node]
-  (let [cmp (-> branch :config :comparator)]
-    (and (not (pos? (cmp floor (:floor node))))
-         (not (pos? (cmp (:ciel node) ciel))))))
+  (if-not (index/branch? branch)
+    false
+    (let [cmp (:comparator branch)
+          {node-floor :floor, node-ciel :ciel} node]
+      (and (not (pos? (cmp floor node-floor)))
+           (or (nil? ciel)
+               (and (not (nil? node-ciel))
+                    (not (pos? (cmp node-ciel ciel)))))))))
 
 (defn pop-decendants
   [{:keys [floor ciel] :as branch} in-stack]
   (loop [child-nodes []
          stack       in-stack]
-    (let [nxt    (peek stack)
-          stack* (pop stack)]
-      (if (descendant? branch nxt)
-        (recur (conj child-nodes nxt) stack*)
+    (let [nxt (peek stack)]
+      (if (and nxt (descendant? branch nxt))
+        (recur (conj child-nodes nxt) (pop stack))
         [child-nodes stack]))))
 
 (defn write-tree
@@ -264,12 +271,19 @@
       (if (index/leaf? node)
         (recur (conj stack node))
         (let [[decendants stack*] (pop-decendants stack node)
-              children (<? (write-decendants db idx node decendants))
+              children (<! (write-decendants db idx node decendants))
               branch   (assoc node
-                              :floor (-> children first key)
+                              :floor    (-> children first key)
                               :children children)]
           (recur (conj stack* branch))))
       (<! (write-if-novel conn network dbid idx (pop stack))))))
+
+(defn tally
+  [index-ch stat-ch]
+  (go
+    (let [new-root (<! (index-ch))
+          stats    (<! (stat-ch))]
+      (assoc stats :root new-root))))
 
 (defn refresh-root
   [{:keys [conn novelty block t network dbid] :as db} remove-preds idx]
@@ -277,12 +291,12 @@
         index-ch          (->> tree-ch
                                rebalance-leaves
                                (write-tree db idx))]
-    [index-ch stat-ch]))
+    (tally index-ch stat-ch)))
 
 (defn update-refresh-status
-  [db-status [root-node {:keys [idx stale]}]]
+  [db-status {:keys [idx root stale]}]
   (-> db-status
-      (update :db assoc idx root-node)
+      (update :db assoc idx root)
       (update :indexes conj idx)
       (update :stale into stale)))
 
