@@ -89,7 +89,7 @@
         db  (basic/get-db test/ledger-chat)
         res (async/<!! (fdb/query-async db crawl-query))]
     (is (vector? res))
-    (is (contains? (first res) "_id"))
+    (is (contains? (first res) :_id))
     (is (contains? (first res) "artist/name"))
     (is (contains? (first res) "person/_favArtists"))
     (is (vector? (get (first res) "person/_favArtists")))))

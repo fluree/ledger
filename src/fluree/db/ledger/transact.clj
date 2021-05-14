@@ -771,7 +771,7 @@
                                              (if subject
                                                {:db      db-after
                                                 :instant block-instant
-                                                :sid     (get subject "_id")
+                                                :sid     (:_id subject)
                                                 :flakes  flakes
                                                 :auth_id auth_id
                                                 :state   (atom {:stack   []

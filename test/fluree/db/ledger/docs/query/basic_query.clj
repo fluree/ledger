@@ -55,7 +55,7 @@
                             ["?person", "person/handle", "jdoe"]]} ; get ids of interest
         db         (basic/get-db test/ledger-chat)
         base-res   (async/<!! (fdb/query-async db chat-base))
-        person-id  (-> base-res (get "chat/person") (get "_id"))
+        person-id  (-> base-res (get "chat/person") :_id)
         chat       (async/<!!
                      (fdb/query-async
                        db {:selectOne ["person/handle"] :from person-id}))]
@@ -82,7 +82,7 @@
     (is (= (count (get res "person/favMovies")) 3))
 
     ; check ids
-    (let [id   (get res "_id")
+    (let [id   (:_id res)
           res' (async/<!! (fdb/query-async db {:selectOne ["*"]
                                                :from id}))]
       (is (= (get res "person/handle") (get res' "person/handle")))
@@ -96,7 +96,7 @@
         db  (basic/get-db test/ledger-chat)
         res (async/<!! (fdb/query-async db chat-query))]
 
-    (is (subset? #{369435906932737 387028092977153} (-> (map #(get % "_id") res) set)))
+    (is (subset? #{369435906932737 387028092977153} (-> (map #(:_id %) res) set)))
 
     (is (= (-> (map #(get % "person/handle") res) set) #{nil "jdoe" "zsmith"}))))
 
