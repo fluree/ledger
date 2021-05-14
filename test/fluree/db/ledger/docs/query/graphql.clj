@@ -12,7 +12,7 @@
   (let [graphql-query      {:query "{ graph {\n  chat {\n    _id\n    message\n  }\n}\n}"}
         res (async/<!! (fdb/graphql-async (basic/get-conn) test/ledger-chat graphql-query))]
     (is (coll? (:chat res)))
-    (is (every? #(get % "_id") (:chat res)))))
+    (is (every? #(:_id %) (:chat res)))))
 
 (deftest graphql-crawl-query
   (testing "GraphQL query that crawls from chat to referenced person")
@@ -26,7 +26,7 @@
   (let [graphql-query      {:query "{ graph {\n  person {\n    *\n  }\n}\n}"}
         res (async/<!! (fdb/graphql-async (basic/get-conn) test/ledger-chat graphql-query))]
 
-    (is (every? #(get % "_id") (:person res)))))
+    (is (every? #(:_id %) (:person res)))))
 
 (deftest graphql-reverse-crawl-query
   (testing "GraphQL query that reverse-crawls from person back to chat")
