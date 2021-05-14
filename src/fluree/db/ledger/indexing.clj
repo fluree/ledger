@@ -193,29 +193,26 @@
 (defn rebalance-children
   [parent children]
   (let [target-count (/ *overflow-children* 2)]
-    (loop [new-branches (transient (empty children))
+    (loop [new-branches []
            remaining    children]
       (if (> (count remaining) target-count)
-        (let [[child-map rst-map]
+        (let [[new-children rst-children]
               (avl/split-at target-count remaining)
 
-              split-point (nth remaining (inc target-count))
-              floor (-> child-map first key)
-              new-branch  (assoc parent
-                                 :children    child-map
-                                 :floor floor
-                                 :ciel         split-point)
-              new-entry   (index/child-entry new-branch)]
-          (recur (conj! new-branches new-entry) rst-map))
-        (let [floor (-> remaining first key)
-              ciel         (:ciel parent)
-              last-child  (assoc parent
-                                 :children    remaining
-                                 :floor floor
-                                 :ciel         ciel)]
-          (-> new-branches
-              (conj! last-child)
-              persistent!))))))
+              floor      (-> new-children first key)
+              ciel       (-> rst-children first key)
+              new-branch (-> parent
+                             (dissoc :id)
+                             (assoc :children new-children
+                                    :floor    floor
+                                    :ciel     ciel))]
+          (recur (conj new-branches new-branch) rst-children))
+        (let [floor      (-> remaining first key)
+              last-child (-> parent
+                             (dissoc :id)
+                             (assoc :children remaining
+                                    :floor    floor))]
+          (conj new-branches last-child))))))
 
 (defn write-if-novel
   [{:keys [conn network dbid] :as db} idx node]
@@ -227,21 +224,21 @@
       (async/put! out node)
       out)))
 
-(defn write-children
-  [{:keys [conn network dbid] :as db} idx parent children]
+(defn write-child-nodes
+  [db idx parent child-nodes]
   (let [cmp (:comparator parent)]
-    (->> children
-         (map (fn [[_ child]]
-                (write-if-novel conn network dbid idx child)))
-         (async/map (fn [& child-nodes]
-                      (apply index/child-map cmp child-nodes))))))
+    (->> child-nodes
+         (map (fn [child]
+                (write-if-novel db idx child)))
+         (async/map (fn [& written-nodes]
+                      (apply index/child-map cmp written-nodes))))))
 
 (defn write-decendants
   [db idx parent decendants]
-  (go-loop [children (<! (write-children db idx parent decendants))]
+  (go-loop [children (<! (write-child-nodes db idx parent decendants))]
     (if (overflow-children? children)
       (let [child-branches (rebalance-children parent children)]
-        (recur (<! (write-children db idx parent child-branches))))
+        (recur (<! (write-child-nodes db idx parent child-branches))))
       children)))
 
 (defn descendant?
@@ -265,18 +262,22 @@
         [child-nodes stack]))))
 
 (defn write-tree
-  [{:keys [conn network dbid] :as db} idx node-stream]
+  [db idx node-stream]
   (go-loop [stack []]
     (if-let [node (<! node-stream)]
       (if (index/leaf? node)
         (recur (conj stack node))
-        (let [[decendants stack*] (pop-decendants stack node)
+        (let [[decendants stack*]
+              (pop-decendants node stack)
+
               children (<! (write-decendants db idx node decendants))
-              branch   (assoc node
-                              :floor    (-> children first key)
-                              :children children)]
+              floor    (-> children first key)
+              branch   (-> node
+                           (dissoc :id)
+                           (assoc :floor    floor
+                                  :children children))]
           (recur (conj stack* branch))))
-      (<! (write-if-novel conn network dbid idx (pop stack))))))
+      (<! (write-if-novel db idx (peek stack))))))
 
 (defn tally
   [index-ch stat-ch]
