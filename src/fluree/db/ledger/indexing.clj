@@ -263,27 +263,30 @@
 
 (defn write-tree
   [db idx node-stream]
-  (go-loop [stack []]
-    (if-let [node (<! node-stream)]
-      (if (index/leaf? node)
-        (recur (conj stack node))
-        (let [[decendants stack*]
-              (pop-decendants node stack)
+  (let [out (async/chan)]
+    (go-loop [stack []]
+      (if-let [node (<! node-stream)]
+        (if (index/leaf? node)
+          (recur (conj stack node))
+          (let [[decendants stack*]
+                (pop-decendants node stack)
 
-              children (<! (write-decendants db idx node decendants))
-              floor    (-> children first key)
-              branch   (-> node
-                           (dissoc :id)
-                           (assoc :floor    floor
-                                  :children children))]
-          (recur (conj stack* branch))))
-      (<! (write-if-novel db idx (peek stack))))))
+                children (<! (write-decendants db idx node decendants))
+                floor    (-> children first key)
+                branch   (-> node
+                             (dissoc :id)
+                             (assoc :floor    floor
+                                    :children children))]
+            (recur (conj stack* branch))))
+        (async/pipe (write-if-novel db idx (peek stack))
+                    out)))
+    out))
 
 (defn tally
   [index-ch stat-ch]
   (go
-    (let [new-root (<! (index-ch))
-          stats    (<! (stat-ch))]
+    (let [new-root (<! index-ch)
+          stats    (<! stat-ch)]
       (assoc stats :root new-root))))
 
 (defn refresh-root
