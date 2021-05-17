@@ -34,8 +34,14 @@
     ;; block should be 2
     (is (= 2 (:block schema-resp)))
 
-    ;; there should be 12 tempids
-    (is (= 12 (count (:tempids schema-resp))))))
+    ;; there should be 2 _collection tempids
+    (is (= 2 (test/get-tempid-count (:tempids schema-resp) "_collection")))
+
+    ;; there should be 10 _predicate tempids
+    (is (= 10 (test/get-tempid-count (:tempids schema-resp) "_predicate")))
+
+    ;; there should be 2 tempids keys
+    (is (= 2 (count (keys (:tempids schema-resp)))))))
 
 ;; Add sample data
 
@@ -176,8 +182,9 @@
       ;; is the count of tempids as expected?
       (is (= 1 (count (:tempids resp))))
       (is (= 1 (count (:tempids resp2))))
-      (is (= 2 (count (:tempids resp3))))
-      (is (= 2 (count (:tempids resp4))))
+      ;; 2 _fn tempids
+      (is (= 2 (test/get-tempid-count (:tempids resp3) "_fn")))
+      (is (= 2 (test/get-tempid-count (:tempids resp4) "_fn")))
       (is (= 1 (count (:tempids resp5)))))))
 
 
@@ -185,11 +192,18 @@
 
 (deftest invalid-change
   (let [attemptChange [{:_id ["_user/username" "softCell"], :username "hardCell"}]
-        changeResp    (-> (async/<!! (fdb/transact-async (basic/get-conn) test/ledger-voting attemptChange soft-cell-opts))
-                          test/safe-Throwable->map :cause)]
+        changeRespErrors    (-> (async/<!! (fdb/transact-async (basic/get-conn) test/ledger-voting attemptChange soft-cell-opts))
+                          test/extract-errors
+                          :meta
+                          :errors)]
 
-    (is (= changeResp "Object hardCell does not conform to the spec for predicate: _user/username"))))
+    (is (= 1 (count changeRespErrors)))
 
+    (is (= (first changeRespErrors)
+           {:status 400
+            :error :db/predicate-spec
+            :cause [87960930223082 50 "hardCell" -23 true nil]
+            :message "Predicate spec failed for predicate: _user/username."}))))
 
 
 ;; Add Votes

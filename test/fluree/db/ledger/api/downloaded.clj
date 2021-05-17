@@ -19,7 +19,7 @@
 (defn- rand-str
   []
   (apply str
-         (take (rand-int 20)
+         (take (+ 5 (rand-int 20))                          ;; at least 5 characters
                (repeatedly #(char (+ (rand 26) 65))))))
 
 (defn- get-unique-count
@@ -29,6 +29,7 @@
     (if (< 0 distance)
       (get-unique-count (distinct (concat current (repeatedly distance fn))) goal-count fn)
       (distinct current))))
+
 
 (defn standard-request
   ([body]
@@ -65,10 +66,11 @@
     ; block should be 2
     (is (= 2 (:block body)))
 
-    ; the tempids should be _predicate$1 -> _predicate$59 and _collection$1 -> _collection$4
-    (is (= (sort (concat (map #(keyword (str "_predicate$" %)) (range 1 60))
-                         (map #(keyword (str "_collection$" %)) (range 1 5))))
-           (-> body :tempids keys sort)))))
+    ;; should have added 59 predicates
+    (= 59 (-> body :tempids (test/get-tempid-count :_predicate)))
+
+    ;; should have added 4 new collections
+    (= 4 (-> body :tempids (test/get-tempid-count :_collection)))))
 
 
 
@@ -98,14 +100,19 @@
     ; chat$1 -> 13, nestedComponent$1 ->12, _user$jdoe, :_user$zsmith,
     ; person$1 -> 4, _role$chatUser
     ; _rule$viewAllPeople, _rule$editOwnChats, _rule$viewAllChats
-    (is (= (sort (concat [:_auth$chatUser :_auth$temp :_rule$viewAllPeople
-                          :_rule$editOwnChats :_rule$viewAllChats :_role$chatUser
-                          :_user$jdoe :_user$zsmith :_fn$ownChats]
-                         (map #(keyword (str "comment$" %)) (range 1 13))
-                         (map #(keyword (str "chat$" %)) (range 1 14))
-                         (map #(keyword (str "person$" %)) (range 1 5))
-                         (map #(keyword (str "nestedComponent$" %)) (range 1 13))))
-           (-> body :tempids keys sort)))))
+    (is (= (into #{:_auth$chatUser :_auth$temp :_rule$viewAllPeople
+                   :_rule$editOwnChats :_rule$viewAllChats :_role$chatUser
+                   :_user$jdoe :_user$zsmith :_fn$ownChats :person}
+                 (concat
+                   (map #(keyword (str "comment$" %)) (range 1 13))
+                   (map #(keyword (str "chat$" %)) (range 1 14))
+                   (map #(keyword (str "person$" %)) (range 1 4))
+                   (map #(keyword (str "nestedComponent$" %)) (range 1 13))))
+           (-> body :tempids keys set)))
+
+    ; check that 1 person (without tempid) was added
+    (= 1 (-> body :tempids (test/get-tempid-count :person)))))
+
 
 (deftest standalone-new-people*
   (add-schema*)
@@ -129,10 +136,8 @@
     (is (not (empty? (remove nil? (map #(#{:request-time :aleph/keep-alive? :headers :status :connection-time :body} %)
                                        responseKeys)))))
 
-    ; Are all the predicates what we expect?
-    (is (= collections #{"_rule" "nestedComponent" "_fn" "_predicate" "_setting" "chat" "_auth" "_user" "person" "_shard" "_tag" "comment" "_role" "_collection"}))
-
-    (is (< 10 (count collections)))))
+    ; Are all the collection names what we expect?
+    (is (= collections #{"_rule" "nestedComponent" "_fn" "_predicate" "_setting" "chat" "_auth" "_user" "person" "_shard" "_tag" "comment" "_role" "_collection"}))))
 
 
 (deftest query-collections*
@@ -221,7 +226,7 @@
 
     (is (every? boolean (map #((set personKeys) %) [:tempids :block :hash :fuel :auth :status :flakes])))
     (is (< 100 (count flakes)))
-    (is (= 100 (count tempids)))))
+    (is (= 100 (test/get-tempid-count tempids :person)))))
 
 (deftest standalone-transacting-new-persons
   (add-schema*)
@@ -309,7 +314,7 @@
         flakeValSet         (-> (map (fn [flake]
                                        (nth flake 2)) (-> res :data :flakes)) set)]
 
-    (is (= (-> res :data keys set) #{:tempids :block :hash :instant :type :fuel :auth :status :id :bytes :t :flakes}))
+    (is (= (-> res :data keys set) #{:tempids :block :hash :instant :type :duration :fuel :auth :status :id :bytes :t :flakes}))
 
     (is (= 11 (-> res :data :flakes count)))
 
@@ -408,7 +413,7 @@
 
     (is (< 99 (count flakes)))
 
-    (is (= 100 (count tempids)))))
+    (is (= 100 (test/get-tempid-count tempids :chat)))))
 
 
 (deftest standalone-add-new-chats*
@@ -573,7 +578,7 @@
 
     ;; None of these names actually appear when just querying.
     (is (not-any? #((-> (map :person/stringNotUnique person-body) set) %)
-                 ["Josie" "Alan" "Georgine" "Elaine"]))))
+                  ["Josie" "Alan" "Georgine" "Elaine"]))))
 
 
 (deftest standalone-test-gen-flakes-query-transact-with

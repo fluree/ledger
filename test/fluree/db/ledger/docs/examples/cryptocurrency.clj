@@ -5,7 +5,8 @@
             [fluree.db.api :as fdb]
             [clojure.core.async :as async]
             [clojure.java.io :as io]
-            [clojure.tools.reader.edn :as edn]))
+            [clojure.tools.reader.edn :as edn]
+            [clojure.string :as str]))
 
 (use-fixtures :once test/test-system)
 
@@ -34,13 +35,13 @@
     ;; block should be 2
     (is (= 2 (:block schema-resp)))
 
-    ;; there should be 5 tempids
-    (is (= 5 (count (:tempids schema-resp))))))
+    ;; there should be 5 tempid keys
+    (is (= 2 (count (:tempids schema-resp))))))
 
 ;; Add sample data
 
 (deftest add-sample-data
-  (testing "Add sample data for the voting app")
+  (testing "Add sample data for the cryptocurrency app")
   (let [txn   [{:_id "_user$cryptoMan", :username "cryptoMan"}
                {:_id "_user$cryptoWoman", :username "cryptoWoman"}
                {:_id "wallet$cryptoMan", :name "cryptoMan", :balance 200, :user "_user$cryptoMan"}
@@ -71,7 +72,7 @@
     ;; block should be 4
     (is (= 4 (:block data-resp)))
 
-    ;; there should be 12 tempids
+    ;; there should be 7 tempids
     (is (= 7 (count (:tempids data-resp))))))
 
 
@@ -125,11 +126,11 @@
     (is (= 200 (:status resp1)))
     (is (= 200 (:status resp3)))
 
-    (is (= resp2  "You can only add to others balances, and only subtract from your own balance. No balances may be negative Value: 205"))
+    (is (str/starts-with? resp2 "Predicate spec failed for predicate: wallet/balance. You can only add to others balances, and only subtract from your own balance. No balances may be negative"))
 
-    (is (= resp4 "You can only add to others balances, and only subtract from your own balance. No balances may be negative Value: 200"))
+    (is (str/starts-with? resp4 "Predicate spec failed for predicate: wallet/balance. You can only add to others balances, and only subtract from your own balance. No balances may be negative"))
 
-    (is (= resp5 "You can only add to others balances, and only subtract from your own balance. No balances may be negative Value: 195"))))
+    (is (str/starts-with? resp5 "Predicate spec failed for predicate: wallet/balance. You can only add to others balances, and only subtract from your own balance. No balances may be negative"))))
 
 
 ;; Add smart function cryptoSpent = cryptoReceived
@@ -177,9 +178,9 @@
     ;; status should be 200 for resp3
     (is (= 200 (:status resp3)))
 
-    (is (= resp1 "The predicate wallet/balance does not conform to spec. The values of added and retracted wallet/balance flakes need to be equal"))
+    (is (= resp1 "Predicate txSpec failed for: wallet/balance. The values of added and retracted wallet/balance flakes need to be equal"))
 
-    (is (= resp2 "You can only add to others balances, and only subtract from your own balance. No balances may be negative Value: 205"))))
+    (is (= resp2 "Predicate spec failed for predicate: wallet/balance. You can only add to others balances, and only subtract from your own balance. No balances may be negative"))))
 
 (deftest cryptocurrency-test
   (add-schema)

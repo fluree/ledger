@@ -98,16 +98,16 @@
 
 ;; TODO - too easy to forget to adjust this if we add a new collection type - we should
 ;; have an extra check when loading to ensure we have all the ecounts correct.
-(def genesis-ecount {const/$_predicate  (flake/->sid const/$_predicate 999)
+(def genesis-ecount {const/$_predicate  (flake/->sid const/$_predicate 1000)
                      const/$_collection (flake/->sid const/$_collection 19)
-                     const/$_tag        (flake/->sid const/$_tag 999)
-                     const/$_fn         (flake/->sid const/$_fn 999)
-                     const/$_user       (flake/->sid const/$_user 999)
-                     const/$_auth       (flake/->sid const/$_auth 999)
-                     const/$_role       (flake/->sid const/$_role 999)
-                     const/$_rule       (flake/->sid const/$_rule 999)
-                     const/$_setting    (flake/->sid const/$_setting 999)})
-                     ;const/$_shard      (flake/->sid const/$_shard 999)
+                     const/$_tag        (flake/->sid const/$_tag 1000)
+                     const/$_fn         (flake/->sid const/$_fn 1000)
+                     const/$_user       (flake/->sid const/$_user 1000)
+                     const/$_auth       (flake/->sid const/$_auth 1000)
+                     const/$_role       (flake/->sid const/$_role 1000)
+                     const/$_rule       (flake/->sid const/$_rule 1000)
+                     const/$_setting    (flake/->sid const/$_setting 1000)
+                     const/$_shard      (flake/->sid const/$_shard 1000)})
 
 
 
@@ -161,7 +161,6 @@
      (flake/new-flake db-setting-id (get pred->id "_setting/ledgers") auth-subid t true)
      (flake/new-flake db-setting-id (get pred->id "_setting/language") (get ident->id ["_tag/id" "_setting/language:en"]) t true)
      (flake/new-flake db-setting-id (get pred->id "_setting/id") "root" t true)]))
-
 
 (defn boostrap-memory-db
   "Bootstraps a blank db fully in-memory.
@@ -446,7 +445,7 @@
    ; _predicate/name
    {:_id    ["_predicate" const/$_predicate:name]
     :name   "_predicate/name"
-    :doc    "Predicate name"
+    :doc    "Predicate name."
     :type   "string"
     :unique true}
    ; _predicate/doc
@@ -530,6 +529,11 @@
     :name "_predicate/fullText"
     :doc  "If true, full text search is enabled on this predicate."
     :type "boolean"}
+   {:_id  ["_predicate" const/$_predicate:retractDuplicates]
+    :name "_predicate/retractDuplicates"
+    :doc  "If false (default), when a transaction creates a new flake that already exists it does not update the existing data. When true, it will always force a retraction/insertion."
+    :type "boolean"}
+
 
 
    ;; tag records
@@ -553,6 +557,10 @@
     :doc    "Schema collection name"
     :type   "string"
     :unique true}
+   {:_id  ["_predicate" const/$_collection:partition]
+    :name "_collection/partition"
+    :doc  "Partition integer used for new items in this collection, max of 524,287. If not included it inherits from parent, or uses collection's internal counter if no parent."
+    :type "int"}
    {:_id  ["_predicate" const/$_collection:doc]
     :name "_collection/doc"
     :doc  "Optional docstring for collection."

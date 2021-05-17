@@ -188,14 +188,15 @@
 (comment
 
   ;; Standalone - On Disk
-  (start {:fdb-mode                "dev"
-          :fdb-group-servers       "myserver@localhost:9790"
-          :fdb-group-this-server   "myserver"
-          :fdb-group-log-directory "./data/raft"
-          :fdb-storage-file-root   "./data"
-          :fdb-consensus-type      "raft"
-          :fdb-api-open            true
-          :fdb-api-port            8090})
+  (start {:fdb-mode                   "dev"
+          :fdb-group-servers          "myserver@localhost:9790"
+          :fdb-group-this-server      "myserver"
+          :fdb-group-log-directory    "./data/raft"
+          :fdb-storage-file-root      "./data"
+          :fdb-consensus-type         "raft"
+          :fdb-api-open               true
+          :fdb-api-port               8090
+          :fdb-stats-report-frequency "30m"})
 
   ;; Standalone - In Memory
   (start {:fdb-group-servers     "DEF@localhost:11001"

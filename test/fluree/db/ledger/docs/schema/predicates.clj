@@ -59,7 +59,9 @@
                                             (basic/get-conn)
                                             test/ledger-chat
                                             txn
-                                            {:timeout 480000})) test/safe-Throwable->map :cause)
+                                            {:timeout 480000}))
+                               test/safe-Throwable->map
+                               :cause)
         set-upsert         [{:_id ["_predicate/name" "_predicate/name"], :upsert true}]
         upsertRes          (async/<!! (fdb/transact-async
                                         (basic/get-conn)
@@ -72,8 +74,7 @@
                                         txn
                                         {:timeout 480000}))]
 
-    (is (str/includes? res "Predicate _predicate/name does not allow upsert"))
-    (is (str/includes? res "duplicates an existing _predicate/name (_user/username)"))
+    (= res "Unique predicate _predicate/name with value: _user/username matched an existing subject: 50.")
 
     (is (= 200 (:status upsertRes)))
 
@@ -98,8 +99,7 @@
   (testing "Ensure bad predicate names throw an exception")
   (let [good-pred-names ["person/hometown" "_user/hometown" "person/1...." "person/12a-"
                          "person/a._" "person/0aA_..----"]
-        bad-pred-names  ["location" "person/__city" "person/-city" "person/a__city" "/city"
-                         "person/" "person/city/" "person/..--city" "person/ci/ty"]
+        bad-pred-names  ["location_Via_anything" "person/__city" "person/_city" ":bad:uri"]
         good-tx         (mapv (fn [n] {:_id  "_predicate"
                                        :name n
                                        :type "string"}) good-pred-names)
@@ -117,7 +117,7 @@
                                      {:timeout 240000}))
         bad-resp-errs   (map #(-> % test/safe-Throwable->map :cause) bad-resp)]
 
-    (is (= 9 (count bad-resp-errs)))
+    (is (= (count bad-pred-names) (count bad-resp-errs)))
 
     (is (every? #(str/includes? % "Invalid predicate name.") bad-resp-errs))
 
@@ -172,8 +172,7 @@
                               test/safe-Throwable->map
                               :cause)]
 
-      (is (str/includes? add-person-resp "Predicate person/handle does not allow upsert"))
-      (is (str/includes? add-person-resp "duplicates an existing person/handle (jdoe)")))))
+      (= add-person-resp "Unique predicate person/handle with value: jdoe matched an existing subject: 351843720888321."))))
 
 (deftest predicates-test
   (add-predicate-long-desc)

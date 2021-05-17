@@ -64,7 +64,8 @@
 (deftest permissioned-transaction
   (let [jdoeChat     [{:_id "chat$1", :message "Hey there!", :person ["person/handle" "jdoe"]}]
         addOther     (-> (async/<!! (fdb/transact-async (basic/get-conn) test/ledger-chat jdoeChat zsmith))
-                         test/safe-Throwable->map :cause)
+                         test/safe-Throwable->map
+                         :cause)
         addOwn       (async/<!! (fdb/transact-async (basic/get-conn) test/ledger-chat jdoeChat jdoe))
         chat$1       (get (:tempids addOwn) "chat$1")
         jdoeChatEdit [{:_id chat$1 :message "Attemping to edit"}]

@@ -3,8 +3,10 @@
             [clojure.tools.logging :as log]
             [fluree.db.ledger.txgroup.txgroup-proto :as txproto]
             [clojure.walk :as walk]
-            [clojure.string :as str])
-  (:import (java.lang.management ManagementFactory)))
+            [clojure.string :as str]
+            [cheshire.core :as json])
+  (:import (java.lang.management ManagementFactory)
+           (java.time Instant)))
 
 
 ;;; ---------------------------------
@@ -40,7 +42,8 @@
     {:used      (-> (.getUsed memory-mxbean) gb-format)
      :committed (-> (.getCommitted memory-mxbean) gb-format)
      :max       (-> (.getMax memory-mxbean) gb-format)
-     :init      (-> (.getInit memory-mxbean) gb-format)}))
+     :init      (-> (.getInit memory-mxbean) gb-format)
+     :time      (str (Instant/now))}))
 
 
 (defn jvm-arguments
@@ -65,12 +68,12 @@
 
 (defn report-stats
   [system]
-  (log/info "Memory: " (memory-stats))
+  (log/info "Memory: " (-> (memory-stats) (json/encode)))
   (let [group-state  (txproto/-local-state (:group system))
         state-report (-> group-state
                          (select-keys [:version :leases :_work :networks]))]
-    (log/info "Group state: " (pr-str state-report))
-    (log/debug "Full group state: " (pr-str group-state))))
+    (log/info "Group state: " (json/encode state-report))
+    (log/debug "Full group state: " (json/encode group-state))))
 
 
 

@@ -52,7 +52,7 @@
 
     (is (= 200 (:status collection-resp)))
     (is (= 3 (:block collection-resp)))
-    (is (= 4 (count (:tempids collection-resp))))))
+    (is (= 1 (count (:tempids collection-resp))))))
 
 (deftest transact-with-temp-ids
   (testing "Issue basic transactions with temporary ids")
@@ -80,7 +80,7 @@
         collection-resp (async/<!! (fdb/transact-async (get-conn) test/ledger-query+transact predicate-txn))]
 
    (is (= 200 (:status collection-resp)))
-   (is (and (-> collection-resp :tempids (get "person$1")) (-> collection-resp :tempids (get "_user$1"))))))
+   (is (and (-> collection-resp :tempids (get "person")) (-> collection-resp :tempids (get "_user"))))))
 
 
 (deftest upserting-data

@@ -15,10 +15,10 @@
 
     <logger name="user" level="ALL" />
     <logger name="ch.qos.logback" level="WARN"/>
-    <logger name="fluree.db" level="DEBUG" />
-    <logger name="fluree.db.consensus" level="DEBUG" />
+<!--    <logger name="fluree.db" level="DEBUG" />-->
+<!--    <logger name="fluree.db.consensus" level="DEBUG" />-->
     <logger name="fluree.db.messaging" level="INFO" />
-    <logger name="fluree.raft" level="DEBUG"/>
+<!--    <logger name="fluree.raft" level="DEBUG"/>-->
 
 
 </configuration>
