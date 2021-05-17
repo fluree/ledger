@@ -71,17 +71,6 @@
       (str/replace #"[^a-z0-9-]" "")))
 
 
-(defn ledger-rename-collision-check
-  [conn]
-  (let [ledger-list  @(fdb/ledger-list conn)
-        ledger-names (-> (map (fn [[nw db]]
-                                [nw db (rename-nw-or-db nw) (rename-nw-or-db db)]) ledger-list) set)]
-    (if (not= (count ledger-list) (count ledger-names))
-      (throw (ex-info (str "Cannot rename databases, there would be at least one collision. Ledger names: " ledger-list)
-                      {:status 400
-                       :error  :db/invalid-db}))
-      ledger-names)))
-
 (defn update-dbid-state-atom-networks
   [state-atom old-network old-db new-network new-db]
   (let [old-value (get-in @state-atom [:networks old-network :dbs old-db])
