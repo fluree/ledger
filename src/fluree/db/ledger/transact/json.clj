@@ -132,5 +132,4 @@
 (defn generate-statements
   [tx-state tx]
   (->> tx
-       (pmap (partial generate-statement tx-state))
-       (apply concat)))
+       (mapcat (partial generate-statement tx-state))))
