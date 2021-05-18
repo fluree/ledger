@@ -95,7 +95,7 @@
              {} @tempids))
 
 
-(defn flake
+(defn tempids-flake
   "Returns flake for tx-meta (transaction sid) that contains a json packaging of the tempids map."
   [tempids-map t]
   (flake/->Flake t const/$_tx:tempids (json/stringify tempids-map) t true nil))

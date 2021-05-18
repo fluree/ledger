@@ -51,6 +51,7 @@
   [_id]
   (cond
     (tempid/TempId? _id) :tempid
+    (util/temp-ident? _id) :temp-ident
     (util/pred-ident? _id) :pred-ident
     (int? _id) :sid
     :else (throw (ex-info (str "Invalid _id: " _id)

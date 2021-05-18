@@ -330,9 +330,7 @@
 
 (defmethod generate-statements :json
   [tx-state tx]
-  (->> tx
-       (mapcat #(tx-json/extract-children % tx-state))
-       (mapcat (partial tx-json/generate-statements tx-state))))
+  (tx-json/generate-statements tx-state tx))
 
 (defmethod generate-statements :json-ld
   [tx-state tx]
@@ -367,7 +365,7 @@
           tx-meta-flakes   (tx-meta/tx-meta-flakes tx-state nil)
           tempids-map      (tempid/result-map tx-state)
           all-flakes       (cond-> (into tx-flakes tx-meta-flakes)
-                                   (not-empty tempids-map) (conj (tempid/flake tempids-map t))
+                                   (not-empty tempids-map) (conj (tempid/tempids-flake tempids-map t))
                                    @(:tags tx-state) (into (tags/create-flakes tx-state))
                                    (= :json-ld format) (into (identity/generate-tempid-flakes tx-state)))
           ;; kick off hash process in the background, it can take a while
