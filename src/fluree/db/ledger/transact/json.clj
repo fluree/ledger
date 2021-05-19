@@ -98,38 +98,52 @@
      :collection collection
      :o-tempid?  nil}))
 
+(declare generate-statement)
+
+(defn- statement-obj
+  [base-smt pred-info tx-state idx i obj]
+  (let [child (when (nested-txi? pred-info obj)
+                (update-nested-txi obj tx-state))
+        o     (cond
+                child (get child "_id")
+                (dbfunctions/tx-fn? obj) (txfunction/->TxFunction obj)
+                :else obj)
+        idx*  (if i (conj idx i) idx)
+        smt   (assoc base-smt :pred-info pred-info
+                              :p (pred-info :id)
+                              :o o
+                              :idx idx*)]
+    (if child
+      (into [smt] (generate-statement tx-state child idx*))
+      [smt])))
+
 
 (defn- generate-statement
-  [{:keys [db-before] :as tx-state} txi]
-  (let [base-statement (base-statement tx-state txi)
-        p-o-pairs      (dissoc txi "_id" "_action" "_meta")]
-    (if (and (empty? p-o-pairs) (= :retract (:action base-statement)))
-      [(assoc base-statement :action :retract-subject)]     ;; no k-v pairs to iterate over
+  [{:keys [db-before] :as tx-state} txi idx]
+  (let [base-smt  (base-statement tx-state txi)
+        p-o-pairs (dissoc txi "_id" "_action" "_meta")]
+    (if (and (empty? p-o-pairs) (= :retract (:action base-smt)))
+      [(assoc base-smt :action :retract-subject)]           ;; no k-v pairs to iterate over
       (reduce-kv (fn [acc pred obj]
-                   (let [pred-info (predicate-details pred (:collection base-statement) db-before)
-                         obj*      (if (pred-info :multi)
-                                     (if (sequential? obj) (into #{} obj) [obj])
-                                     [obj])]
-                     (reduce
-                       (fn [acc obj]
-                         (if (nested-txi? pred-info obj)
-                           (let [nested-txi (update-nested-txi obj tx-state)
-                                 smt        (assoc base-statement :pred-info pred-info
-                                                                  :p (pred-info :id)
-                                                                  :o (get nested-txi "_id"))
-                                 smts       (into [smt]
-                                                  (generate-statement tx-state nested-txi))]
-                             (into acc smts))
-                           (conj acc (assoc base-statement :pred-info pred-info
-                                                           :p (pred-info :id)
-                                                           :o (if (dbfunctions/tx-fn? obj)
-                                                                (txfunction/->TxFunction obj)
-                                                                obj)))))
-                       acc obj*)))
+                   (let [pred-info  (predicate-details pred (:collection base-smt) db-before)
+                         multi?     (pred-info :multi)
+                         idx*       (conj idx pred)
+                         statements (if multi?
+                                      (->> (if (sequential? obj) (into #{} obj) [obj])
+                                           (map-indexed (partial statement-obj base-smt pred-info tx-state idx*))
+                                           (apply concat))
+                                      (statement-obj base-smt pred-info tx-state idx* nil obj))]
+                     (into acc statements)))
                  [] p-o-pairs))))
 
 
 (defn generate-statements
   [tx-state tx]
-  (->> tx
-       (mapcat (partial generate-statement tx-state))))
+  (loop [[txi & r] tx
+         i   0
+         acc (transient [])]
+    (if (nil? txi)
+      (persistent! acc)
+      (->> (generate-statement tx-state txi [i])
+           (reduce conj! acc)
+           (recur r (inc i))))))
