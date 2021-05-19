@@ -121,43 +121,54 @@
                            {:status 400 :error :db/invalid-tx})))))
 
 
+(defn- base-statement
+  "Return the portion of a 'statement' for the subject, which can be used for individual
+  predicate+objects to add to."
+  [{:keys [tx-context collector] :as tx-state} txi idx]
+  (let [local-context (if-let [txi-context (get txi "@context")]
+                        (iri-util/expanded-context txi-context tx-context)
+                        tx-context)
+        iri           (get txi "@id")
+        expanded-iri  (iri-util/expand iri local-context)   ;; first expand iri with local context
+        _             (log/warn "generate-statement - expanded-iri: " expanded-iri)
+        collection    (collector expanded-iri)
+        _             (log/warn "generate-statement - collection: " collection)
+        _action       (get txi "@action")
+        _meta         (get txi "@meta")
+        _p-o-pairs    (dissoc txi "@id" "@context" "@action")
+        action        (resolve-action _action (empty? _p-o-pairs))
+        _             (log/warn "generate-statement - action: " action)
+        id            (<?? (identity/resolve-iri expanded-iri tx-state))
+        _             (log/warn "generate-statement - id: " id)]
+    {:iri        iri
+     :id         id
+     :tempid?    (tempid/TempId? id)
+     :action     action
+     :collection collection
+     :o-tempid?  nil
+     :context    local-context}))
+
+
 (defn generate-statement
-  [{:keys [db-before tx-context collector] :as tx-state} txi]
+  [{:keys [db-before] :as tx-state} txi idx]
   (log/warn "Generate statement: " txi)
-  (let [local-context  (if-let [txi-context (get txi "@context")]
-                         (iri-util/expanded-context txi-context tx-context)
-                         tx-context)
-        _              (log/warn "generate-statement - local-context: " local-context)
-        iri            (get txi "@id")
-        expanded-iri   (iri-util/expand iri local-context)  ;; first expand iri with local context
-        _              (log/warn "generate-statement - expanded-iri: " expanded-iri)
-        collection     (collector expanded-iri)
-        _              (log/warn "generate-statement - collection: " collection)
-        _action        (get txi "@action")
-        _meta          (get txi "@meta")
-        _p-o-pairs     (dissoc txi "@id" "@context" "@action")
-        action         (resolve-action _action (empty? _p-o-pairs))
-        _              (log/warn "generate-statement - action: " action)
-        id             (<?? (identity/resolve-iri expanded-iri tx-state))
-        _              (log/warn "generate-statement - id: " id)
-        base-statement {:iri        iri
-                        :id         id
-                        :tempid?    (tempid/TempId? id)
-                        :action     action
-                        :collection collection
-                        :o-tempid?  nil}]
+  (let [p-o-pairs (dissoc txi "@id" "@context" "@action")
+        {:keys [collection action] :as base-smt} (base-statement tx-state txi nil)]
     (if (= :retract-subject action)
-      [base-statement]                                      ;; no k-v pairs to iterate over
+      [base-smt]                                            ;; no k-v pairs to iterate over
       (reduce-kv (fn [acc pred obj]
                    (let [pred-info (predicate-details pred collection db-before)
-                         smt       (assoc base-statement :pred-info pred-info
-                                                         :p (pred-info :id)
-                                                         :o obj)]
+                         smt       (assoc base-smt :pred-info pred-info
+                                                   :p (pred-info :id)
+                                                   :o obj
+                                                   :idx idx)]
                      ;; for multi-cardinality, create a statement for each object
                      (if (pred-info :multi)
-                       (reduce #(conj %1 (assoc smt :o %2)) acc (if (sequential? obj) (into #{} obj) [obj]))
+                       (->> (if (sequential? obj) (into #{} obj) [obj])
+                            (map-indexed #(assoc smt :o %2 :idx (conj idx %1)))
+                            (into acc))
                        (conj acc smt))))
-                 [] _p-o-pairs))))
+                 [] p-o-pairs))))
 
 
 (defn tx?
@@ -180,12 +191,19 @@
 
 
 (defn generate-statements
-  [{:keys [db-before tx-context collector] :as tx-state} tx]
+  [tx-state tx]
   ;; TODO - if we maintain tx-context here, delete from tx-state
   (let [tx-data (or (get tx "@graph")
                     (when (sequential? tx) tx)
                     (throw (ex-info (str "Invalid transaction.") {:status 400 :error :db/invalid-transaction})))]
-    (mapcat #(generate-statement tx-state %) tx-data)))
+    (loop [[txi & r] tx-data
+           i   0
+           acc (transient [])]
+      (if (nil? txi)
+        (persistent! acc)
+        (->> (generate-statement tx-state txi [i])
+             (reduce conj! acc)
+             (recur r (inc i)))))))
 
 
 
