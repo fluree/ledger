@@ -130,16 +130,12 @@
                         tx-context)
         iri           (get txi "@id")
         expanded-iri  (iri-util/expand iri local-context)   ;; first expand iri with local context
-        _             (log/warn "generate-statement - expanded-iri: " expanded-iri)
         collection    (collector expanded-iri)
-        _             (log/warn "generate-statement - collection: " collection)
         _action       (get txi "@action")
         _meta         (get txi "@meta")
         _p-o-pairs    (dissoc txi "@id" "@context" "@action")
         action        (resolve-action _action (empty? _p-o-pairs))
-        _             (log/warn "generate-statement - action: " action)
-        id            (<?? (identity/resolve-iri expanded-iri tx-state))
-        _             (log/warn "generate-statement - id: " id)]
+        id            (<?? (identity/resolve-iri expanded-iri idx tx-state))]
     {:iri        iri
      :id         id
      :tempid?    (tempid/TempId? id)

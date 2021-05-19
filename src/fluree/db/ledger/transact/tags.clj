@@ -34,16 +34,16 @@
 
 (defn create
   "Generates a _tag tempid"
-  [tag-name {:keys [tags] :as tx-state}]
+  [tag-name idx {:keys [tags] :as tx-state}]
   (let [tempid (tempid/->TempId "_tag" "_tag" (keyword tag-name) false)]
-    (tempid/register tempid tx-state)                       ;; register tempid
+    (tempid/register tempid idx tx-state)                       ;; register tempid
     (swap! tags assoc tag-name tempid)                      ;; register tag name -> tempid in @tags
     tempid))
 
 
 (defn resolve
   "Returns the subject id of the tag if it exists, or a tempid for a new tag."
-  [tag pred-info {:keys [tags db-root] :as tx-state}]
+  [tag idx pred-info {:keys [tags db-root] :as tx-state}]
   (go-try
     (let [pred-name (or (pred-info :name)
                         (throw (ex-info (str "Trying to resolve predicate name for tag resolution but name is unknown for pred: " (pred-info :id))
@@ -68,6 +68,6 @@
                          :error  :db/invalid-tx
                          :tags   tag}))
 
-        (nil? resolved) (create tag-name tx-state)
+        (nil? resolved) (create tag-name idx tx-state)
 
         :else resolved))))

@@ -26,17 +26,14 @@
 
 
 (defn resolve-iri
-  [iri {:keys [db-root idents] :as tx-state}]
-  (log/warn "resolve-iri:" iri "idents: " @idents)
+  [iri idx {:keys [db-root idents] :as tx-state}]
   (go-try
     (if-let [id (contains? @idents iri)]
       id
       (let [resolved (some-> (<? (query-range/index-range db-root :post = [const/$iri iri]))
                              ^Flake first
                              (.-s))
-            _        (log/warn "resolve-iri - resolved:" resolved)
-            id       (or resolved (tempid/construct iri tx-state true))]
-        (log/warn "resolve-iri - id:" id)
+            id       (or resolved (tempid/construct iri idx tx-state true))]
         (swap! idents assoc iri id)
         id))))
 

@@ -125,7 +125,7 @@
 
 (defn resolve-object-item
   "Resolves object into its final state so can be used for consistent comparisons with existing data."
-  [tx-state {:keys [pred-info id o iri] :as smt}]
+  [tx-state {:keys [pred-info id o iri idx] :as smt}]
   (go-try
     (let [type (pred-info :type)
           o*   (if (txfunction/tx-fn? o)                    ;; should only happen for multi-cardinality objects
@@ -136,12 +136,12 @@
 
                  (= :ref type) (cond
                                  (tempid/TempId? o*) o*     ;; tempid, don't need to resolve yet
-                                 (and (string? o*) iri) (identity/resolve-iri o* tx-state) ;; since this is JSON-ld, any ref should be an iri as well.
-                                 (string? o*) (tempid/use o* tx-state)
+                                 (and (string? o*) iri) (identity/resolve-iri o* idx tx-state) ;; since this is JSON-ld, any ref should be an iri as well.
+                                 (string? o*) (tempid/use o* idx tx-state)
                                  (int? o*) (<? (identity/resolve-ident-strict o* tx-state))
                                  (util/pred-ident? o*) (<? (identity/resolve-ident-strict o* tx-state)))
 
-                 (= :tag type) (<? (tags/resolve o* pred-info tx-state))
+                 (= :tag type) (<? (tags/resolve o* idx pred-info tx-state))
 
                  :else (conform-object-value o* type))]
       (when (and (pred-info :unique) (not (nil? o**)))

@@ -64,10 +64,10 @@
 
   The tempid, if created, will be used as the 'o' value of the parent for
   this nested txi."
-  [txi tx-state]
+  [txi idx tx-state]
   (let [_id  (get txi "_id")
         _id* (if (= :temp-ident (identity/id-type _id))
-               (tempid/construct _id tx-state)
+               (tempid/construct _id idx tx-state)
                _id)]
     (assoc txi "_id" _id*)))
 
@@ -75,7 +75,7 @@
 (defn- base-statement
   "Return the portion of a 'statement' for the subject, which can be used for individual
   predicate+objects to add to."
-  [tx-state txi]
+  [tx-state txi idx]
   (let [_id        (get txi "_id")
         _action    (get txi "_action")
         _meta      (get txi "_meta")
@@ -85,7 +85,7 @@
                      (<?? (identity/resolve-ident-strict _id tx-state))
 
                      :temp-ident
-                     (tempid/construct _id tx-state)
+                     (tempid/construct _id idx tx-state)
 
                      ;; else
                      _id)
@@ -98,17 +98,18 @@
      :collection collection
      :o-tempid?  nil}))
 
+
 (declare generate-statement)
 
 (defn- statement-obj
   [base-smt pred-info tx-state idx i obj]
-  (let [child (when (nested-txi? pred-info obj)
-                (update-nested-txi obj tx-state))
+  (let [idx*  (if i (conj idx i) idx)
+        child (when (nested-txi? pred-info obj)
+                (update-nested-txi obj idx* tx-state))
         o     (cond
                 child (get child "_id")
                 (dbfunctions/tx-fn? obj) (txfunction/->TxFunction obj)
                 :else obj)
-        idx*  (if i (conj idx i) idx)
         smt   (assoc base-smt :pred-info pred-info
                               :p (pred-info :id)
                               :o o
@@ -120,7 +121,7 @@
 
 (defn- generate-statement
   [{:keys [db-before] :as tx-state} txi idx]
-  (let [base-smt  (base-statement tx-state txi)
+  (let [base-smt  (base-statement tx-state txi idx)
         p-o-pairs (dissoc txi "_id" "_action" "_meta")]
     (if (and (empty? p-o-pairs) (= :retract (:action base-smt)))
       [(assoc base-smt :action :retract-subject)]           ;; no k-v pairs to iterate over

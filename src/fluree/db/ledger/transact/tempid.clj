@@ -20,15 +20,15 @@
 
 (defn register
   "Registers a TempId instance into the tx-state, returns provided TempId unaltered."
-  [TempId {:keys [tempids tempids-ordered] :as tx-state}]
+  [TempId idx {:keys [tempids tempids-ordered] :as tx-state}]
   {:pre [(TempId? TempId)]}
   (swap! tempids update TempId identity)                    ;; don't touch any existing value, otherwise nil
   (swap! tempids-ordered conj TempId)                       ;; creation ordered list to be used when assigning subject ids in same order as listed in tx
   true)
 
 
-(defn construct*
-  [tempid {:keys [collector] :as tx-state} iri?]
+(defn- construct*
+  [tempid idx {:keys [collector] :as tx-state} iri?]
   (let [[collection id] (if iri?
                           [(collector tempid) tempid]
                           (str/split tempid #"[^\._a-zA-Z0-9]" 2))
@@ -46,10 +46,10 @@
   defrecord equality will consider tempids with identical values the same, even if constructed separately.
   We therefore construct a tempid regardless if it has already been created, but are careful not to
   update any existing subject id that might have already been mapped to the tempid."
-  ([tempid tx-state] (construct tempid tx-state false))
-  ([tempid tx-state iri?]
-   (let [TempId (construct* tempid tx-state iri?)]
-     (register TempId tx-state)
+  ([tempid idx tx-state] (construct tempid idx tx-state false))
+  ([tempid idx tx-state iri?]
+   (let [TempId (construct* tempid idx tx-state iri?)]
+     (register TempId idx tx-state)
      TempId)))
 
 
@@ -57,8 +57,8 @@
   "Returns a tempid that will be used for a Flake object value, but only returns it if
   it already exists. If it does not exist, it means it is a tempid used as a value, but it was never used
   as a subject."
-  [tempid {:keys [tempids] :as tx-state}]
-  (let [TempId (construct* tempid tx-state false)]
+  [tempid idx {:keys [tempids] :as tx-state}]
+  (let [TempId (construct* tempid idx tx-state false)]
     (if (contains? @tempids TempId)
       TempId
       (throw (ex-info (str "Tempid " tempid " used as a value, but there is no corresponding subject in the transaction")
