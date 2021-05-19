@@ -20,10 +20,15 @@
 
 (defn register
   "Registers a TempId instance into the tx-state, returns provided TempId unaltered."
-  [TempId idx {:keys [tempids tempids-ordered] :as tx-state}]
+  [TempId idx {:keys [tempids] :as tx-state}]
   {:pre [(TempId? TempId)]}
-  (swap! tempids update TempId identity)                    ;; don't touch any existing value, otherwise nil
-  (swap! tempids-ordered conj TempId)                       ;; creation ordered list to be used when assigning subject ids in same order as listed in tx
+  (swap! tempids update TempId (fnil
+                                 #(update % :idx (fn [i] (if (neg-int? (compare i idx)) i idx))) ;; take smallest/first idx
+                                 {:idx         idx
+                                  :sid         nil
+                                  :tempid      TempId
+                                  :collection  (:collection TempId)
+                                  :user-string (:user-string TempId)}))
   true)
 
 
@@ -71,13 +76,13 @@
   predicate that matched a different subject, throws an error. Returns set subject-id on success."
   [tempid subject-id {:keys [tempids] :as tx-state}]
   (swap! tempids update tempid
-         (fn [existing-sid]
+         (fn [{:keys [sid] :as tempid-map}]
            (cond
-             (nil? existing-sid) subject-id                 ;; hasn't been set yet, success.
-             (= existing-sid subject-id) subject-id         ;; resolved, but to the same id - ok
+             (nil? sid) (assoc tempid-map :sid subject-id)  ;; hasn't been set yet, success.
+             (= sid subject-id) tempid-map                  ;; resolved, but to the same id - ok
              :else (throw (ex-info (str "Temp-id " (:user-string tempid)
                                         " matches two (or more) subjects based on predicate upserts: "
-                                        existing-sid " and " subject-id ".")
+                                        sid " and " subject-id ".")
                                    {:status 400
                                     :error  :db/invalid-tx})))))
   subject-id)
@@ -86,12 +91,12 @@
 (defn result-map
   "Creates a map of original user tempid strings to the resolved value."
   [{:keys [tempids] :as tx-state}]
-  (reduce-kv (fn [acc ^TempId tempid subject-id]
+  (reduce-kv (fn [acc ^TempId tempid {:keys [sid user-string] :as tempid-map}]
                (if (:unique? tempid)
-                 (assoc acc (:user-string tempid) subject-id)
-                 (update acc (:user-string tempid) (fn [[min-sid max-sid]]
-                                                     [(if min-sid (min min-sid subject-id) subject-id)
-                                                      (if max-sid (max max-sid subject-id) subject-id)]))))
+                 (assoc acc user-string sid)
+                 (update acc user-string (fn [[min-sid max-sid]]
+                                           [(if min-sid (min min-sid sid) sid)
+                                            (if max-sid (max max-sid sid) sid)]))))
              {} @tempids))
 
 
@@ -102,30 +107,30 @@
 
 (defn assign-subject-ids
   "Assigns any unresolved tempids with a permanent subject id."
-  [{:keys [tempids tempids-ordered upserts db-before t] :as tx-state} statements]
+  [{:keys [tempids upserts db-before t] :as tx-state} statements]
   (try
-    (let [ecount      (assoc (:ecount db-before) const/$_tx t) ;; make sure to set current _tx ecount to 't' value, even if no tempids in transaction
-          tempids-map @tempids]
-      (loop [[tempid & r] @tempids-ordered
-             tempids-map* tempids-map
-             upserts*     #{}
-             ecount*      ecount]
-        (if (nil? tempid)                                   ;; finished
-          (do (reset! tempids tempids-map*)
+    (let [tempids' @tempids]
+      (loop [[{:keys [tempid collection sid] :as tid-map} & r] (sort-by :idx (vals tempids'))
+             acc      tempids'
+             upserts* #{}
+             ;; make sure to set current _tx ecount to 't' value, even if no tempids in transaction
+             ecount   (assoc (:ecount db-before) const/$_tx t)]
+        (if (nil? tid-map)                                  ;; finished
+          (do (reset! tempids acc)
               (when-not (empty? upserts*)
                 (reset! upserts upserts*))
               ;; return tx-state, don't need to update ecount in db-after, as dbproto/-with will update it
               tx-state)
-          (if (nil? (get tempids-map tempid))
-            (let [cid      (dbproto/-c-prop db-before :id (:collection tempid))
-                  next-id  (if (= const/$_tx cid)
-                             t                              ; _tx collection has special handling as we decrement. Current value held in 't'
-                             (if-let [last-sid (get ecount* cid)]
-                               (inc last-sid)
-                               (flake/->sid cid 0)))
-                  ecount** (assoc ecount* cid next-id)]
-              (recur r (assoc tempids-map* tempid next-id) upserts* ecount**))
-            (recur r tempids-map* (conj upserts* (get tempids-map tempid)) ecount*))))
+          (if sid
+            (recur r acc (conj upserts* sid) ecount)
+            (let [cid     (dbproto/-c-prop db-before :id collection)
+                  next-id (if (= const/$_tx cid)
+                            t                               ; _tx collection has special handling as we decrement. Current value held in 't'
+                            (if-let [last-sid (get ecount cid)]
+                              (inc last-sid)
+                              (flake/->sid cid 0)))
+                  ecount* (assoc ecount cid next-id)]
+              (recur r (assoc-in acc [tempid :sid] next-id) upserts* ecount*)))))
       statements)
     (catch Exception e
       (log/error e (str "Unexpected error assigning permanent id to tempids."

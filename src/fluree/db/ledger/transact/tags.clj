@@ -13,7 +13,7 @@
 (defn- temp-flake->flake
   "Transforms a TempId based flake into a flake."
   [{:keys [tempids t] :as tx-state} [tag-name tag-tempid]]
-  (flake/->Flake (get @tempids tag-tempid) const/$_tag:id tag-name t true nil))
+  (flake/->Flake (get-in @tempids [tag-tempid :sid]) const/$_tag:id tag-name t true nil))
 
 
 (defn create-flakes
@@ -36,7 +36,7 @@
   "Generates a _tag tempid"
   [tag-name idx {:keys [tags] :as tx-state}]
   (let [tempid (tempid/->TempId "_tag" "_tag" (keyword tag-name) false)]
-    (tempid/register tempid idx tx-state)                       ;; register tempid
+    (tempid/register tempid idx tx-state)                   ;; register tempid
     (swap! tags assoc tag-name tempid)                      ;; register tag name -> tempid in @tags
     tempid))
 

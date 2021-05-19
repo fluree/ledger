@@ -57,7 +57,7 @@
 (defn- temp-flake->flake
   "Transforms a TempId iri flake into a flake."
   [{:keys [tempids t] :as tx-state} [iri tempid]]
-  (flake/->Flake (get @tempids tempid) const/$iri iri t true nil))
+  (flake/->Flake (get-in @tempids [tempid :sid]) const/$iri iri t true nil))
 
 (defn generate-tempid-flakes
   "Returns a set of flakes for new IRIs"

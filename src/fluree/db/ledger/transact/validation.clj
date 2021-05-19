@@ -156,9 +156,9 @@
   [tempid _id pred-info tx-state]
   (let [f (fn [{:keys [tempids db-after] :as tx-state}]
             (go-try
-              (let [tempid-sid (get @tempids tempid)
+              (let [tempid-sid (get-in @tempids [tempid :sid])
                     _id*       (if (tempid/TempId? _id)
-                                 (get @tempids _id)
+                                 (get-in @tempids [_id :sid])
                                  _id)
                     matches    (<? (query-range/index-range @db-after :post = [(pred-info :id) tempid-sid]))
                     matches-n  (count matches)]
@@ -228,7 +228,7 @@
                             :auth_id auth
                             :state   fuel-atom
                             :t       t})
-                         (async/go
+                        (async/go
                           (loop [[f* & r] f]
                             (if (nil? f*)
                               true
@@ -420,29 +420,29 @@
                                  :credits (:credits @fuel)
                                  :spent   0})
                 {:keys [language f]} @c-spec-fn
-                res        (if (= :lisp language)
-                             (f {:db      @db-after
-                                 :instant instant
-                                 :sid     sid
-                                 :flakes  subject-flakes
-                                 :auth_id auth
-                                 :t       t
-                                 :state   fuel-atom})
-                             (async/go
-                               (loop [[f* & r] f]
-                                 (if (empty? r)
-                                   true
-                                   (let [res (async/<! (f* {"db"      @db-after
-                                                            "sid"     sid
-                                                            "instant" instant
-                                                            "flakes"  subject-flakes
-                                                            "auth_id" auth
-                                                            "state"   fuel-atom
-                                                            "t"       t}))]
-                                     (cond
-                                       (util/exception? res) res
-                                       res (recur r)
-                                       :else res))))))
+                res       (if (= :lisp language)
+                            (f {:db      @db-after
+                                :instant instant
+                                :sid     sid
+                                :flakes  subject-flakes
+                                :auth_id auth
+                                :t       t
+                                :state   fuel-atom})
+                            (async/go
+                              (loop [[f* & r] f]
+                                (if (empty? r)
+                                  true
+                                  (let [res (async/<! (f* {"db"      @db-after
+                                                           "sid"     sid
+                                                           "instant" instant
+                                                           "flakes"  subject-flakes
+                                                           "auth_id" auth
+                                                           "state"   fuel-atom
+                                                           "t"       t}))]
+                                    (cond
+                                      (util/exception? res) res
+                                      res (recur r)
+                                      :else res))))))
                 res*      (or (if (channel? res) (async/<! res) res))]
 
             ;; update main tx fuel count with the fuel spent to execute this tx function

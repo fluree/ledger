@@ -206,12 +206,9 @@
              :fuel             (atom {:stack   []
                                       :credits 1000000
                                       :spent   0})
-             ;; hold map of all tempids to their permanent ids. After initial processing will use this to fill
-             ;; all tempids with the permanent ids.
+             ;; hold map of all tempids to a map containing tempid data,
+             ;; including the permanent subject ids once determined.
              :tempids          (atom {})
-             ;; hold same tempids as :tempids above, but stores them in insertion order to ensure when
-             ;; assigning permanent ids, it will be done in a predicable order
-             :tempids-ordered  (atom [])
              ;; idents (two-tuples of unique predicate + value) may be used multiple times in same tx
              ;; we keep the ones we've already resolved here as a cache
              :idents           (atom {})
@@ -286,8 +283,8 @@
 
       ;; (= :add action) below
       :else
-      (let [s             (if tempid? (get @tempids id) id)
-            o*            (if o-tempid? (get @tempids o) o) ;; object may be a tempid, if so resolve to permanent id
+      (let [s             (if tempid? (get-in @tempids [id :sid]) id)
+            o*            (if o-tempid? (get-in @tempids [o :sid]) o) ;; object may be a tempid, if so resolve to permanent id
             new-flake     (flake/->Flake s p o* t true nil)
             ;; retractions do not need to be checked for tempids (except when tempid resolved via an :upsert true)
             retract-flake (when (or (not tempid?) (contains? @upserts s))
