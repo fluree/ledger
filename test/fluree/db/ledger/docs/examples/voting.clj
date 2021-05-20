@@ -40,78 +40,78 @@
 ;; Add sample data
 
 (deftest add-sample-data
-  (testing "Add sample data for the voting app")
-  (let [filename  "../test/fluree/db/ledger/Resources/Voting/data.edn"
-        txn       (edn/read-string (slurp (io/resource filename)))
-        data-resp (async/<!! (fdb/transact-async (basic/get-conn) test/ledger-voting txn))]
+  (testing "Add sample data for the voting app"
+    (let [filename  "../test/fluree/db/ledger/Resources/Voting/data.edn"
+          txn       (-> filename io/resource slurp edn/read-string)
+          data-resp (async/<!! (fdb/transact-async (basic/get-conn) test/ledger-voting txn))]
 
-    ;; status should be 200
-    (is (= 200 (:status data-resp)))
+      ;; status should be 200
+      (is (= 200 (:status data-resp)))
 
-    ;; block should be 3
-    (is (= 3 (:block data-resp)))
+      ;; block should be 3
+      (is (= 3 (:block data-resp)))
 
-    ;; there should be 11 tempids
-    (is (= 11 (count (:tempids data-resp))))))
+      ;; there should be 11 tempids
+      (is (= 11 (count (:tempids data-resp)))))))
 
 ;; Add permissions
 
 (deftest add-permissions
-  (testing "Add permissions for the voting app")
-  (let [filename  "../test/fluree/db/ledger/Resources/Voting/permissions.edn"
-        txn       (edn/read-string (slurp (io/resource filename)))
-        data-resp (async/<!! (fdb/transact-async (basic/get-conn) test/ledger-voting txn))]
+  (testing "Add permissions for the voting app"
+    (let [filename  "../test/fluree/db/ledger/Resources/Voting/permissions.edn"
+          txn       (edn/read-string (slurp (io/resource filename)))
+          data-resp (async/<!! (fdb/transact-async (basic/get-conn) test/ledger-voting txn))]
 
-    ;; status should be 200
-    (is (= 200 (:status data-resp)))
+      ;; status should be 200
+      (is (= 200 (:status data-resp)))
 
-    ;; block should be 4
-    (is (= 4 (:block data-resp)))
+      ;; block should be 4
+      (is (= 4 (:block data-resp)))
 
-    ;; there should be 12 tempids
-    (is (= 6 (count (:tempids data-resp))))))
+      ;; there should be 12 tempids
+      (is (= 6 (count (:tempids data-resp)))))))
 
 
 ;; Preventing Vote Fraud - add ownAuth?
 
 (deftest prevent-voter-fraud
-  (testing "Preventing Vote Fraud - add ownAuth? smart function")
-  (let [txn  [{:_id "_fn$ownAuth", :_fn/name "ownAuth?", :_fn/code "(== (?o) (?auth_id))"}
-              {:_id ["_predicate/name" "vote/yesVotes"], :spec ["_fn$ownAuth"]}
-              {:_id ["_predicate/name" "vote/noVotes"], :spec ["_fn$ownAuth"]}]
-        resp (async/<!! (fdb/transact-async (basic/get-conn) test/ledger-voting txn))]
+  (testing "Preventing Vote Fraud - add ownAuth? smart function"
+    (let [txn  [{:_id "_fn$ownAuth", :_fn/name "ownAuth?", :_fn/code "(== (?o) (?auth_id))"}
+                {:_id ["_predicate/name" "vote/yesVotes"], :spec ["_fn$ownAuth"]}
+                {:_id ["_predicate/name" "vote/noVotes"], :spec ["_fn$ownAuth"]}]
+          resp (async/<!! (fdb/transact-async (basic/get-conn) test/ledger-voting txn))]
 
-    ;; status should be 200
-    (is (= 200 (:status resp)))
+      ;; status should be 200
+      (is (= 200 (:status resp)))
 
-    ;; block should be 5
-    (is (= 5 (:block resp)))
+      ;; block should be 5
+      (is (= 5 (:block resp)))
 
-    ;; there should be 1 tempids
-    (is (= 1 (count (:tempids resp))))))
+      ;; there should be 1 tempids
+      (is (= 1 (count (:tempids resp)))))))
 
 ;; Propose a change
 
 (deftest propose-a-change
-  (testing "Soft Cell proposes a change to their username")
-  (let [txn  [{:_id       "change",
-               :name      "softCellNameChange",
-               :doc       "It's time for a change!",
-               :subject   ["_user/username" "softCell"],
-               :predicate ["_predicate/name" "_user/username"],
-               :object    "hardCell",
-               :vote      "vote$softCell"}
-              {:_id "vote$softCell", :name "softCellNameVote", :yesVotes [["_auth/id" "TfHzKHsTdXVhbjskqesPTi6ZqwXHghFb1yK"]]}]
-        resp (async/<!! (fdb/transact-async (basic/get-conn) test/ledger-voting txn soft-cell-opts))]
+  (testing "Soft Cell proposes a change to their username"
+    (let [txn  [{:_id       "change",
+                 :name      "softCellNameChange",
+                 :doc       "It's time for a change!",
+                 :subject   ["_user/username" "softCell"],
+                 :predicate ["_predicate/name" "_user/username"],
+                 :object    "hardCell",
+                 :vote      "vote$softCell"}
+                {:_id "vote$softCell", :name "softCellNameVote", :yesVotes [["_auth/id" "TfHzKHsTdXVhbjskqesPTi6ZqwXHghFb1yK"]]}]
+          resp (async/<!! (fdb/transact-async (basic/get-conn) test/ledger-voting txn soft-cell-opts))]
 
-    ;; status should be 200
-    (is (= 200 (:status resp)))
+      ;; status should be 200
+      (is (= 200 (:status resp)))
 
-    ;; block should be 6
-    (is (= 6 (:block resp)))
+      ;; block should be 6
+      (is (= 6 (:block resp)))
 
-    ;; there should be 2 tempids
-    (is (= 2 (count (:tempids resp))))))
+      ;; there should be 2 tempids
+      (is (= 2 (count (:tempids resp)))))))
 
 ;; Add several smart functions
 

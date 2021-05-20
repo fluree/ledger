@@ -46,7 +46,6 @@
                            {:_id "_collection"
                             :name "movie"}]
           collection-resp  (async/<!! (fdb/transact-async (get-conn) test/ledger-chat collection-txn))]
-      (println collection-resp)
       ;; status should be 200
       (is (= 200 (:status collection-resp)))
 
@@ -92,14 +91,14 @@
 
 
 (deftest graphql-txn
-  (testing "Add to Person collection by way of GraphQL mutation syntax")
-  (let [graphql-txn       {:query "mutation addPeople ($myPeopleTx: JSON) { transact(tx: $myPeopleTx)}"
-                           :variables {:myPeopleTx "[{ \"_id\": \"person\", \"handle\": \"aSmith\", \"fullName\": \"Alice Smith\" }, { \"_id\": \"person\", \"handle\": \"aVargas\", \"fullName\": \"Alex Vargas\" }]"}}
-        collection-resp   (async/<!! (fdb/graphql-async (get-conn) test/ledger-chat graphql-txn))]
+  (testing "Add to Person collection by way of GraphQL mutation syntax"
+    (let [graphql-txn       {:query "mutation addPeople ($myPeopleTx: JSON) { transact(tx: $myPeopleTx)}"
+                             :variables {:myPeopleTx "[{ \"_id\": \"person\", \"handle\": \"aSmith\", \"fullName\": \"Alice Smith\" }, { \"_id\": \"person\", \"handle\": \"aVargas\", \"fullName\": \"Alex Vargas\" }]"}}
+          collection-resp   (async/<!! (fdb/graphql-async (get-conn) test/ledger-chat graphql-txn))]
 
-    (is (= 200 (:status collection-resp)))
-    (is (= 5 (:block collection-resp)))
-    (is (= 2 (count (:tempids collection-resp))))))
+      (is (= 200 (:status collection-resp)))
+      (is (= 5 (:block collection-resp)))
+      (is (= 2 (count (:tempids collection-resp)))))))
 
 
 (deftest basic-schema-test

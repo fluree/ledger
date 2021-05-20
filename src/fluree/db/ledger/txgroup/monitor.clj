@@ -262,51 +262,50 @@
 
 
 ;; TODO - need to detect and propagate errors
-;; TODO - need way for leader to reject new block if we changed who is responsible for a network in-between, and detect + close here
+;; TODO - need way for leader to reject new block if we changed who is
+;;        responsible for a network in-between, and detect + close here
 (defn db-queue-loop
   "Runs a continuous loop for a db to process new blocks"
   [conn chan network dbid]
   (let [group       (:group conn)
         this-server (txproto/this-server group)]
     (async/go-loop [last-t nil]
-      (let [kick (async/<! chan)]
-        (when-not (nil? kick)
-          (if-not (network-assigned-to? group this-server network)
-            (do
-              (log/info (str "Network " network " is no longer assigned to this server. Stopping to process transactions."))
-              (close-db-queue network dbid))
-            (let [queue     (txproto/command-queue group network dbid)
-                  new-block (try (when (not-empty queue)
-                                   (let [session    (session/session conn [network dbid])
-                                         db         (<? (session/current-db session))
-                                         at-last-t? (or (nil? last-t)
-                                                        (= last-t (:t db)))]
-                                     (if at-last-t?
-                                       (let [cmds (select-block-commands db queue)]
-                                         (when-not (empty? cmds)
-                                           (->> cmds
-                                                (transact/build-block session)
-                                                <?)))
-                                       ;; db isn't up to date, shouldn't happen but before abandoning, dump and reload db to see if we can get current
-                                       (let [_           (session/clear-db! session)
-                                             db*         (<? (session/current-db session))
-                                             at-last-t?* (= last-t (:t db*))]
-                                         (if at-last-t?*
-                                           (do
-                                             (log/info (format "Ledger %s/%s is not automatically updating internally, session may be lost." network dbid))
-                                             (let [cmds (select-block-commands db queue)]
-                                               (when-not (empty? cmds)
-                                                 (->> cmds
-                                                      (transact/build-block session)
-                                                      <?))))
-                                           (log/warn (format "Ledger skipping new transactions because our last processed 't' is %s, but the latest db we can retrieve is at %s" last-t (:t db))))))))
-                                 (catch Exception e
-                                   (log/error e "Error processing new block. Exiting tx monitor loop.")))]
-              (when new-block
-                ;; in case we still have a queue to process, kick again until finished
-                (async/put! chan ::kick))
+      (when-let [kick (async/<! chan)]
+        (if-not (network-assigned-to? group this-server network)
+          (do
+            (log/info (str "Network " network " is no longer assigned to this server. "
+                           "Stopping to process transactions."))
+            (close-db-queue network dbid))
+          (let [queue     (txproto/command-queue group network dbid)
+                new-block (try (when (not-empty queue)
+                                 (let [session    (session/session conn [network dbid])
+                                       db         (<? (session/current-db session))
+                                       at-last-t? (or (nil? last-t)
+                                                      (= last-t (:t db)))]
+                                   (if at-last-t?
+                                     (let [cmds (select-block-commands db queue)]
+                                       (when-not (empty? cmds)
+                                         (<? (transact/build-block session cmds))))
+                                     ;; db isn't up to date, shouldn't happen
+                                     ;; but before abandoning, dump and reload
+                                     ;; db to see if we can get current
+                                     (let [_           (session/clear-db! session)
+                                           db*         (<? (session/current-db session))
+                                           at-last-t?* (= last-t (:t db*))]
+                                       (if at-last-t?*
+                                         (do
+                                           (log/info (format "Ledger %s/%s is not automatically updating internally, session may be lost." network dbid))
+                                           (let [cmds (select-block-commands db queue)]
+                                             (when-not (empty? cmds)
+                                               (<? (transact/build-block session cmds)))))
+                                         (log/warn (format "Ledger skipping new transactions because our last processed 't' is %s, but the latest db we can retrieve is at %s" last-t (:t db))))))))
+                               (catch Exception e
+                                 (log/error e "Error processing new block. Exiting tx monitor loop.")))]
+            (when new-block
+              ;; in case we still have a queue to process, kick again until finished
+              (async/put! chan ::kick))
 
-              (recur (or (:t new-block) last-t)))))))))
+            (recur (or (:t new-block) last-t))))))))
 
 
 (defn db-queue
@@ -388,11 +387,10 @@
             (session/close session))))
 
       :assoc-in
-      (when-let [queued-tx (queued-tx state-change)]
-        (let [[network dbid _] queued-tx]
-          (when (network-assigned-to? (:group conn) network)
-            (let [queue-chan (db-queue conn network dbid)]
-              (async/put! queue-chan ::kick)))))
+      (when-let [[network dbid _] (queued-tx state-change)]
+        (when (network-assigned-to? (:group conn) network)
+          (let [queue-chan (db-queue conn network dbid)]
+            (async/put! queue-chan ::kick))))
 
       :worker-assign
       (when (and (not (in-memory-db? (:group system)))
