@@ -92,7 +92,7 @@
   [t novelty remove-preds]
   (comp (map (fn [node]
                (if (index/leaf? node)
-                 (index/value-at-t node t novelty remove-preds)
+                 (index/at-t node t novelty remove-preds)
                  node)))
         (map mark-novel)))
 
@@ -374,29 +374,27 @@
       false
       (let [latest-db     (<? (session/current-db session))
             novelty-size  (get-in latest-db [:novelty :size])
-            novelty-min   (novelty-min session)
-            remove-preds? (and (not (nil? remove-preds)) (not (empty? remove-preds)))
-            needs-index?  (or remove-preds? (>= novelty-size novelty-min))]
-        (if needs-index?
-          ;; kick off indexing with this DB
+            novelty-min   (novelty-min session)]
+        (if (or (>= novelty-size novelty-min)
+                (seq remove-preds))
           (<? (index* session latest-db opts))
-          ;; no index needed, return false
           false)))))
-  ([session db opts]
+  ([session {:keys [conn block network dbid] :as db} opts]
    (go-try
-    (let [{:keys [conn block network dbid]} db
-          last-index (session/indexed session)]
+    (let [last-index (session/indexed session)]
       (cond
         (and last-index (<= block last-index))
         (do
           (log/info "Index called on DB but last index isn't older."
-                    {:last-index last-index :block block :db (pr-str db) :session (pr-str session)})
+                    {:last-index last-index
+                     :block      block
+                     :db         (pr-str db)
+                     :session    (pr-str session)})
           false)
 
         (session/acquire-indexing-lock! session block)
         (let [updated-db (<? (refresh db opts))
               group      (-> updated-db :conn :group)]
-          ;; write out index point
           (<? (txproto/write-index-point-async group updated-db))
           (session/clear-db! session)                      ;; clear db cache to force reload
           (session/release-indexing-lock! session block)   ;; free up our lock
