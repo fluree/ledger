@@ -61,14 +61,17 @@
                            (when (re-find re iri)
                              collection))))
                      match-iris)]
-    (fn [iri]
-      (or (some (fn [match-fn] (match-fn iri)) match-fns)
-          (throw (ex-info (str "The iri does not match any collections, and no default collection is specified: "
-                               iri
-                               " Either specify _collection/baseIRI for a collection that will match, or set a "
-                               "collection as a default by setting _collection/baseIRI to '' (empty string).")
-                          {:status 400
-                           :error  :db/invalid-transaction}))))))
+    (fn [iri types]
+      (if (and types (= "http://www.w3.org/2000/01/rdf-schema#Class" (first types)) (= 1 (count types)))
+        "_predicate"
+        (or (some (fn [match-fn] (match-fn iri)) match-fns)
+            (throw (ex-info (str "The iri does not match any collections, and no default collection is specified: "
+                                 iri
+                                 " Either specify _collection/baseIRI for a collection that will match, or set a "
+                                 "collection as a default by setting _collection/baseIRI to '' (empty string).")
+                            {:status 400
+                             :error  :db/invalid-transaction})))))))
+
 
 (defn build-collector-fn
   [db]
@@ -103,11 +106,9 @@
   - :add - adding transaction items (which can be over-ridden by a nil value of a key pair)
   - :retract - retracting transaction items (all k-v pairs will attempt deletes)
   - :retract-subject - retract all values for a given subject."
-  [_action empty-kv?]
+  [_action]
   (if (= :delete (keyword _action))
-    (if empty-kv?
-      :retract-subject
-      :retract)
+    :retract
     :add))
 
 (defn predicate-details
@@ -130,12 +131,15 @@
                         tx-context)
         iri           (get txi "@id")
         expanded-iri  (iri-util/expand iri local-context)   ;; first expand iri with local context
-        collection    (collector expanded-iri)
+        types         (when-let [item-type (get txi "@type")]
+                        (if (sequential? item-type)
+                          (mapv #(iri-util/expand % local-context) item-type)
+                          [(iri-util/expand item-type local-context)]))
+        collection    (collector expanded-iri types)
         _action       (get txi "@action")
         _meta         (get txi "@meta")
-        _p-o-pairs    (dissoc txi "@id" "@context" "@action")
-        action        (resolve-action _action (empty? _p-o-pairs))
-        id            (<?? (identity/resolve-iri expanded-iri idx tx-state))]
+        action        (resolve-action _action)
+        id            (<?? (identity/resolve-iri expanded-iri collection nil idx tx-state))]
     {:iri        iri
      :id         id
      :tempid?    (tempid/TempId? id)
@@ -150,8 +154,8 @@
   (log/warn "Generate statement: " txi)
   (let [p-o-pairs (dissoc txi "@id" "@context" "@action")
         {:keys [collection action] :as base-smt} (base-statement tx-state txi nil)]
-    (if (= :retract-subject action)
-      [base-smt]                                            ;; no k-v pairs to iterate over
+    (if (and (empty? p-o-pairs) (= :retract action))
+      [(assoc base-smt :action :retract-subject)]           ;; no k-v pairs to iterate over
       (reduce-kv (fn [acc pred obj]
                    (let [pred-info (predicate-details pred collection db-before)
                          smt       (assoc base-smt :pred-info pred-info

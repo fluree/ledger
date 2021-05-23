@@ -199,6 +199,7 @@
     (fn [^Flake flake]
       (let [p (.-p flake)]
         (cond
+          (= p const/$rdf:type) :class
           (= p const/$_predicate:type) :type
           (= p const/$_predicate:multi) :multi
           (= p const/$_predicate:component) :component
@@ -260,9 +261,9 @@
     (let [pred-flakes     (get-in @validate-fn [:c-spec pred-sid])
           existing-schema (:schema db-before)
           new?            (predicate-new? pred-sid existing-schema)
-          {:keys [type multi component unique index name]} (flakes-by-type pred-flakes)]
+          {:keys [class type multi component unique index name]} (flakes-by-type pred-flakes)]
       (cond-> pred-flakes
-              true (check-type-changes new? type)
+              (not class) (check-type-changes new? type)
               multi (check-multi-changes multi)
               component (check-component-changes new? component)
               unique (check-unique-changes new? pred-sid existing-schema unique)

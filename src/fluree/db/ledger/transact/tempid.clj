@@ -1,5 +1,5 @@
 (ns fluree.db.ledger.transact.tempid
-  (:refer-clojure :exclude [use set])
+  (:refer-clojure :exclude [use set resolve])
   (:require [fluree.db.util.core :as util]
             [clojure.string :as str]
             [fluree.db.constants :as const]
@@ -33,15 +33,18 @@
 
 
 (defn- construct*
-  [tempid idx {:keys [collector] :as tx-state} iri?]
-  (let [[collection id] (if iri?
-                          [(collector tempid) tempid]
-                          (str/split tempid #"[^\._a-zA-Z0-9]" 2))
+  "explicit collection is there for IRIs. The legacy _id format always
+  required a collection too be part of the string, where iris will not
+  have the collection name embedded and must be inferred"
+  [tempid idx {:keys [collector] :as tx-state} explicit-collection]
+  (let [[coll id] (if explicit-collection
+                    [explicit-collection tempid]
+                    (str/split tempid #"[^\._a-zA-Z0-9]" 2))
         key (cond
-              iri? tempid
-              id (keyword collection id)
-              :else (keyword collection (str (util/random-uuid))))]
-    (->TempId tempid collection key (boolean id))))
+              explicit-collection tempid
+              id (keyword coll id)
+              :else (keyword coll (str (util/random-uuid))))]
+    (->TempId tempid coll key (boolean id))))
 
 
 (defn construct
@@ -51,9 +54,9 @@
   defrecord equality will consider tempids with identical values the same, even if constructed separately.
   We therefore construct a tempid regardless if it has already been created, but are careful not to
   update any existing subject id that might have already been mapped to the tempid."
-  ([tempid idx tx-state] (construct tempid idx tx-state false))
-  ([tempid idx tx-state iri?]
-   (let [TempId (construct* tempid idx tx-state iri?)]
+  ([tempid idx tx-state] (construct tempid idx tx-state nil))
+  ([tempid idx tx-state collection]
+   (let [TempId (construct* tempid idx tx-state collection)]
      (register TempId idx tx-state)
      TempId)))
 
@@ -63,7 +66,7 @@
   it already exists. If it does not exist, it means it is a tempid used as a value, but it was never used
   as a subject."
   [tempid idx {:keys [tempids] :as tx-state}]
-  (let [TempId (construct* tempid idx tx-state false)]
+  (let [TempId (construct* tempid idx tx-state nil)]
     (if (contains? @tempids TempId)
       TempId
       (throw (ex-info (str "Tempid " tempid " used as a value, but there is no corresponding subject in the transaction")
@@ -86,6 +89,12 @@
                                    {:status 400
                                     :error  :db/invalid-tx})))))
   subject-id)
+
+
+(defn resolve
+  "Returns the subject id of provided tempid, or nil if does not yet exist."
+  [tempid {:keys [tempids] :as tx-state}]
+  (get-in @tempids [tempid :sid]))
 
 
 (defn result-map

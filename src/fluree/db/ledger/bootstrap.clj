@@ -49,7 +49,7 @@
                             (reduce
                               (fn [acc txi]
                                 (assoc acc (:name txi) (-> txi :_id (second))))
-                              {}))
+                              {"@id" 0}))
         tag-pred?      (->> bootstrap-txn
                             (filter #(and (= "_predicate" (-> % :_id first))
                                           (= "tag" (:type %))))
@@ -74,7 +74,10 @@
                               (fn [acc txi]
                                 (let [[collection sid] (:_id txi)
                                       cid        (get collection->id collection)
-                                      subject-id (flake/->sid cid sid)]
+                                      subject-id (flake/->sid cid sid)
+                                      acc*       (if-let [iri (get txi "@id")]
+                                                   (conj acc [subject-id const/$iri iri])
+                                                   acc)]
                                   (reduce-kv
                                     (fn [acc2 k v]
                                       (let [p-str (str (name collection) "/" (name k))
@@ -86,8 +89,8 @@
                                         (if (vector? v)     ;; multi-cardinality values
                                           (reduce #(conj %1 [subject-id p %2]) acc2 v)
                                           (conj acc2 [subject-id p v]))))
-                                    acc
-                                    (dissoc txi :_id))))
+                                    acc*
+                                    (dissoc txi :_id "@id"))))
                               []))]
     {:fparts     fparts
      :index-pred index-pred
@@ -583,6 +586,32 @@
     :name "_predicate/retractDuplicates"
     :doc  "If false (default), when a transaction creates a new flake that already exists it does not update the existing data. When true, it will always force a retraction/insertion."
     :type "boolean"}
+   ; rdf:type
+   {:_id                ["_predicate" const/$rdf:type]
+    "@id"  "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
+    :name               "rdf:type"
+    :equivalentProperty ["@type"]
+    :doc                "rdf:type - RDF type designation."
+    :type               "ref"
+    :multi              true}
+   {:_id   ["_predicate" const/$rdfs:subClassOf]
+    "@id"  "http://www.w3.org/2000/01/rdf-schema#subClassOf"
+    :name  "rdfs:subClassOf"
+    :doc   "rdfs:subClassOf - ref to parent "
+    :type  "ref"
+    :multi true}
+   {:_id   ["_predicate" const/$rdfs:subPropertyOf]
+    "@id"  "http://www.w3.org/2000/01/rdf-schema#subPropertyOf"
+    :name  "rdfs:subPropertyOf"
+    :doc   "rdfs:subPropertyOf - ref to parent property."
+    :type  "ref"
+    :multi true}
+
+   ;; default class / @type associations
+   {:_id   ["_predicate" const/$rdfs:Class]
+    "@id"  "http://www.w3.org/2000/01/rdf-schema#Class"
+    :name  "rdfs:Class"}
+
 
 
 
@@ -922,20 +951,6 @@
     :type "boolean"}
 
 
-   ; rdfs:Class
-   ;{:_id    ["_predicate" const/$rdfs:Class]
-   ; :name   "rdfs:Class"
-   ; :doc    "RDF Schema Class."
-   ; :type   "string"
-   ; :unique true
-   ; :upsert true}
-
-   ; rdf:type
-   {:_id                ["_predicate" const/$rdf:type]
-    :name               "rdf:type"
-    :equivalentProperty ["a"]
-    :doc                "RDF type designation."
-    :type               "ref"}
    ;; SHACL
    {:_id  ["_predicate" const/$sh:path]
     :name "sh:path"
