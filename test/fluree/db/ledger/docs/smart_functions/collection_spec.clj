@@ -8,11 +8,11 @@
 (use-fixtures :once test/test-system)
 
 (deftest full-name-req-test
-  (let [non-neg-spec  [{:_id ["_collection/name" "person"], :spec ["_fn$fullNameReq"], :specDoc "A person is required to have a fullName."}
+  (let [full-name-spec  [{:_id ["_collection/name" "person"], :spec ["_fn$fullNameReq"], :specDoc "A person is required to have a fullName."}
                        {:_id "_fn$fullNameReq",
                         :name "fullNameReq",
                         :code "(boolean (get (query (str \"{\\\"select\\\": [\\\"*\\\"], \\\"from\\\": \" (?sid) \"}\")) \"person/fullName\"))"}]
-        add-spec-resp (async/<!! (fdb/transact-async (basic/get-conn) test/ledger-chat non-neg-spec))
+        add-spec-resp (async/<!! (fdb/transact-async (basic/get-conn) test/ledger-chat full-name-spec))
         test-spec     [{:_id "person", :handle "noFullName"}]
         test-resp     (-> (async/<!! (fdb/transact-async (basic/get-conn) test/ledger-chat test-spec))
                           test/safe-Throwable->map :cause)]
@@ -29,5 +29,3 @@
   (basic/add-sample-data)
   (basic/graphql-txn)
   (full-name-req-test))
-
-
