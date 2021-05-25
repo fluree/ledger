@@ -29,7 +29,7 @@
   [{:keys [conn] :as system}  {:keys [cmd sig] :as signed-cmd}]
   (when-not (and (string? cmd) (string? sig))
     (throw-invalid-command (str "Command map requires keys of 'cmd' and 'sig', with a json string command map and signature of the command map respectively. Provided: " (pr-str signed-cmd))))
-  (when (> (count cmd) 2000000)
+  (when (> (count cmd) 10000000)
     (throw-invalid-command (format "Command is %s bytes and exceeds the configured max size." (count cmd))))
   (let [id       (crypto/sha3-256 cmd)
         cmd-data (try (json/parse cmd)

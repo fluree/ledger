@@ -35,7 +35,8 @@
             [fluree.db.ledger.mutable :as mutable]
             [fluree.db.auth :as auth]
             [fluree.db.ledger.delete :as delete]
-            [fluree.db.meta :as meta])
+            [fluree.db.meta :as meta]
+            [fluree.db.ledger.transact.json :as tx-json])
   (:import (java.io Closeable)
            (java.time Instant)
            (java.net BindException)
@@ -309,7 +310,7 @@
           db-with       (<? (dbproto/-forward-time-travel db flakes'))
           next-t        (- (:t db-with) 1)
           session       (session/session conn ledger)
-          res           (<? (transact/build-transaction session db-with {:command cmd-data} next-t block-instant))
+          res           (<? (tx-json/transact db-with {:command cmd-data} next-t block-instant))
           {:keys [flakes fuel status error]} res
           _             (session/close session)]
       [{:status status}
@@ -336,7 +337,7 @@
         (let [cmd-data      (fdb/tx->command ledger txn private-key)
               next-t        (dec (:t db))
               block-instant (Instant/now)
-              res           (<? (transact/build-transaction session db {:command cmd-data} next-t block-instant))
+              res           (<? (tx-json/transact db {:command cmd-data} next-t block-instant))
               {:keys [flakes fuel status error db-after]} res
               fuel-tot      (+ fuel-tot fuel)
               _             (if (not= status 200)
@@ -392,12 +393,12 @@
   [_ system _ _ ledger _]
   ;; For now, does not require authentication
   (go-try
-   (let [conn           (:conn system)
-         indexer        (-> conn :full-text/indexer :process)
-         [network dbid] (graphdb/validate-ledger-ident ledger)
-         db             (<? (fdb/db conn ledger))
-         reindex-status (<? (indexer {:action :reset, :db db}))]
-     [{:status 200} reindex-status])))
+    (let [conn           (:conn system)
+          indexer        (-> conn :full-text/indexer :process)
+          [network dbid] (graphdb/validate-ledger-ident ledger)
+          db             (<? (fdb/db conn ledger))
+          reindex-status (<? (indexer {:action :reset, :db db}))]
+      [{:status 200} reindex-status])))
 
 (defmethod action-handler :export
   [_ system param auth-map ledger _]
@@ -958,9 +959,9 @@
 
 
 (defroutes admin-ui-routes
-  (compojure/GET "/" [] (resp/resource-response "index.html" {:root "adminUI"}))
-  (route/resources "/" {:root "adminUI"})
-  (compojure/GET "/:page" [] (resp/resource-response "index.html" {:root "adminUI"})))
+           (compojure/GET "/" [] (resp/resource-response "index.html" {:root "adminUI"}))
+           (route/resources "/" {:root "adminUI"})
+           (compojure/GET "/:page" [] (resp/resource-response "index.html" {:root "adminUI"})))
 
 
 ;; TODO - handle CORS more reasonably for production

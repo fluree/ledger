@@ -31,7 +31,7 @@
                             :fullName (str "#(max " n " " (+ 1 n) " " (+ 2 n) ")")})
                          (range 1 (inc count)))
           tx-result (async/<!! (fdb/transact-async (basic/get-conn) test/ledger-chat tx))
-          full-names  (->> (filter #(= 1001 (second %)) (:flakes tx-result))
+          full-names  (->> (filter #(= 1002 (second %)) (:flakes tx-result))
                            (map #(nth % 2)) set)
           expected-full-names   (-> (map str (range 3 (+ 3 count))) set)]
 

@@ -18,6 +18,20 @@ deploy Fluree to a k8s cluster running Kubernetes 1.18+ with a default storage
 class configured by applying the YAML files in the `k8s/` directory:
 
 `kubectl apply -f k8s`
+## License 
+
+Fluree Ledger source code is licensed under AGPL. What if AGPL is a problem for your organization?
+
+[fluree/ledger](https://github.com/fluree/ledger) runs as an independent service, so there really is no need to include
+or modify Fluree Ledger code, which is what would trigger AGPL restrictions. This differs from
+[fluree/db](https://github.com/fluree/db) which is designed to be included with your code as a library - and for that reason is licensed under EPL.
+
+If you want to run fluree/ledger under a different license, that is easy to solve by using a precompiled
+version of the code (AGPL only covers the source code distribution). Easiest way to do that is [download
+it here](https://flur.ee/getstarted/), and it will be covered by our standard
+ [customer license agreement](https://flur.ee/sales-documents/) terms.
+
+Does your organization not allow free software at all? Contact us for a commercial license.
 
 ## Development
 

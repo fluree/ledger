@@ -23,95 +23,101 @@
 ;; Add schema
 
 (deftest add-schema
-  (testing "Add schema for the voting app"
-    (let [filename    "../test/fluree/db/ledger/Resources/Voting/schema.edn"
-          txn         (edn/read-string (slurp (io/resource filename)))
-          schema-resp (async/<!! (fdb/transact-async (basic/get-conn) test/ledger-voting txn))]
+  (testing "Add schema for the voting app")
+  (let [filename    "../test/fluree/db/ledger/Resources/Voting/schema.edn"
+        txn         (edn/read-string (slurp (io/resource filename)))
+        schema-resp (async/<!! (fdb/transact-async (basic/get-conn) test/ledger-voting txn))]
 
-      ;; status should be 200
-      (is (= 200 (:status schema-resp)))
+    ;; status should be 200
+    (is (= 200 (:status schema-resp)))
 
-      ;; block should be 2
-      (is (= 2 (:block schema-resp)))
+    ;; block should be 2
+    (is (= 2 (:block schema-resp)))
 
-      ;; there should be 12 tempids
-      (is (= 12 (count (:tempids schema-resp)))))))
+    ;; there should be 2 _collection tempids
+    (is (= 2 (test/get-tempid-count (:tempids schema-resp) "_collection")))
+
+    ;; there should be 10 _predicate tempids
+    (is (= 10 (test/get-tempid-count (:tempids schema-resp) "_predicate")))
+
+    ;; there should be 2 tempids keys
+    (is (= 2 (count (keys (:tempids schema-resp)))))))
 
 ;; Add sample data
 
 (deftest add-sample-data
-  (testing "Add sample data for the voting app"
-    (let [filename  "../test/fluree/db/ledger/Resources/Voting/data.edn"
-          txn       (-> filename io/resource slurp edn/read-string)
-          data-resp (async/<!! (fdb/transact-async (basic/get-conn) test/ledger-voting txn))]
+  (testing "Add sample data for the voting app")
+  (let [filename  "../test/fluree/db/ledger/Resources/Voting/data.edn"
+        txn       (edn/read-string (slurp (io/resource filename)))
+        data-resp (async/<!! (fdb/transact-async (basic/get-conn) test/ledger-voting txn))]
 
-      ;; status should be 200
-      (is (= 200 (:status data-resp)))
+    ;; status should be 200
+    (is (= 200 (:status data-resp)))
 
-      ;; block should be 3
-      (is (= 3 (:block data-resp)))
+    ;; block should be 3
+    (is (= 3 (:block data-resp)))
 
-      ;; there should be 11 tempids
-      (is (= 11 (count (:tempids data-resp)))))))
+    ;; there should be 11 tempids
+    (is (= 11 (count (:tempids data-resp))))))
 
 ;; Add permissions
 
 (deftest add-permissions
-  (testing "Add permissions for the voting app"
-    (let [filename  "../test/fluree/db/ledger/Resources/Voting/permissions.edn"
-          txn       (edn/read-string (slurp (io/resource filename)))
-          data-resp (async/<!! (fdb/transact-async (basic/get-conn) test/ledger-voting txn))]
+  (testing "Add permissions for the voting app")
+  (let [filename  "../test/fluree/db/ledger/Resources/Voting/permissions.edn"
+        txn       (edn/read-string (slurp (io/resource filename)))
+        data-resp (async/<!! (fdb/transact-async (basic/get-conn) test/ledger-voting txn))]
 
-      ;; status should be 200
-      (is (= 200 (:status data-resp)))
+    ;; status should be 200
+    (is (= 200 (:status data-resp)))
 
-      ;; block should be 4
-      (is (= 4 (:block data-resp)))
+    ;; block should be 4
+    (is (= 4 (:block data-resp)))
 
-      ;; there should be 12 tempids
-      (is (= 6 (count (:tempids data-resp)))))))
+    ;; there should be 12 tempids
+    (is (= 6 (count (:tempids data-resp))))))
 
 
 ;; Preventing Vote Fraud - add ownAuth?
 
 (deftest prevent-voter-fraud
-  (testing "Preventing Vote Fraud - add ownAuth? smart function"
-    (let [txn  [{:_id "_fn$ownAuth", :_fn/name "ownAuth?", :_fn/code "(== (?o) (?auth_id))"}
-                {:_id ["_predicate/name" "vote/yesVotes"], :spec ["_fn$ownAuth"]}
-                {:_id ["_predicate/name" "vote/noVotes"], :spec ["_fn$ownAuth"]}]
-          resp (async/<!! (fdb/transact-async (basic/get-conn) test/ledger-voting txn))]
+  (testing "Preventing Vote Fraud - add ownAuth? smart function")
+  (let [txn  [{:_id "_fn$ownAuth", :_fn/name "ownAuth?", :_fn/code "(== (?o) (?auth_id))"}
+              {:_id ["_predicate/name" "vote/yesVotes"], :spec ["_fn$ownAuth"]}
+              {:_id ["_predicate/name" "vote/noVotes"], :spec ["_fn$ownAuth"]}]
+        resp (async/<!! (fdb/transact-async (basic/get-conn) test/ledger-voting txn))]
 
-      ;; status should be 200
-      (is (= 200 (:status resp)))
+    ;; status should be 200
+    (is (= 200 (:status resp)))
 
-      ;; block should be 5
-      (is (= 5 (:block resp)))
+    ;; block should be 5
+    (is (= 5 (:block resp)))
 
-      ;; there should be 1 tempids
-      (is (= 1 (count (:tempids resp)))))))
+    ;; there should be 1 tempids
+    (is (= 1 (count (:tempids resp))))))
 
 ;; Propose a change
 
 (deftest propose-a-change
-  (testing "Soft Cell proposes a change to their username"
-    (let [txn  [{:_id       "change",
-                 :name      "softCellNameChange",
-                 :doc       "It's time for a change!",
-                 :subject   ["_user/username" "softCell"],
-                 :predicate ["_predicate/name" "_user/username"],
-                 :object    "hardCell",
-                 :vote      "vote$softCell"}
-                {:_id "vote$softCell", :name "softCellNameVote", :yesVotes [["_auth/id" "TfHzKHsTdXVhbjskqesPTi6ZqwXHghFb1yK"]]}]
-          resp (async/<!! (fdb/transact-async (basic/get-conn) test/ledger-voting txn soft-cell-opts))]
+  (testing "Soft Cell proposes a change to their username")
+  (let [txn  [{:_id       "change",
+               :name      "softCellNameChange",
+               :doc       "It's time for a change!",
+               :subject   ["_user/username" "softCell"],
+               :predicate ["_predicate/name" "_user/username"],
+               :object    "hardCell",
+               :vote      "vote$softCell"}
+              {:_id "vote$softCell", :name "softCellNameVote", :yesVotes [["_auth/id" "TfHzKHsTdXVhbjskqesPTi6ZqwXHghFb1yK"]]}]
+        resp (async/<!! (fdb/transact-async (basic/get-conn) test/ledger-voting txn soft-cell-opts))]
 
-      ;; status should be 200
-      (is (= 200 (:status resp)))
+    ;; status should be 200
+    (is (= 200 (:status resp)))
 
-      ;; block should be 6
-      (is (= 6 (:block resp)))
+    ;; block should be 6
+    (is (= 6 (:block resp)))
 
-      ;; there should be 2 tempids
-      (is (= 2 (count (:tempids resp)))))))
+    ;; there should be 2 tempids
+    (is (= 2 (count (:tempids resp))))))
 
 ;; Add several smart functions
 
@@ -176,8 +182,9 @@
       ;; is the count of tempids as expected?
       (is (= 1 (count (:tempids resp))))
       (is (= 1 (count (:tempids resp2))))
-      (is (= 2 (count (:tempids resp3))))
-      (is (= 2 (count (:tempids resp4))))
+      ;; 2 _fn tempids
+      (is (= 2 (test/get-tempid-count (:tempids resp3) "_fn")))
+      (is (= 2 (test/get-tempid-count (:tempids resp4) "_fn")))
       (is (= 1 (count (:tempids resp5)))))))
 
 
@@ -185,11 +192,18 @@
 
 (deftest invalid-change
   (let [attemptChange [{:_id ["_user/username" "softCell"], :username "hardCell"}]
-        changeResp    (-> (async/<!! (fdb/transact-async (basic/get-conn) test/ledger-voting attemptChange soft-cell-opts))
-                          test/safe-Throwable->map :cause)]
+        changeRespErrors    (-> (async/<!! (fdb/transact-async (basic/get-conn) test/ledger-voting attemptChange soft-cell-opts))
+                          test/extract-errors
+                          :meta
+                          :errors)]
 
-    (is (= changeResp "Object hardCell does not conform to the spec for predicate: _user/username"))))
+    (is (= 1 (count changeRespErrors)))
 
+    (is (= (first changeRespErrors)
+           {:status 400
+            :error :db/predicate-spec
+            :cause [87960930223082 50 "hardCell" -23 true nil]
+            :message "Predicate spec failed for predicate: _user/username."}))))
 
 
 ;; Add Votes
@@ -227,3 +241,9 @@
   (create-vote-smart-function)
   (invalid-change)
   (add-votes))
+
+
+
+
+
+

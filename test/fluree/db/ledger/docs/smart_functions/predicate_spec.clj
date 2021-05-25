@@ -19,7 +19,7 @@
         test-resp     (-> (async/<!! (fdb/transact-async (basic/get-conn) test/ledger-chat test-spec))
                           test/safe-Throwable->map :cause)]
 
-   (is (= "Object -4 does not conform to the spec for predicate: person/favNums" test-resp))))
+   (is (= "Predicate spec failed for predicate: person/favNums." test-resp))))
 
 (deftest predicate-spec-test
   (non-negative))
