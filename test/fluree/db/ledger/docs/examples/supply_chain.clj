@@ -31,7 +31,6 @@
         txn   (edn/read-string (slurp (io/resource filename)))
         schema-resp  (async/<!! (fdb/transact-async (basic/get-conn) test/ledger-supplychain txn))]
 
-    (println schema-resp)
     ;; status should be 200
     (is (= 200 (:status schema-resp)))
 
