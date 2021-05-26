@@ -29,12 +29,11 @@
 
 (defn hide-block
   [conn nw ledger block flakes]
-  (go-try (let [conn-rename   (:storage-rename conn)
-                current-block (<? (storage/read-block conn nw ledger block))
+  (go-try (let [current-block (<? (storage/read-block conn nw ledger block))
                 new-block     (filter-flakes-from-block current-block flakes)
                 old-block-key (storage/ledger-block-file-path nw ledger block)
                 new-block-key (str old-block-key "--v" (<? (next-version conn old-block-key)))
-                _             (<?? (conn-rename old-block-key new-block-key))
+                _             (<?? (storage/rename conn old-block-key new-block-key))
                 _             (<?? (storage/write-block conn nw ledger new-block))]
             (log/debug (str "Flakes hidden in block " block))
             true)))
