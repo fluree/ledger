@@ -14,10 +14,17 @@
 
 ;; For now, requires bootstrap and transact namespaces, which are only in fluree/ledger
 
+(defrecord FakeConnection [transactor?]
+  dbproto/IndexResolver
+  (resolve [this node]
+    (let [out (async/chan)]
+      (async/put! out node)
+      out)))
+
 (defn fake-conn []
   "Returns a fake connection object that is suitable for use with the memorydb if
   no other conn is available."
-  {:transactor? false})
+  (map->FakeConnection {:transactor? false}))
 
 (defn new-db
   "Creates a local, in-memory but bootstrapped db (primarily for testing)."
@@ -59,4 +66,3 @@
   "Performs a fully validating transaction to an in-memory db"
   [db transaction]
   ::coming-soon!)
-

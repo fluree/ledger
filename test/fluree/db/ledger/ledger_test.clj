@@ -55,12 +55,6 @@
 ;; AUTH
         ; Have a not that create-authority sometimes fails. Run many times to check if it was fixed.
 
-;; Log any uncaught exceptions
-(Thread/setDefaultUncaughtExceptionHandler
- (reify Thread$UncaughtExceptionHandler
-   (uncaughtException [_ thread ex]
-     (log/error ex "Uncaught exception on" (.getName thread)))))
-
 (deftest all-open-tests
   (is (= :success
          (test/test-system
