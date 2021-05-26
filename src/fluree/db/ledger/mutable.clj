@@ -14,7 +14,7 @@
   [conn storage-block-key]
   (go-try (loop [n 1]
             (let [version-key (str storage-block-key "--v" n)]
-              (if (<? (storage/storage-exists? conn version-key))
+              (if (<? (storage/exists? conn version-key))
                 (recur (inc n))
                 n)))))
 
@@ -127,9 +127,7 @@
   (<?? (hide-flakes conn "fluree" "test" {:hide [87960930223081]}))
   (<?? (purge-flakes conn "fluree" "test" {:purge [422212465065991]}))
 
-  (->> (<?? (storage/storage-read conn "fluree_test_block_000000000000004:v2"))
+  (->> (<?? (storage/read conn "fluree_test_block_000000000000004:v2"))
        (serdeproto/-deserialize-block (:serializer conn)))
 
   )
-
-

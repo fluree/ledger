@@ -21,7 +21,7 @@
         (if leaf?
           (do
             ;; delete history
-            (<? (storage/storage-write conn (str (:id child) "-his") nil))
+            (<? (storage/write conn (str (:id child) "-his") nil))
             ;; delete leaf
             (<? (gc/delete-file-raft conn (:id child))))
           (<? (delete-all-index-children conn child))))
@@ -44,7 +44,7 @@
   (go-try (loop [n        1
                  versions []]
             (let [version-key (str storage-block-key "--v" n)]
-              (if (<? (storage/storage-exists? conn version-key))
+              (if (<? (storage/exists? conn version-key))
                 (recur (inc n) (conj versions version-key))
                 versions)))))
 
