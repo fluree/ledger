@@ -20,8 +20,6 @@
       (doseq [child children]
         (if leaf?
           (do
-            ;; delete history
-            (<? (storage/write conn (str (:id child) "-his") nil))
             ;; delete leaf
             (<? (gc/delete-file-raft conn (:id child))))
           (<? (delete-all-index-children conn child))))
