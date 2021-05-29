@@ -123,7 +123,7 @@
   [{:keys [conn novelty block t network dbid] :as db} idx remove-preds]
   (let [index-root   (get db idx)
         novelty-root (get novelty idx)
-        tree-ch      (async/chan 64)
+        tree-ch      (async/chan 4)
         stat-ch      (async/chan 1)]
     (go
       (let [root-node (<! (resolve-if-novel conn index-root t novelty-root
