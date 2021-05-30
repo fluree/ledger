@@ -8,46 +8,32 @@
 (use-fixtures :once test/test-system)
 
 (deftest test-str-?pO
-  (testing "Test the str and ?pO functions in a transaction"
-    (let [long-desc-txn [{:_id ["person/handle" "jdoe"],
-                          :fullName "#(str (?pO) \", Sr.\")"}]
-          res (-> (basic/get-conn)
-                  (fdb/transact-async test/ledger-chat long-desc-txn)
-                  async/<!!)
-          flakes (:flakes res)
-          pos-flakes (filter #(< 0 (first %)) flakes)]
+  (testing "Test the str and ?pO functions in a transaction")
+  (let [long-desc-txn [{:_id ["person/handle" "jdoe"], :fullName "#(str (?pO) \", Sr.\")"}]
+        res  (async/<!! (fdb/transact-async (basic/get-conn) test/ledger-chat long-desc-txn))
+        flakes (-> res :flakes)
+        pos-flakes (filter #(< 0 (first %)) flakes)]
 
-      (is (= 200 (:status res)))
+    (is (= 200 (:status res)))
 
-      (is (= 0 (-> res :tempids count)))
+    (is (= 0 (-> res :tempids count)))
 
-      (is (= 8 (-> res :flakes count)))
+    (is (= 8 (-> res :flakes count)))
 
-      (= #{"Jane Doe" "Jane Doe, Sr."}
-         (->> pos-flakes
-              (map #(nth % 2))
-              set)))))
+    (= #{"Jane Doe" "Jane Doe, Sr."}   (-> (map #(nth % 2) pos-flakes) set))))
 
 
 (deftest test-max
   (testing "Test transactions using max smart function in a transaction"
-    (let [count               20
-          tx                  (mapv (fn [n]
-                                      {:_id      "person"
-                                       :fullName (str "#(max " n " "
-                                                      (+ 1 n) " " (+ 2 n) ")")})
-                                    (range 1 (inc count)))
-          tx-result           (-> (basic/get-conn)
-                                  (fdb/transact-async test/ledger-chat tx)
-                                  async/<!!)
-          full-names          (->> tx-result
-                                   :flakes
-                                   (filter #(= 1002 (second %)))
-                                   (map #(nth % 2))
-                                   set)
-          expected-full-names (->> (range 3 (+ 3 count))
-                                   (map str)
-                                   set)]
+    (let [count  20
+          tx        (mapv (fn [n]
+                           {:_id          "person"
+                            :fullName (str "#(max " n " " (+ 1 n) " " (+ 2 n) ")")})
+                         (range 1 (inc count)))
+          tx-result (async/<!! (fdb/transact-async (basic/get-conn) test/ledger-chat tx))
+          full-names  (->> (filter #(= 1002 (second %)) (:flakes tx-result))
+                           (map #(nth % 2)) set)
+          expected-full-names   (-> (map str (range 3 (+ 3 count))) set)]
 
       (is (= full-names expected-full-names)))))
 
