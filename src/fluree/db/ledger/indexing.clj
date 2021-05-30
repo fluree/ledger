@@ -89,11 +89,20 @@
   (or (index/leaf? node)
       (-> node ::expanded true?)))
 
+(defn except-preds
+  [flakes preds]
+  (->> flakes
+       (filter (fn [f]
+                 (contains? preds (flake/p f))))
+       (flake/disj-all flakes)))
+
 (defn novel-node-xf
   [t novelty remove-preds]
   (comp (map (fn [node]
                (if (index/leaf? node)
-                 (index/at-t node t novelty remove-preds)
+                 (-> node
+                     (index/at-t t novelty)
+                     (update :flakes except-preds remove-preds))
                  node)))
         (map mark-novel)))
 
