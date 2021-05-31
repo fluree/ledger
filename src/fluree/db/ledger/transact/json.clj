@@ -26,10 +26,6 @@
   "Processes this many transaction items in parallel."
   8)
 
-(defn register-validate-fn
-  [f {:keys [validate-fn] :as tx-state}]
-  (swap! validate-fn update :queue conj f))
-
 (defn- txi?
   "Returns true if a transaction item - must be a map and have _id as one of the keys"
   [x]
