@@ -122,24 +122,22 @@
                            {:status 400 :error :db/invalid-tx})))))
 
 
+
 (defn- base-statement
   "Return the portion of a 'statement' for the subject, which can be used for individual
   predicate+objects to add to."
-  [{:keys [tx-context collector] :as tx-state} txi idx]
-  (let [local-context (if-let [txi-context (get txi "@context")]
-                        (iri-util/expanded-context txi-context tx-context)
-                        tx-context)
-        iri           (get txi "@id")
-        expanded-iri  (iri-util/expand iri local-context)   ;; first expand iri with local context
-        types         (when-let [item-type (get txi "@type")]
-                        (if (sequential? item-type)
-                          (mapv #(iri-util/expand % local-context) item-type)
-                          [(iri-util/expand item-type local-context)]))
-        collection    (collector expanded-iri types)
-        _action       (get txi "@action")
-        _meta         (get txi "@meta")
-        action        (resolve-action _action)
-        id            (<?? (identity/resolve-iri expanded-iri collection nil idx tx-state))]
+  [{:keys [collector] :as tx-state} local-context txi idx]
+  (let [iri          (get-in txi ["@id" :val])
+        expanded-iri (iri-util/expand iri local-context)    ;; first expand iri with local context
+        types        (when-let [item-type (get-in txi ["@type" :val])]
+                       (if (sequential? item-type)
+                         (mapv #(iri-util/expand % local-context) item-type)
+                         [(iri-util/expand item-type local-context)]))
+        collection   (collector expanded-iri types)
+        _action      (get-in txi ["@action" :val])
+        _meta        (get-in txi ["@meta" :val])
+        action       (resolve-action _action)
+        id           (<?? (identity/resolve-iri expanded-iri collection nil idx tx-state))]
     {:iri        iri
      :id         id
      :tempid?    (tempid/TempId? id)
@@ -149,22 +147,42 @@
      :context    local-context}))
 
 
+(defn normalize-txi
+  "Takes raw txi, and puts it into final form.
+
+  Values will be maps where the actual value is stored as the key :val.
+  Value maps include the context (which may have type information, if we need to create
+  new predicates/properties."
+  [txi local-context]
+  (reduce-kv (fn [acc k v]
+               (if-let [key-ctx (get local-context k)]
+                 (assoc acc (:id key-ctx) (assoc key-ctx :val v))
+                 (assoc acc k {:val v})))
+             {} txi))
+
+
 (defn generate-statement
-  [{:keys [db-before] :as tx-state} txi idx]
-  (log/warn "Generate statement: " txi)
-  (let [p-o-pairs (dissoc txi "@id" "@context" "@action")
-        {:keys [collection action] :as base-smt} (base-statement tx-state txi nil)]
+  [{:keys [db-before tx-context] :as tx-state} txi idx]
+  (let [local-context (if-let [txi-context (get txi "@context")]
+                        (merge tx-context
+                               (iri-util/expanded-context txi-context tx-context))
+                        tx-context)
+        ;; normalize the txi with the provided context
+        txi*          (normalize-txi txi local-context)
+        p-o-pairs     (dissoc txi* "@id" "@context" "@action")
+        {:keys [collection action] :as base-smt} (base-statement tx-state local-context txi* nil)]
     (if (and (empty? p-o-pairs) (= :retract action))
       [(assoc base-smt :action :retract-subject)]           ;; no k-v pairs to iterate over
       (reduce-kv (fn [acc pred obj]
                    (let [pred-info (predicate-details pred collection db-before)
+                         o         (:val obj)
                          smt       (assoc base-smt :pred-info pred-info
                                                    :p (pred-info :id)
-                                                   :o obj
+                                                   :o o
                                                    :idx idx)]
                      ;; for multi-cardinality, create a statement for each object
                      (if (pred-info :multi)
-                       (->> (if (sequential? obj) (into #{} obj) [obj])
+                       (->> (if (sequential? o) (into #{} o) [o])
                             (map-indexed #(assoc smt :o %2 :idx (conj idx %1)))
                             (into acc))
                        (conj acc smt))))
@@ -172,12 +190,13 @@
 
 
 (defn tx?
-  "Returns true if the transaction supplied looks like a JSON-LD version."
+  "Returns true if the transaction supplied looks like JSON-LD."
   [tx]
   (boolean
     (or
       (get tx "@graph")
-      (get-in tx [0 "@id"]))))
+      (get-in tx [0 "@id"])
+      (get-in tx [0 "@context"]))))
 
 
 (defn get-tx-context
@@ -186,7 +205,8 @@
   else returns the db's context."
   [db tx]
   (if-let [tx-ctx (get tx "@context")]
-    (iri-util/expanded-context tx-ctx (-> db :schema :prefix))
+    (let [db-ctx (-> db :schema :prefix)]
+      (merge db-ctx (iri-util/expanded-context tx-ctx db-ctx)))
     (-> db :schema :prefix)))
 
 

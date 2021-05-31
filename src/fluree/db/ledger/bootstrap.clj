@@ -611,6 +611,11 @@
    {:_id   ["_predicate" const/$rdfs:Class]
     "@id"  "http://www.w3.org/2000/01/rdf-schema#Class"
     :name  "rdfs:Class"}
+   ;; Property definition
+   ;; TODO - should be an instance of rdfs:Class
+   {:_id   ["_predicate" const/$rdf:Property]
+    "@id"  "http://www.w3.org/1999/02/22-rdf-syntax-ns#Property"
+    :name  "rdf:Property"}
 
 
 
