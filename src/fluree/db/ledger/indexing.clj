@@ -107,7 +107,9 @@
         (map mark-novel)))
 
 (defn resolve-if-novel
-  ""
+  "Resolves data associated with `node` from storage configured in the connection
+  `conn` if the `novelty` set contains flakes within the range of node or the
+  `remove-preds` sequence is nonempty"
   [conn node t novelty remove-preds]
   (let [node-novelty (index/novelty-subrange node t novelty)]
     (if (or (seq node-novelty) (seq remove-preds))
@@ -130,6 +132,9 @@
        (async/map vector)))
 
 (defn resolve-tree
+  "Returns a channel that will eventually contain a stream of index nodes for the
+  index type `idx` in depth-first order. Only nodes with associated novelty
+  flakes from `db` will be resolved."
   [{:keys [conn novelty block t network dbid] :as db} idx remove-preds]
   (let [index-root   (get db idx)
         novelty-root (get novelty idx)
@@ -161,6 +166,8 @@
     [tree-ch stat-ch]))
 
 (defn rebalance-leaf
+  "Splits leaf nodes if the combined size of it's flakes is greater than
+  `*overflow-bytes*`."
   [{:keys [flakes leftmost? ciel] :as leaf}]
   (let [target-size (/ *overflow-bytes* 2)]
     (loop [[f & r]   flakes
@@ -201,6 +208,7 @@
     (async/pipe node-stream rebalance-ch)))
 
 (defn rebalance-children
+  "Splits branch nodes if they have more than `*overflow-children*` child nodes."
   [parent children]
   (let [target-count (/ *overflow-children* 2)]
     (loop [new-branches []
@@ -225,6 +233,7 @@
           (conj new-branches last-child))))))
 
 (defn write-if-novel
+  "Writes `node` to storage if it has been updated"
   [{:keys [conn network dbid] :as db} idx node]
   (if (novel? node)
     (if (index/leaf? node)
@@ -243,9 +252,11 @@
          (async/map (fn [& written-nodes]
                       (apply index/child-map cmp written-nodes))))))
 
-(defn write-decendants
-  [db idx parent decendants]
-  (go-loop [children (<! (write-child-nodes db idx parent decendants))]
+(defn write-descendants
+  "Writes the `descendants` of the branch node `parent`, adding new branch levels
+  if any branch node is too large"
+  [db idx parent descendants]
+  (go-loop [children (<! (write-child-nodes db idx parent descendants))]
     (if (overflow-children? children)
       (let [child-branches (rebalance-children parent children)]
         (recur (<! (write-child-nodes db idx parent child-branches))))
@@ -262,7 +273,8 @@
                (and (not (nil? node-ciel))
                     (not (pos? (cmp node-ciel ciel)))))))))
 
-(defn pop-decendants
+(defn pop-descendants
+  "Pops all the descendants of `branch` off of the top of the stack `in-stack`"
   [{:keys [floor ciel] :as branch} in-stack]
   (loop [child-nodes []
          stack       in-stack]
@@ -278,10 +290,14 @@
       (if-let [node (<! node-stream)]
         (if (index/leaf? node)
           (recur (conj stack node))
-          (let [[decendants stack*]
-                (pop-decendants node stack)
+          (let [[descendants stack*]
+                (pop-descendants node stack) ;; all descendants of a branch node
+                                             ;; should be at the top of the
+                                             ;; stack as long as the
+                                             ;; `node-stream` is in depth-first
+                                             ;; order
 
-                children (<! (write-decendants db idx node decendants))
+                children (<! (write-descendants db idx node descendants))
                 floor    (-> children first key)
                 branch   (-> node
                              (dissoc :id)
