@@ -33,7 +33,7 @@
     (let [expanded-iri (if context
                          (iri-util/expand iri context)
                          iri)]
-      (if-let [id (contains? @idents expanded-iri)]
+      (if-let [id (get @idents expanded-iri)]
         id
         (let [resolved (some-> (<? (query-range/index-range db-root :post = [const/$iri expanded-iri]))
                                ^Flake first
