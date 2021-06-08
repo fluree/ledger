@@ -243,6 +243,7 @@
       (async/go :delete)                                    ;; delete any existing object
       (cond-> object
               (not multi?) (resolve-object-item _id pred-info tx-state)
+              multi? (#(if (sequential? %) % [%]))
               multi? (->> (mapv #(resolve-object-item % _id pred-info tx-state))
                           async/merge
                           (async/into []))
