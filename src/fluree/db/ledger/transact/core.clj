@@ -224,6 +224,8 @@
              ;; we may generate new tags as part of the transaction. Holds those new tags, but also a cache
              ;; of tag lookups to speed transaction by avoiding full lookups of the same tag multiple times in same tx
              :tags             (atom nil)
+             ;; schema changes
+             :schema-changes   (atom nil)
              ;; Some predicates may require extra validation after initial processing, we register functions
              ;; here for that purpose, 'cache' holds cached functions that are ready to execute
              :validate-fn      (atom {:queue   (list) :cache {}
@@ -364,6 +366,7 @@
           all-flakes       (cond-> (into tx-flakes tx-meta-flakes)
                                    (not-empty tempids-map) (conj (tempid/tempids-flake tempids-map t))
                                    @(:tags tx-state) (into (tags/create-flakes tx-state))
+                                   @(:schema-changes tx-state) (into (tx-schema/generate-schema-flakes tx-state))
                                    (= :json-ld format) (into (identity/generate-tempid-flakes tx-state)))
           ;; kick off hash process in the background, it can take a while
           hash-flake       (future (tx-meta/generate-hash-flake all-flakes tx-state))

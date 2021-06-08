@@ -293,3 +293,95 @@
                      (conj acc pred-id)))
                  #{})
          (not-empty))))
+
+
+(defn generate-schema-flakes
+  "Schema predicates/properties from a JSON-LD context are auto-generated when possible.
+  This takes the predicate data map for those new schema properties which is stored the
+  schema-changes atom and returns the appropriate Flakes to be added to the transaction."
+  [{:keys [schema-changes t] :as tx-state}]
+  (reduce
+    (fn [acc p-data]
+      (let [{:keys [id iri type unique multi index upsert component]} p-data
+            flakes (cond-> [(flake/->Flake id const/$iri iri t true nil)
+                            #_(flake/->Flake id const/$_predicate:name iri t true nil)
+                            (flake/->Flake id const/$_predicate:type (get type->sid type) t true nil)]
+                           unique (conj (flake/->Flake id const/$_predicate:unique true t true nil))
+                           multi (conj (flake/->Flake id const/$_predicate:multi true t true nil))
+                           index (conj (flake/->Flake id const/$_predicate:index true t true nil))
+                           upsert (conj (flake/->Flake id const/$_predicate:upsert true t true nil))
+                           component (conj (flake/->Flake id const/$_predicate:component true t true nil)))]
+        (into acc flakes)))
+    [] (vals @schema-changes)))
+
+
+(defn register-property
+  "Works with generate-property to do an atomic swap of the property and return
+  the result map. Handles potential race conditions."
+  [p-data {:keys [schema-changes db-before] :as tx-state}]
+  (let [iri (:iri p-data)
+        res (swap! schema-changes
+                   (fn [s-map]
+                     (if (get s-map iri)
+                       ;; race condition, p-data now exists, don't change atom
+                       s-map
+                       ;; generate new p-data record
+                       (let [next-id (if (empty? s-map)
+                                       (inc (get-in db-before [:ecount const/$_predicate]))
+                                       (->> (vals s-map)
+                                            (map :id)       ;; get :id value from all current s-maps
+                                            (apply max)     ;; find current max
+                                            inc))
+                             p-data* (assoc p-data :id next-id)]
+                         (assoc s-map iri p-data*)))))]
+    ;; return newly placed p-data, or existing p-data if race condition occurred.
+    (get res iri)))
+
+
+(defn generate-property
+  "When a property does not exist in the schema, but is sufficiently defined in
+  the @context supplied with the transaction, we will auto-generate the property
+  and store it in schema-changes in the tx-state to ensure it only gets generated
+  once even if used multiple times in the transaction."
+  [pred objects idx {:keys [schema-changes] :as tx-state}]
+  (let [multi? (sequential? objects)
+        obj    (if multi? (first objects) objects)]
+    (when-not (:type obj)
+      (throw (ex-info (str "Property does not exist in the schema, and the supplied context does not include "
+                           "a @type value to create it: " pred " at position: " idx ".")
+                      {:status 400 :error :db/invalid-transaction :position idx})))
+    (if-let [p-info (get @schema-changes pred)]
+      (fn [property] (get p-info property))
+      (let [type    (cond
+                      (= "@id" (:type obj)) :ref
+                      (string? (:val obj)) :string
+                      :else (throw (ex-info (str "Cannot auto-generate : " pred " as its type is not "
+                                                 "supported for auto-generation. Type: " (:type obj) ".")
+                                            {:status 400 :error :db/invalid-transaction})))
+
+            ref?    (= :ref type)
+            p-data  {:name               pred
+                     :id                 nil                ;; will add once created
+                     :iri                pred
+                     :equivalentProperty nil
+                     :type               type
+                     :ref?               ref?
+                     :idx?               true
+                     :unique             false
+                     :multi              (if ref?           ;; we default all refs to true - many specs don't specify @container yet support multi-cardinality
+                                           true
+                                           multi?)
+                     :index              true
+                     :upsert             true
+                     :component          false
+                     :noHistory          false
+                     :restrictCollection nil
+                     :retractDuplicates  false
+                     :spec               nil
+                     :specDoc            nil
+                     :txSpec             nil
+                     :txSpecDoc          nil
+                     :restrictTag        nil
+                     :fullText           nil}
+            p-data* (register-property p-data tx-state)]
+        (fn [property] (get p-data* property))))))

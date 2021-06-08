@@ -7,7 +7,9 @@
             [fluree.db.api :as fdb]
             [fluree.db.ledger.transact.identity :as identity]
             [fluree.db.ledger.transact.tempid :as tempid]
-            [fluree.db.util.iri :as iri-util])
+            [fluree.db.util.iri :as iri-util]
+            [fluree.db.util.core :as util]
+            [fluree.db.ledger.transact.schema :as tx-schema])
   (:import (fluree.db.flake Flake)))
 
 
@@ -111,16 +113,24 @@
     :retract
     :add))
 
+
 (defn predicate-details
   "Returns function for predicate to retrieve any predicate details"
   [predicate collection db]
-  (if-let [pred-id (or
-                     (get-in db [:schema :pred (str collection "/" predicate) :id])
-                     (get-in db [:schema :pred predicate :id]))]
-    (fn [property] (dbproto/-p-prop db property pred-id))
-    (throw (throw (ex-info (str "Predicate does not exist: " predicate)
-                           {:status 400 :error :db/invalid-tx})))))
+  (when-let [pred-id (or
+                       (get-in db [:schema :pred (str collection "/" predicate) :id])
+                       (get-in db [:schema :pred predicate :id]))]
+    (fn [property] (dbproto/-p-prop db property pred-id))))
 
+
+(defn- local-context
+  "If an @context exists for a specific transaction item, resolve it then
+  merges into the default context"
+  [txi default-context]
+  (if-let [txi-context (get txi "@context")]
+    (merge default-context
+           (iri-util/expanded-context txi-context default-context))
+    default-context))
 
 
 (defn- base-statement
@@ -144,6 +154,7 @@
      :action     action
      :collection collection
      :o-tempid?  nil
+     :types      types
      :context    local-context}))
 
 
@@ -156,36 +167,64 @@
   [txi local-context]
   (reduce-kv (fn [acc k v]
                (if-let [key-ctx (get local-context k)]
-                 (assoc acc (:id key-ctx) (assoc key-ctx :val v))
-                 (assoc acc k {:val v})))
+                 (assoc acc (:id key-ctx) (assoc key-ctx :val v :as k))
+                 (assoc acc k {:val v :as k})))
              {} txi))
+
+(defn- has-child?
+  "Returns true the provided object value contains a nested transaction item."
+  [pred-info object]
+  (and (= :ref (pred-info :type)) (map? object)))
+
+(declare generate-statement)
+
+(defn- statement-obj
+  [base-smt pred-info tx-state idx i obj]
+  (let [idx*     (if i (conj idx i) idx)
+        children (when (has-child? pred-info obj)
+                   (let [ctx        (local-context obj (:context base-smt))
+                         normalized (normalize-txi obj ctx)
+                         ctx*       (->> (get normalized "@type")
+                                         (#(if (sequential? %) % [%]))
+                                         (map #(get-in ctx [(:val %) :context]))
+                                         (apply merge ctx))]
+                     (generate-statement tx-state obj idx* ctx*)))
+        p        (pred-info :id)
+        o        (cond
+                   children (:id (first children))          ;; children may be multiple further nested, but first one is one we want
+                   ;(= const/$rdf:type p) (get-in (:context base-smt) obj )
+                   :else obj)
+        smt      (assoc base-smt :pred-info pred-info
+                                 :p p
+                                 :o o
+                                 :idx idx)]
+    (if children
+      (into [smt] children)
+      [smt])))
 
 
 (defn generate-statement
-  [{:keys [db-before tx-context] :as tx-state} txi idx]
-  (let [local-context (if-let [txi-context (get txi "@context")]
-                        (merge tx-context
-                               (iri-util/expanded-context txi-context tx-context))
-                        tx-context)
+  "parent-ctx will be supplied if there are nested children -- it will alread
+   have the tx-context merged in from the parent."
+  [{:keys [db-before tx-context] :as tx-state} txi idx parent-ctx]
+  (let [ctx       (local-context txi (or parent-ctx tx-context))
         ;; normalize the txi with the provided context
-        txi*          (normalize-txi txi local-context)
-        p-o-pairs     (dissoc txi* "@id" "@context" "@action")
-        {:keys [collection action] :as base-smt} (base-statement tx-state local-context txi* nil)]
+        txi*      (normalize-txi txi ctx)
+        p-o-pairs (dissoc txi* "@id" "@context" "@action")
+        {:keys [collection action] :as base-smt} (base-statement tx-state ctx txi* nil)]
     (if (and (empty? p-o-pairs) (= :retract action))
       [(assoc base-smt :action :retract-subject)]           ;; no k-v pairs to iterate over
       (reduce-kv (fn [acc pred obj]
-                   (let [pred-info (predicate-details pred collection db-before)
-                         o         (:val obj)
-                         smt       (assoc base-smt :pred-info pred-info
-                                                   :p (pred-info :id)
-                                                   :o o
-                                                   :idx idx)]
-                     ;; for multi-cardinality, create a statement for each object
-                     (if (pred-info :multi)
-                       (->> (if (sequential? o) (into #{} o) [o])
-                            (map-indexed #(assoc smt :o %2 :idx (conj idx %1)))
-                            (into acc))
-                       (conj acc smt))))
+                   (let [idx*       (conj idx (:as obj))
+                         pred-info  (or (predicate-details pred collection db-before)
+                                        (tx-schema/generate-property pred obj idx* tx-state))
+                         multi?     (pred-info :multi)
+                         statements (if multi?
+                                      (->> (if (sequential? (:val obj)) (into #{} (:val obj)) [(:val obj)])
+                                           (map-indexed (partial statement-obj base-smt pred-info tx-state idx*))
+                                           (apply concat))
+                                      (statement-obj base-smt pred-info tx-state idx* nil (:val obj)))]
+                     (into acc statements)))
                  [] p-o-pairs))))
 
 
@@ -221,7 +260,7 @@
            acc (transient [])]
       (if (nil? txi)
         (persistent! acc)
-        (->> (generate-statement tx-state txi [i])
+        (->> (generate-statement tx-state txi [i] nil)
              (reduce conj! acc)
              (recur r (inc i)))))))
 
