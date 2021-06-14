@@ -239,6 +239,7 @@
       (async/go :delete)                                    ;; delete any existing object
       (cond-> object
               (not multi?) (resolve-object-item _id pred-info tx-state)
+              multi? (#(if (sequential? %) % [%]))
               multi? (->> (mapv #(resolve-object-item % _id pred-info tx-state))
                           async/merge
                           (async/into []))
@@ -339,17 +340,18 @@
                   (pred-info :multi)
                   (let [acc** (loop [acc* acc
                                      [o & r] obj*]
-                                (if (nil? o)
-                                  acc*
-                                  (let [new-flake (flake/->Flake _id** pid o t true nil)]
-                                    (if (or tempid? (tempid/TempId? o))
-                                      (-> acc*
-                                          (update :_temp-multi-flakes conj new-flake)
-                                          (recur r))
-                                      ;; multi-cardinality we only care if a flake matches exactly
-                                      (let [retract-flake (first (<? (tx-retract/flake _id** pid o tx-state)))
-                                            final-flakes  (add-singleton-flake (:_final-flakes acc*) new-flake retract-flake pred-info tx-state)]
-                                        (recur (assoc acc* :_final-flakes final-flakes) r))))))]
+                                (cond
+                                  (nil? o) acc*
+                                  (util/exception? o) (throw o)
+                                  :else (let [new-flake (flake/->Flake _id** pid o t true nil)]
+                                          (if (or tempid? (tempid/TempId? o))
+                                            (-> acc*
+                                                (update :_temp-multi-flakes conj new-flake)
+                                                (recur r))
+                                            ;; multi-cardinality we only care if a flake matches exactly
+                                            (let [retract-flake (first (<? (tx-retract/flake _id** pid o tx-state)))
+                                                  final-flakes  (add-singleton-flake (:_final-flakes acc*) new-flake retract-flake pred-info tx-state)]
+                                              (recur (assoc acc* :_final-flakes final-flakes) r))))))]
                     (recur acc** r))
 
                   (or tempid? (tempid/TempId? obj*))

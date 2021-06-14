@@ -52,7 +52,7 @@
   [{:keys [path storage-delete storage-write] :as config}]
   (fn [snapshot-map]
     (let [{:keys [leader-id snapshot-term snapshot-index snapshot-part snapshot-parts snapshot-data]} snapshot-map
-          file (str snapshot-index ".snapshot")]
+          file (str path snapshot-index ".snapshot")]
 
       ;; NOTE: Currently snapshot-part is always 1 b/c we never send multi-part snapshots.
       ;;   See comment in `snapshot-xfer` for more details. - WSM 2020-09-01
