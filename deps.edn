@@ -78,4 +78,26 @@
               [lein-kibit "0.1.8"]
               [lein-ancient "0.6.15"]
               [lein-cloverage "1.1.2"]
-              [lein-nvd "1.4.0"]]}}}}
+              [lein-nvd "1.4.0"]
+              [venantius/yagni "0.1.7"]]}}
+
+  :coverage
+  {:extra-paths ["test"]
+   :extra-deps  {cloverage/cloverage {:mvn/version "1.2.2"}}
+   :main-opts   ["-m" "cloverage.coverage"
+                 "-p" "src"
+                 "-s" "test"
+                 "--test-ns-regex" "^fluree\\.db\\.ledger\\.ledger-test*$"
+                 "--output scanning_results/coverage"]}
+
+  :eastwood
+  {:extra-deps {jonase/eastwood {:mvn/version "RELEASE"}}
+   :main-opts ["-m" "eastwood.lint" {:source-paths ["src"] :out "scanning_results/eastwood.out"}]}
+
+  :ancient
+  {:extra-deps {com.github.liquidz/antq {:mvn/version "RELEASE"}}
+   :main-opts ["-m" "antq.core"]}
+
+  :clj-kondo
+  {:extra-deps {clj-kondo/clj-kondo {:mvn/version "2021.06.01"}}
+   :main-opts ["-m" "clj-kondo.main" "--lint" "src" "--config" ".clj-kondo/config.edn"]}}}

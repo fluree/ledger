@@ -20,3 +20,6 @@ default_private_key.txt
 /.scannerwork
 /project.clj
 /projectFilesBackup
+/scanning_results
+/.clj-kondo/.cache
+
