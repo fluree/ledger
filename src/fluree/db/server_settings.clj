@@ -26,6 +26,7 @@
    :fdb-license-key              nil
    :fdb-consensus-type           "raft"                     ;; raft
    :fdb-encryption-secret        nil                        ;; Text encryption secret for encrypting data at rest and in transit
+   :fdb-json-bigdec-string       true                       ;; encode BigDecimal numbers as a string for json.stringify
 
    :fdb-group-config-path        "./"
    :fdb-group-private-key        nil
@@ -690,6 +691,8 @@
                    :enabled     webserver?
                    :debug-mode? debug-mode?
                    :open-api    (-> settings :fdb-api-open env-boolean)
+                   :json-bigdec-string
+                                (-> settings :fdb-json-bigdec-string env-boolean)
                    :meta        {:hostname hostname}}
      ;:version  fdb-version
 
