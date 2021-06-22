@@ -46,6 +46,7 @@
 
 
 ;; TODO - this can be done per schema change, not per transaction, to make even more efficient.
+;; TODO - calls to this now block to solve resource contention issues - can remove the promise as no longer do in background
 (defn build-function
   "Builds a function based on a function subject-id (or a list of function subject ids) and
   delivers the executable function to the provided promise.
@@ -81,7 +82,7 @@
                (fn [fn-cache]
                  (if (get fn-cache fn-subjects)
                    fn-cache                                 ;; something put a promise in here while we were checking, just return
-                   (do (build-function fn-subjects db p fn-type)
+                   (do (<?? (build-function fn-subjects db p fn-type))
                        (assoc fn-cache fn-subjects p)))))
         ;; return whatever promise was in the cache - either one we just created or existing one if a race condition existed
         (get-in @validate-fn-atom [:cache fn-subjects]))))
@@ -305,7 +306,7 @@
                                     :fn-sids fn-sids}))]
 
     ;; kick off building function, will put realized function into pred-tx-fn promise
-    (build-function fn-sids db pred-tx-fn "predSpec")
+    (<?? (build-function fn-sids db pred-tx-fn "predSpec"))
     ;; return function
     queue-fn))
 
