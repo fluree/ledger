@@ -3,6 +3,7 @@
             [clojure.java.io :as io]
             [taoensso.nippy :as nippy]
             [clojure.core.async :as async :refer [<! <!!]]
+            [clojure.pprint :as cprint]
             [clojure.tools.logging :as log]
             [clojure.string :as str]
             [fluree.db.storage.core :as storage]
@@ -118,7 +119,7 @@
 (defn view-raft-state
   "Pretty prints current raft state."
   [raft]
-  (get-raft-state raft (fn [x] (clojure.pprint/pprint (dissoc x :config)))))
+  (get-raft-state raft (fn [x] (cprint/pprint (dissoc x :config)))))
 
 
 (defn leader-async
@@ -542,7 +543,7 @@
 
 (defn monitor-raft
   "Monitor raft events and state for debugging"
-  ([raft] (monitor-raft raft (fn [x] (clojure.pprint/pprint x))))
+  ([raft] (monitor-raft raft (fn [x] (cprint/pprint x))))
   ([raft callback]
    (raft/monitor-raft (:raft raft) callback)))
 

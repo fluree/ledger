@@ -1,5 +1,6 @@
 (ns fluree.db.peer.messages
-  (:require [clojure.tools.logging :as log]
+  (:require [alphabase.core :as ab-core]
+            [clojure.tools.logging :as log]
             [clojure.core.async :as async]
             [clojure.string :as str]
             [fluree.db.util.json :as json]
@@ -212,7 +213,7 @@
          :settings (success! {:open-api?         (-> system :group :open-api)
                               :password-enabled? (pw-auth/password-enabled? (:conn system))
                               :jwt-secret        (-> system :conn :meta :password-auth :secret
-                                                     (alphabase.core/byte-array-to-base :hex))})
+                                                     (ab-core/byte-array-to-base :hex))})
 
          :cmd (success! (process-command system arg))
 
