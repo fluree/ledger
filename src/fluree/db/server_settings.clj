@@ -536,17 +536,12 @@
                                    (throw (ex-info (format "TX group heartbeat milliseconds: %s cannot be greater than timeout milliseconds: %s." timeout-ms heartbeat-ms)
                                                    {:status 400
                                                     :error  :db/invalid-configuration})))
-        private-keys             (cond-> []
-                                         (:fdb-group-private-key settings)
-                                         (into (str/split (:fdb-group-private-key settings) #","))
-
-                                         :else
-                                         (into (->> (get-or-generate-tx-private-key settings)
-                                                    (str/split-lines)
-                                                    (filter not-empty)
-                                                    (reduce #(if (str/includes? %2 ",")
-                                                               (into %1 (str/split %2 #","))
-                                                               (conj %1 %2)) []))))
+        private-keys             (into [] (->> (get-or-generate-tx-private-key settings)
+                                               (str/split-lines)
+                                               (filter not-empty)
+                                               (reduce #(if (str/includes? %2 ",")
+                                                          (into %1 (str/split %2 #","))
+                                                          (conj %1 %2)) [])))
         encryption-key           (encryption-secret->key settings)
         storage-type             (env-storage-type settings)
         s3-conn                  (some-> settings :fdb-storage-s3-bucket s3store/connect)
