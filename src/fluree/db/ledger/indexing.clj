@@ -65,11 +65,11 @@
 (defn get-history-in-range
   "Filters through history and pulls only items within the provided range.
   >= lhs, < rhs. When rhs is nil, no end."
-  [history lhs rhs compare]
+  [history lhs rhs fn-compare]
   (let [pred (if (nil? rhs)
-               (fn [^Flake f] (>= 0 (compare lhs f)))
-               (fn [^Flake f] (and (>= 0 (compare lhs f))
-                                   (< 0 (compare rhs f)))))]
+               (fn [^Flake f] (>= 0 (fn-compare lhs f)))
+               (fn [^Flake f] (and (>= 0 (fn-compare lhs f))
+                                   (< 0 (fn-compare rhs f)))))]
     (filter pred history)))
 
 (defn find-combine-leaf
@@ -454,7 +454,7 @@
   "Checks continuity of provided index in that the 'rhs' is equal to the first-flake of the following segment."
   ([idx-root] (validate-idx-continuity idx-root false))
   ([idx-root throw?] (validate-idx-continuity idx-root throw? nil))
-  ([idx-root throw? compare]
+  ([idx-root throw? fn-compare]
    (let [node     (async/<!! (dbproto/-resolve idx-root))
          children (:children node)
          last-i   (dec (count children))]
@@ -476,9 +476,9 @@
          (println "      last-rhs: " last-rhs)
          (println "     leftmost?: " leftmost?)
          (println "           rhs: " rhs)
-         (when (and compare
+         (when (and fn-compare
                     child-first rhs)
-           (println "         comp: " (compare child-first rhs)))
+           (println "         comp: " (fn-compare child-first rhs)))
          (when (and throw?
                     (not (zero? i))
                     (not continuous?))
