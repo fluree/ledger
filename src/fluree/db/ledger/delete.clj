@@ -1,7 +1,6 @@
 (ns fluree.db.ledger.delete
   (:require [fluree.db.ledger.garbage-collect :as gc]
             [fluree.db.storage.core :as storage]
-            [fluree.db.dbproto :as dbproto]
             [fluree.db.index :as index]
             [fluree.db.session :as session]
             [fluree.db.util.async :refer [go-try <?]]
@@ -14,7 +13,7 @@
    If children are branches, recursively deletes them."
   [conn idx-branch]
   (go-try
-    (let [idx      (<? (dbproto/resolve conn idx-branch))
+    (let [idx      (<? (index/resolve conn idx-branch))
           children (vals (:children idx))
           leaf?    (:leaf (first children))]
       (doseq [child children]

@@ -1,7 +1,6 @@
 (ns fluree.db.ledger.indexing
   (:require [clojure.data.avl :as avl]
             [clojure.tools.logging :as log]
-            [fluree.db.dbproto :as dbproto]
             [fluree.db.flake :as flake]
             [fluree.db.index :as index]
             [fluree.db.storage.core :as storage]
@@ -114,7 +113,7 @@
   (let [node-novelty (index/novelty-subrange node t novelty)]
     (if (or (seq node-novelty) (seq remove-preds))
       (let [novel-ch (async/chan 1 (novel-node-xf t novelty remove-preds))]
-        (-> (dbproto/resolve conn node)
+        (-> (index/resolve conn node)
             (async/pipe novel-ch)))
       (let [unchanged-ch (async/chan 1 (map mark-unchanged))]
         (async/put! unchanged-ch node)
@@ -446,14 +445,14 @@
   ([conn idx-root] (validate-idx-continuity idx-root false))
   ([conn idx-root throw?] (validate-idx-continuity idx-root throw? nil))
   ([conn idx-root throw? compare]
-   (let [node     (async/<!! (dbproto/resolve conn idx-root))
+   (let [node     (async/<!! (index/resolve conn idx-root))
          children (:children node)
          last-i   (dec (count children))]
      (println "Idx children: " (inc last-i))
      (loop [i        0
             last-ciel nil]
        (let [child       (-> children (nth i) val)
-             resolved    (async/<!! (dbproto/resolve conn child))
+             resolved    (async/<!! (index/resolve conn child))
              {:keys [id ciel leftmost?]} child
              child-floor (:floor child)
              resv-floor  (first (:flakes resolved))

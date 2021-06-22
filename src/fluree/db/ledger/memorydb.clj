@@ -4,6 +4,7 @@
             [fluree.db.query.schema :as schema]
             [fluree.db.util.async :refer [go-try <?]]
             [fluree.db.dbproto :as dbproto]
+            [fluree.db.index :as index]
             [fluree.db.flake :as flake]
             [fluree.db.util.async :as async-util]))
 
@@ -15,7 +16,7 @@
 ;; For now, requires bootstrap and transact namespaces, which are only in fluree/ledger
 
 (defrecord FakeConnection [transactor?]
-  dbproto/IndexResolver
+  index/Resolver
   (resolve [this node]
     (let [out (async/chan)]
       (async/put! out node)
