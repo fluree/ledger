@@ -70,14 +70,18 @@
                              (throw (ex-info "No max novelty set, unable to reindex."
                                              {:status 500
                                               :error  :db/unexpected-error})))
-          db               (<? (reindex/write-genesis-block blank-db "forking" "Database is forking." fork-ledger))]
+          db               (<? (reindex/write-genesis-block
+                                 blank-db
+                                 {:status "forking"
+                                  :message "Database is forking."
+                                  :from-ledger fork-ledger}))]
       (loop [block 2
              db    db]
         (let [block-data (<? (storage/read-block conn forked-network forked-ledger-id block))]
           (if (or (> block to-block) (nil? block-data))
             (do (log/info (str "-->> Forked db index finished: " ledger " block: " (dec block)))
                 (if (> (get-in db [:novelty :size]) 0)
-                  (->> (async/<! (indexing/index db "ready" nil))
+                  (->> (async/<! (indexing/index db {:status "ready"}))
                        (txproto/write-index-point-async (-> db :conn :group))
                        (async/<!))
                   db))
@@ -189,21 +193,4 @@
                       (recur (<? (dbproto/-with db block (:flakes block-data))) (inc block))))))))
           ;; no closest index, we need to rebuild entire db
           (forked-reindex conn ledger forked-ledger latest-block))))))
-
-
-;(defn fork-archive
-;  "Forks an archive file to a new dbid."
-;  [conn network dbid archive-network archive-dbid to-block]
-;  (when (storage/db-exists? conn network dbid)
-;    (throw (ex-info (str "Cannot fork to dbid: " dbid ", it already exists!")
-;                    {:status 400
-;                     :error  :db/invalid-action})))
-;  (let [blocks (cond->> (archive/read-archive conn archive-network archive-dbid)
-;                        to-block (take to-block))]
-;    ;; write out all blocks to our configured storage
-;    (doseq [block blocks]
-;      (storage/write-block conn network dbid block))
-;    ;; now generate an index for the DB. This will return the final DB
-;    (reindex/reindex conn network dbid "ready" nil)))
-
 
