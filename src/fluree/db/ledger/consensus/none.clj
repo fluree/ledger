@@ -144,18 +144,17 @@
 (def default-state {:version 3})
 
 (defn event-loop
-  [state]
   "Launches an event loop where all state changes to the group state happen.
 
-This means all state changes are single-threaded.
+  This means all state changes are single-threaded.
 
-Maintains appropriate timeouts (heartbeat if leader, or election timeout if not leader)
-to trigger appropriate actions when no activity happens between timeouts.
+  Maintains appropriate timeouts (heartbeat if leader, or election timeout if not leader)
+  to trigger appropriate actions when no activity happens between timeouts.
 
-
-Events include:
-- new-command           - (leader) processes a new command, will return result of operation after applied to state
-- close                 - ends event-loop"
+  Events include:
+  - new-command           - (leader) processes a new command, will return result of operation after applied to state
+  -   close                 - ends event-loop"
+  [state]
   (let [event-chan   (:event-chan state)
         command-chan (:command-chan state)]
     (async/go-loop [state state]
