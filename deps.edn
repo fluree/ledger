@@ -1,6 +1,6 @@
 {:deps {org.clojure/clojure {:mvn/version "1.10.3"}
         org.clojure/data.xml {:mvn/version "0.2.0-alpha6"}
-        com.fluree/db {:mvn/version "1.0.0-rc19"}
+        com.fluree/db {:mvn/version "1.0.0-rc21"}
         com.fluree/raft {:mvn/version "1.0.0-beta1"}
         com.fluree/crypto {:mvn/version "0.3.5"}
 
@@ -17,7 +17,7 @@
 
         ;; web server
         aleph-middleware/aleph-middleware {:mvn/version "0.2.0"}
-        ring/ring-core {:mvn/version "1.9.1"}
+        ring/ring-core {:mvn/version "1.9.3"}
         ring-cors/ring-cors {:mvn/version "0.1.13"}
         compojure/compojure {:mvn/version "1.6.2"}
 
@@ -80,5 +80,5 @@
    :main-opts ["-m" "antq.core"]}
 
   :clj-kondo
-  {:extra-deps {clj-kondo/clj-kondo {:mvn/version "2021.06.01"}}
+  {:extra-deps {clj-kondo/clj-kondo {:mvn/version "2021.06.18"}}
    :main-opts ["-m" "clj-kondo.main" "--lint" "src" "--config" ".clj-kondo/config.edn"]}}}
