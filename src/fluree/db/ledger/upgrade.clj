@@ -91,8 +91,8 @@
 
 
 (defn v2->v3
-  [conn]
   "Add _shard collection, ensure db names conform to new standard"
+  [conn]
   (go-try
     (let [ledger-list @(fdb/ledger-list conn)
           update-txn  [{:_id  "_predicate"
@@ -157,8 +157,8 @@
 
 
 (defn v3->v4
-  [conn]
   "Connect just add _tx/hash, as it needs to be subject _id 99."
+  [conn]
   (go-try
     (throw (ex-info "Cannot update ledger from version 3 to version 4. No forwards
     compatible."

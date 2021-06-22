@@ -15,8 +15,9 @@
 (def ^:private redistribute-workers-lock (atom nil))
 
 
-(defn- acquire-lock []
+(defn- acquire-lock
   "Returns true if acquired, false otherwise."
+  []
   (let [myid                (rand-int (Integer/MAX_VALUE))
         acquire-lock-result (swap! redistribute-workers-lock (fn [existing-id]
                                                                (if existing-id
@@ -25,8 +26,9 @@
     (= myid @redistribute-workers-lock)))
 
 
-(defn- release-lock []
+(defn- release-lock
   "Releases lock"
+  []
   (reset! redistribute-workers-lock nil))
 
 
