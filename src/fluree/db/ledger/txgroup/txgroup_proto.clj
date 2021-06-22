@@ -417,20 +417,6 @@ or this server is not responsible for this ledger, will return false. Else true 
 
 
 ;; storage commands
-
-(defn storage-write-async
-  "Performs a fully consistent storage write."
-  [raft k data]
-  (let [command [:storage-write k data]]
-    (-new-entry-async raft command)))
-
-
-(defn storage-write
-  "Performs a fully consistent storage write."
-  [raft k data]
-  (async/<!! (storage-write-async raft k data)))
-
-
 (defn storage-read-async*
   "Performs a fully consistent storage-read of provided key."
   [raft key]
