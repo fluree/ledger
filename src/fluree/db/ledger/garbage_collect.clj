@@ -65,6 +65,6 @@
                                       (sort))]
        (log/info "Garbage collecting ledger " network "/" dbid " for index points: " filtered-index-points)
        (doseq [idx-point filtered-index-points]
-         (< (process-index conn network dbid idx-point)))
+         (<? (process-index conn network dbid idx-point)))
        (log/info "Done garbage collecting ledger " network "/" dbid " for index points: " filtered-index-points)
        true))))
