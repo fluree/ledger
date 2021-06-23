@@ -369,13 +369,16 @@
 
               indexed-db   (-> refreshed-db
                                empty-novelty
-                               (assoc-in [:stats :indexed] block))]
+                               (assoc-in [:stats :indexed] block))
+
+              block-file   (storage/ledger-block-key network dbid block)
+              garbage      (conj stale block-file)]
 
           ;; wait until confirmed writes before returning
           ;; TODO - ideally issue garbage/root writes to RAFT together as a tx,
           ;;        currently requires waiting for both through raft sync
-          (<? (storage/write-garbage indexed-db stale))
           (<? (storage/write-db-root indexed-db ecount))
+          (<? (storage/write-garbage indexed-db garbage))
           (let [end-time  (Instant/now)
                 duration  (- (.toEpochMilli end-time)
                              (.toEpochMilli start-time))
@@ -408,7 +411,8 @@
    (go-try
     (let [last-index (session/indexed session)]
       (cond
-        (and last-index (<= block last-index))
+        (and last-index
+             (<= block last-index))
         (do
           (log/info "Index called on DB but last index isn't older."
                     {:last-index last-index
