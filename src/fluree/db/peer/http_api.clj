@@ -975,7 +975,7 @@
   (if-not (:enabled opts)
     (do (log/info "Web server disabled, not starting.")
         nil)
-    (let [{:keys [port open-api system debug-mode?]} opts
+    (let [{:keys [port open-api system debug-mode? json-bigdec-string]} opts
           _           (log/info (str "Starting web server on port: " port (if open-api " with an open API." "with a closed API.")))
           _           (log/info "")
           _           (log/info (str "http://localhost:" port))
@@ -985,6 +985,7 @@
                                     :debug-mode? debug-mode?
                                     :open-api open-api)
           server-proc (try
+                        (json/encode-BigDecimal-as-string json-bigdec-string)
                         (http/start-server (make-handler system*) {:port port})
                         (catch BindException _
                           (log/error (str "Cannot start. Port binding failed, address already in use. Port: " port "."))
