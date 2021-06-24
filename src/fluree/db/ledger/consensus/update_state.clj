@@ -64,7 +64,7 @@
   (let [init-db-status (->> txns
                             (filter #(and (= :new-db (:type (val %)))
                                           (= 200 (:status (val %)))))
-                            (map (fn [[txid tx-data]]
+                            (map (fn [[_ tx-data]]
                                    (let [t             (:t tx-data)
                                          orig-cmd      (some #(when (and (= constants/$_tx:tx (.-p ^Flake %))
                                                                          (= t (.-s ^Flake %)))
@@ -152,7 +152,7 @@
 
 
 (defn lowercase-all-names
-  [command state-atom]
+  [state-atom]
   (let [;; Rename :networks
         _        (rename-keys-in-state state-atom [:networks])
         networks (->> (get @state-atom :networks) keys (map str/lower-case))
