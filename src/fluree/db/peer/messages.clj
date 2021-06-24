@@ -14,7 +14,6 @@
             [fluree.db.ledger.txgroup.txgroup-proto :as txproto]
             [fluree.db.peer.password-auth :as pw-auth]
             [fluree.db.token-auth :as token-auth]
-            [fluree.db.ledger.storage.filestore :as filestore]
             [fluree.db.ledger.consensus.raft :as raft]
             [fluree.db.dbproto :as dbproto]))
 
@@ -34,7 +33,7 @@
     (throw-invalid-command (format "Command is %s bytes and exceeds the configured max size." (count cmd))))
   (let [id       (crypto/sha3-256 cmd)
         cmd-data (try (json/parse cmd)
-                      (catch Exception e
+                      (catch Exception _
                         (throw-invalid-command "Invalid command serialization, could not decode JSON.")))
         cmd-type (keyword (:type cmd-data))
         _        (when-not cmd-type (throw-invalid-command "No 'type' key in command, cannot process."))
@@ -139,7 +138,7 @@
                 (async/<!! (txproto/new-ledger-async (:group system) network dbid id signed-cmd))
 
                 id)
-      :delete-db (let [{:keys [db auth expire nonce]} cmd-data
+      :delete-db (let [{:keys [db]} cmd-data
                        [network dbid] (if (sequential? db) db (str/split db #"/"))
                        old-session    (session/session conn db)
                        db*            (async/<!! (session/current-db old-session))
@@ -256,10 +255,10 @@
                       (event-bus/subscribe-db dbv producer-chan)
                       (success! true))
 
-         :unsubscribe (let [[ledger auth] (if (sequential? (first arg))
-                                            ;; Accept either [ [network, dbid], auth ] or [network, dbid] or network/dbid
-                                            arg
-                                            [arg 0])
+         :unsubscribe (let [ledger (if (sequential? (first arg))
+                                            ;; Expect [ [network, dbid], auth ] or [network, dbid] or network/dbid
+                                            (first arg)
+                                            arg)
                             dbv (session/resolve-ledger (:conn system) ledger)
                             [network dbid] dbv
                             _   (when-not (txproto/ledger-exists? (:group system) network dbid)
@@ -313,7 +312,7 @@
                                            (txproto/get-shared-private-key (:group system) network dbid)
                                            (let [jwt-options (-> system :conn :meta :password-auth)
                                                  {:keys [secret]} jwt-options
-                                                 payload     (token-auth/verify-jwt secret jwt)]
+                                                 _           (token-auth/verify-jwt secret jwt)]
                                              (async/<!! (pw-auth/fluree-decode-jwt (:conn system) jwt))))
                              {:keys [expire nonce] :or {nonce (System/currentTimeMillis)}} cmd-data
                              expire      (or expire (+ 60000 nonce))
