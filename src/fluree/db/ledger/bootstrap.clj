@@ -9,8 +9,7 @@
             [fluree.db.ledger.indexing :as indexing]
             [fluree.db.ledger.txgroup.txgroup-proto :as txproto]
             [fluree.db.util.async :refer [go-try <?]]
-            [fluree.db.util.core :as util]
-            [fluree.db.util.log :as log])
+            [fluree.db.util.core :as util])
   (:import (fluree.db.flake Flake)))
 
 (declare bootstrap-txn)
@@ -169,10 +168,10 @@
   Returns a standard 'block' map, but also include the :db key that contains the newly created
   db."
   ([conn ledger] (boostrap-memory-db conn ledger nil))
-  ([conn ledger {:keys [master-auth-id master-auth-private master-auth-public txid cmd sig]}]
+  ([conn ledger {:keys [master-auth-id master-auth-private txid cmd sig]}]
    (let [blank-db             (session/blank-db conn ledger)
          timestamp            (System/currentTimeMillis)
-         {:keys [dbid network novelty stats]} blank-db
+         {:keys [novelty stats]} blank-db
          master-auth-private* (or master-auth-private (-> (crypto/generate-key-pair) :private))
          master-auth-id*      (or master-auth-id (crypto/account-id-from-private master-auth-private*))
          ;; if a txid isn't provided, we just make one up by hashing the auth-id so something exists for the genesis block
@@ -221,7 +220,7 @@
 
 (defn bootstrap-db
   "Bootstraps a new db from a signed new-db message."
-  [{:keys [conn group] :as system} command]
+  [{:keys [conn group]} command]
   (go-try
     (let [{:keys [cmd sig]} command
           txid          (crypto/sha3-256 cmd)

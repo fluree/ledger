@@ -3,11 +3,8 @@
             [fluree.db.full-text :as full-text]
             [fluree.db.query.range :as query-range]
             [fluree.db.util.schema :as schema]
-            [clojure.core.async :as async :refer [<! >! alt! chan go go-loop]]
-            [clojure.string :as str]
-            [clojure.tools.logging :as log]
-            [clucie.core :as lucene]
-            [clucie.store :as lucene-store])
+            [clojure.core.async :as async :refer [<! chan go go-loop]]
+            [clojure.tools.logging :as log])
   (:import fluree.db.flake.Flake
            java.time.Instant))
 
@@ -167,7 +164,7 @@
     (index-flakes writer initial-stats idx-queue)))
 
 (defn update-index
-  [writer {:keys [network dbid] :as db} {:keys [flakes] :as block}]
+  [writer db {:keys [flakes]}]
   (go
     (let [[add-pred-ch rem-pred-ch]  (updated-predicates db flakes)
           [cur-update-ch cur-rem-ch] (updated-subjects db flakes)
@@ -185,7 +182,6 @@
 (defn write-block
   [writer {:keys [network dbid] :as db} {:keys [flakes] :as block}]
   (let [start-time  (Instant/now)
-        block-num   (:block block)
         coordinates {:network network, :dbid dbid, :block (:block block)}]
 
     (log/info (str "Full-Text Search Index began processing new block at: "
@@ -216,7 +212,7 @@
 
 
 (defn write-range
-  [writer {:keys [network dbid] :as db} start-block end-block]
+  [writer db start-block end-block]
   (let [block-chan (-> db
                        (fdb/block-range start-block end-block)
                        (async/pipe (chan 1 (mapcat seq))))]

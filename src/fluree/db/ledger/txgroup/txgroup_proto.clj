@@ -349,9 +349,10 @@ or this server is not responsible for this ledger, will return false. Else true 
   [group network ledger-id command-id command]
   (kv-assoc-in-async group [:cmd-queue network command-id] {:command command :size (count (:cmd command)) :id command-id :network network :dbid ledger-id :instant (System/currentTimeMillis)}))
 
+;;TODO - could not find any references, need to determine if indirectly referenced as a parameter
 (defn remove-cmd-from-queue-async
   "Remotes a tx from the queue"
-  [group network ledger-id txid]
+  [group network _ txid]
   (kv-dissoc-in-async group [:cmd-queue network txid]))
 
 ;; Block commands

@@ -9,7 +9,7 @@
             [fluree.db.query.schema :as schema]
             [clojure.core.async :as async]
             [fluree.db.ledger.txgroup.txgroup-proto :as txproto]
-            [fluree.db.util.async :refer [<? <?? go-try]]
+            [fluree.db.util.async :refer [<? go-try]]
             [fluree.db.ledger.bootstrap :as bootstrap])
   (:import (fluree.db.flake Flake)))
 
@@ -150,7 +150,7 @@
 (defn reindex
   ([conn network dbid]
    (reindex conn network dbid {:status "ready"}))
-  ([conn network dbid {:keys [status message ecount novelty-max] :as opts}]
+  ([conn network dbid {:keys [status message ecount novelty-max]}]
    (go-try
      (let [sess        (session/session conn (str network "/" dbid))
 

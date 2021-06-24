@@ -14,7 +14,6 @@
                          (throw (ex-info (str "Attempting to read encrypted file, but not flagged as encrypted.")
                                          {:status 500
                                           :error  :db/storage-error})))
-        format         (.get bb)                            ;; second byte is file format (only 1 for now - only one format)
         iv             (byte-array 16)                      ;; initialization vector
         _              (.get bb iv)
         enc            (byte-array (.remaining bb))
@@ -24,7 +23,8 @@
                          (catch BadPaddingException e
                            ;; incorrect decryption key used
                            (log/error (str "Files cannot be properly decoded. Have you changed the "
-                                           ":fdb-encryption-secret config setting? Fatal error, exiting."))
+                                           ":fdb-encryption-secret config setting? Fatal error, exiting. "
+                                           e))
                            (System/exit 1)))]
     data))
 
