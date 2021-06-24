@@ -88,7 +88,7 @@
             (let [{:keys [flakes t]} block-data
                   db*          (<? (dbproto/-with db block flakes))
                   novelty-size (get-in db* [:novelty :size])]
-              (log/info (str "  -> Reindex db: " ledger " block: " block " containing " (count flakes) " flakes. Novelty size: " novelty-size "."))
+              (log/info (str "  -> Reindex db: " ledger " block: " block " t: " t " containing " (count flakes) " flakes. Novelty size: " novelty-size "."))
               (if (>= novelty-size max-novelty)
                 (recur (inc block) (let [indexed-db (async/<! (indexing/index db*))]
                                      (async/<!! (txproto/write-index-point-async (-> indexed-db :conn :group) indexed-db))
@@ -119,25 +119,28 @@
             _            (loop [block 1]
                            (if (< to-block* block)
                              (<? (txproto/register-genesis-block-async (:group conn) network ledger-id))
-                             (let [block-data  (<? (storage/read-block conn fork-network fork-ledger-id block))
-                                   write-block (<? (storage/write-block conn network ledger-id block-data))]
+                             (do
+                               (->> (storage/read-block conn fork-network fork-ledger-id block)
+                                    <?
+                                    (storage/write-block conn network ledger-id)
+                                    <?)
                                (recur (inc block)))))
 
             ;; TODO - use closest index
             ;; If a closest-index we can use, start there, apply additional blocks and write out a new index.
             ;closest-index (<? (find-closest-index conn fork-network fork-ledger-id to-block*))
-            ]
 
-        (let [[network dbid] (str/split ledger "/")
-              indexed-db (<?? (reindex/reindex conn network dbid))
-              txid       (crypto/sha3-256 (:cmd command))
-              group      (-> indexed-db :conn :group)
-              block      (:block indexed-db)
-              _          (log/info " txid network ledger-id block (:fork indexed-db) (get-in indexed-db [:stats :indexed])" txid network ledger-id block (:fork indexed-db) (get-in indexed-db [:stats :indexed]))
-              _          (<?? (txproto/initialized-ledger-async group txid network ledger-id block (:fork indexed-db) (get-in indexed-db [:stats :indexed])))
-              sess       (session/session conn ledger)
-              _          (session/close sess)]
-          indexed-db)))))
+            [network dbid] (str/split ledger "/")
+            indexed-db (<?? (reindex/reindex conn network dbid))
+            txid       (crypto/sha3-256 (:cmd command))
+            group      (-> indexed-db :conn :group)
+            block      (:block indexed-db)
+            _          (log/info " txid network ledger-id block (:fork indexed-db) (get-in indexed-db [:stats :indexed])" txid network ledger-id block (:fork indexed-db) (get-in indexed-db [:stats :indexed]))
+            _          (<?? (txproto/initialized-ledger-async group txid network ledger-id block (:fork indexed-db) (get-in indexed-db [:stats :indexed])))
+            sess       (session/session conn ledger)
+            _          (session/close sess)
+            ]
+        indexed-db))))
 
 
 (defn fork
