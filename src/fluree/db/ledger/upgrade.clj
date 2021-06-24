@@ -6,9 +6,9 @@
             [fluree.db.util.async :refer [go-try <? <??]]
             [fluree.db.ledger.txgroup.txgroup-proto :as txproto]
             [fluree.db.constants :as const]
-            [clojure.string :as str]
-            [clojure.java.io :as io])
-  (:import (java.io File)))
+            [fluree.db.query.range :as query-range]
+            [fluree.db.time-travel :as time-travel]
+            [clojure.string :as str]))
 
 
 (defn v1->v2
@@ -142,15 +142,15 @@
                   db-ident    (str network "/" dbid)
                   db-1        (-> (fdb/db conn db-ident)
                                   <?
-                                  (fluree.db.time-travel/as-of-block 1)
+                                  (time-travel/as-of-block 1)
                                   <?)
-                  setting-res (<? (fluree.db.query.range/collection db-1 "_setting"))
+                  setting-res (<? (query-range/collection db-1 "_setting"))
                   setting-id  (-> setting-res first (.-s))
                   setting-txn [{:_id setting-id
                                 :id  "root"}]]
-              (do (<? (fdb/transact-async conn db-ident update-txn))
-                  (<? (fdb/transact-async conn db-ident setting-txn))
-                  (recur r)))))
+              (<? (fdb/transact-async conn db-ident update-txn))
+              (<? (fdb/transact-async conn db-ident setting-txn))
+              (recur r))))
         (txproto/lowercase-all-names (:group conn))
         (log/info "Migration complete."))
       (txproto/set-data-version (:group conn) 3))))
@@ -158,7 +158,7 @@
 
 (defn v3->v4
   "Connect just add _tx/hash, as it needs to be subject _id 99."
-  [conn]
+  []
   (go-try
     (throw (ex-info "Cannot update ledger from version 3 to version 4. No forwards
     compatible."
@@ -170,7 +170,8 @@
   "Synchronous"
   [conn from-v to-v]
   (let [from-v (or from-v 1)
-        to-v   (or to-v const/data_version)]                ;; v0-9-5-PREVIEW2 was first version marker we used - default
+        to-v   (or to-v const/data_version)
+        _ (fluree.db.util.log/info (str "upgrade from " from-v " to " to-v))]                ;; v0-9-5-PREVIEW2 was first version marker we used - default
     (cond
       (= from-v to-v)
       true                                                  ;; no upgrade
@@ -185,14 +186,14 @@
       (= [1 4] [from-v to-v])
       (do (<?? (v1->v2 conn))
           (<?? (v2->v3 conn))
-          (<?? (v3->v4 conn)))
+          (<?? (v3->v4)))
 
       (= [2 3] [from-v to-v])
       (<?? (v2->v3 conn))
 
       (= [2 4] [from-v to-v])
       (do (<?? (v2->v3 conn))
-          (<?? (v3->v4 conn)))
+          (<?? (v3->v4)))
 
       (= [3 4] [from-v to-v])
-      (<?? (v3->v4 conn)))))
+      (<?? (v3->v4)))))
