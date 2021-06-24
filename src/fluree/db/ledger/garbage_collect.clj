@@ -20,11 +20,6 @@
   [conn network dbid idx-point]
   (go-try
     (let [group        (:group conn)
-          dbinfo       (txproto/ledger-info group network dbid)
-          idx-time     (get-in dbinfo [:indexes idx-point])
-          ;_ (when-not idx-time
-          ;    (throw (ex-info (str "Index point " idx-point " for db " network "/" dbid " does not exist!")
-          ;                    {:status 400 :error :db/no-index})))
           garbage-keys (:garbage (<? (storage/read-garbage conn network dbid idx-point)))]
       (log/info "Garbage collecting index point " idx-point " for ledger " network "/" dbid ".")
       ;; delete index point first so it won't show up in dbinfo
