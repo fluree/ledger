@@ -5,12 +5,8 @@
             [fluree.crypto :as crypto]
             [fluree.db.storage.core :as storage]
             [fluree.db.event-bus :as event-bus]
-            [fluree.db.serde.avro :as avro]
             [fluree.db.ledger.consensus.update-state :as update-state]
             [fluree.db.ledger.storage.memorystore :as memorystore]
-            [fluree.raft.events :as events]
-            [fluree.db.ledger.bootstrap :as bootstrap]
-            [fluree.db.session :as session]
             [fluree.db.ledger.txgroup.monitor :as group-monitor])
   (:import (java.util UUID)))
 
@@ -61,7 +57,7 @@
 
 (defn state-machine
   [state-atom]
-  (fn [command group callback]
+  (fn [command _ callback]
     (let [entry  (:entry command)
           op     (first entry)
           result (case op
@@ -130,14 +126,13 @@
                    :storage-read
                    (let [[_ key] entry]
                      (memorystore/connection-storage-read key)))]
-      (do                                                   ;; call any registered state change functions
-        (when-let [state-change-fns (vals @state-change-fn-atom)]
-          (doseq [f state-change-fns]
-            (try
-              (f {:command entry :result result})
-              (catch Exception e (log/error e "State change function error.")))))
-        (callback result)
-        result))))
+      (when-let [state-change-fns (vals @state-change-fn-atom)]
+        (doseq [f state-change-fns]
+          (try
+            (f {:command entry :result result})
+            (catch Exception e (log/error e "State change function error.")))))
+      (callback result)
+      result)))
 
 ;; start with a default state when no other state is present (initialization)
 ;; useful for setting a base 'version' in state
@@ -158,10 +153,10 @@
   (let [event-chan   (:event-chan state)
         command-chan (:command-chan state)]
     (async/go-loop [state state]
-      (let [[command c] (async/alts! [event-chan command-chan] :priority true)]
+      (let [[command _] (async/alts! [event-chan command-chan] :priority true)]
         (if (nil? command)
           (log/info :group-closed)
-          (let [[op data callback] command
+          (let [[_ data callback] command
                 state-machine (:state-machine state)
                 _             (state-machine data state callback)]
             (recur state)))))))
@@ -169,24 +164,20 @@
 (defn in-memory-start-up
   [group conn system shutdown]
   (async/go
-    (try (let [];status           (async/<! (:in-memory-initialized group))
-
-
-           (when (empty? (txproto/get-shared-private-key group))
-             (log/info "Brand new Fluree instance, establishing default shared private key.")
-             ;; TODO - check environment to see if a private key was supplied
-             (let [private-key (or (:tx-private-key conn)
-                                   (:private (crypto/generate-key-pair)))]
-               (txproto/set-shared-private-key (:group conn) private-key)))
-
-           (register-state-change-fn (str (UUID/randomUUID))
-                                     (partial group-monitor/state-updates-monitor system)))
-
-         (catch Exception e
-           (log/warn "2 -Error during raft initialization. Shutting down system")
-           (log/error e)
-           (shutdown system)
-           (System/exit 1)))))
+    (try
+      (when (empty? (txproto/get-shared-private-key group))
+        (log/info "Brand new Fluree instance, establishing default shared private key.")
+        ;; TODO - check environment to see if a private key was supplied
+        (let [private-key (or (:tx-private-key conn)
+                              (:private (crypto/generate-key-pair)))]
+          (txproto/set-shared-private-key (:group conn) private-key)))
+      (register-state-change-fn (str (UUID/randomUUID))
+                                (partial group-monitor/state-updates-monitor system))
+      (catch Exception e
+        (log/warn "2 -Error during raft initialization. Shutting down system")
+        (log/error e)
+        (shutdown system)
+        (System/exit 1)))))
 
 
 (defrecord InMemoryGroup [in-memory-server state-atom port this-server event-chan command-chan close open-api]
