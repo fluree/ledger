@@ -33,7 +33,7 @@
   "Cleanup when a websocket is closed."
   [ws-id producer-chan]
   (try
-    ;(close-all-sessions ws-id)
+    (close-all-sessions ws-id)
     (async/close! producer-chan)
     (swap! ws-connections (fn [ws-state]
                             ;(when-let [send-chan (get-in ws-state [ws-id :send-chan])]
