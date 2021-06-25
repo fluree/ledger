@@ -29,16 +29,11 @@
   (> (count child-map) *overflow-children*))
 
 (defn add-garbage
-  "Adds item to the garbage key within progress"
-  [idx-key leaf? progress-atom]
-  ;; special case where brand new db has :empty as id before first index an
-  ;; already resolved IndexNode will not have an :id (idx-key will be null) -
-  ;; happens with blank-db
-  (when (and idx-key (not= :empty idx-key))
-    (swap! progress-atom update :garbage (fn [g]
-                                           (cond-> (conj g idx-key)
-                                             ;; if at leaf, add history node too
-                                             leaf? (conj (str idx-key "-his")))))))
+  "Adds the `:id` of the outdated index node second argument to the `garbage`
+  list only if the id is not `:empty`."
+  [garbage {id :id}]
+  (cond-> garbage
+    (not= :empty id) (conj garbage id)))
 
 (defn dirty?
   "Returns `true` if the index for `db` of type `idx` is out of date, or if `db`
@@ -153,7 +148,7 @@
                 (let [stats* (if (novel? node)
                                (-> stats
                                    (update :novel inc)
-                                   (update :stale conj (:id node)))
+                                   (update :stale add-garbage node))
                                (update stats :unchanged inc))]
                   (>! tree-ch node)
                   (recur stack* stats*))
