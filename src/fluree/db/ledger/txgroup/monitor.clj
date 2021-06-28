@@ -14,6 +14,8 @@
 ;; For now, just use this as a lock to ensure multiple processes are not trying to redistribute work simultaneously.
 (def ^:private redistribute-workers-lock (atom nil))
 
+;; Maximum size for a transaction, default is 2mb
+(def ^:const default-max-txn-size 2e6)
 
 (defn- acquire-lock []
   "Returns true if acquired, false otherwise."
@@ -216,11 +218,12 @@
   - dbid
   - instant
 
- Commands can optionally contain multiTx, which allows for multiple transactions to be handle together in the same block. In order for multiTx to be allowed, all transactions need to be in the queue.
- The order of txns listed in the last txn submitted is the order in which the transactions are processed."
+ Commands can optionally contain multiTx, which allows for multiple transactions to be handle together in the
+ same block. In order for multiTx to be allowed, all transactions need to be in the queue.  The order of txns
+ listed in the last txn submitted is the order in which the transactions are processed."
   [db cmd-queue]
   ;; TODO - need to check each command id to ensure it hasn't yet been processed
-  (let [max-size     2e6                                    ;; two mb, TODO - pull from db settings
+  (let [max-size     (or (get-in db [:settings :txMax]) default-max-txn-size)
         sorted-queue (->> cmd-queue
                           (sort-by :instant))]
     (loop [[next-cmd & r] sorted-queue
