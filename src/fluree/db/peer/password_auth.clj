@@ -1,16 +1,13 @@
 (ns fluree.db.peer.password-auth
-  (:require [fluree.db.util.async :refer [<? go-try]]
-            [fluree.crypto :as crypto]
+  (:require [fluree.crypto :as crypto]
             [fluree.crypto.hmac :refer [hmac-sha256]]
             [fluree.crypto.scrypt :as scrypt]
             [fluree.crypto.secp256k1 :as secp256k1]
             [alphabase.core :as alphabase]
             [fluree.db.util.json :as json]
-            [clojure.string :as str]
             [fluree.db.util.core :as util]
             [fluree.db.api :as fdb]
             [fluree.db.util.async :refer [go-try <?]]
-            [fluree.db.util.log :as log]
             [fluree.db.token-auth :as token-auth]))
 
 
@@ -115,7 +112,7 @@
   to decode the AES encrypted private key, which is assumed to be the first 16 bytes of the
   salt from the auth record."
   [jwt-options ledger password auth-ids+salts options]
-  (let [{:keys [secret jwt-secret max-exp max-renewal]} jwt-options
+  (let [{:keys [secret jwt-secret max-exp]} jwt-options
         auth-ids+salts* (cond
                           (not (sequential? auth-ids+salts))
                           (throw (ex-info (str "Password JWT must take two-tuples of"
@@ -329,7 +326,7 @@
   [conn ledger password options]
   (go-try
     (let [jwt-options (-> conn :meta :password-auth)
-          {:keys [secret signing-key max-exp]} jwt-options
+          {:keys [secret signing-key]} jwt-options
           ;; if an explicit private key is not provided in the options, try to use
           ;; the signing key from the server settings, else tx will attempt to use
           ;; a default root key if one is available

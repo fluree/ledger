@@ -20,7 +20,7 @@
 
 (defn register
   "Registers a TempId instance into the tx-state, returns provided TempId unaltered."
-  [TempId {:keys [tempids tempids-ordered] :as tx-state}]
+  [TempId {:keys [tempids tempids-ordered]}]
   {:pre [(TempId? TempId)]}
   (swap! tempids update TempId identity)                    ;; don't touch any existing value, otherwise nil
   (swap! tempids-ordered conj TempId)                       ;; creation ordered list to be used when assigning subject ids in same order as listed in tx
@@ -53,7 +53,7 @@
   "Returns a tempid that will be used for a Flake object value, but only returns it if
   it already exists. If it does not exist, it means it is a tempid used as a value, but it was never used
   as a subject."
-  [tempid {:keys [tempids] :as tx-state}]
+  [tempid {:keys [tempids]}]
   (let [TempId (new* tempid)]
     (if (contains? @tempids TempId)
       TempId
@@ -65,7 +65,7 @@
 (defn set
   "Sets a tempid value into the cache. If the tempid was already set by another :upsert
   predicate that matched a different subject, throws an error. Returns set subject-id on success."
-  [tempid subject-id {:keys [tempids] :as tx-state}]
+  [tempid subject-id {:keys [tempids]}]
   (swap! tempids update tempid
          (fn [existing-sid]
            (cond
@@ -81,7 +81,7 @@
 
 (defn result-map
   "Creates a map of original user tempid strings to the resolved value."
-  [{:keys [tempids] :as tx-state}]
+  [{:keys [tempids]}]
   (reduce-kv (fn [acc ^TempId tempid subject-id]
                (if (:unique? tempid)
                  (assoc acc (:user-string tempid) subject-id)

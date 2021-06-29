@@ -1,5 +1,5 @@
 (ns fluree.db.ledger.transact.error
-  (:require [fluree.db.util.async :refer [<? <?? go-try merge-into? channel?]]
+  (:require [fluree.db.util.async :refer [<? go-try]]
             [fluree.db.util.tx :as tx-util]
             [fluree.db.ledger.transact.tx-meta :as tx-meta]
             [fluree.db.dbproto :as dbproto]

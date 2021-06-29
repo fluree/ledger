@@ -1,7 +1,6 @@
 (ns fluree.db.ledger.transact.validation
-  (:require [fluree.db.util.async :refer [<? <?? go-try merge-into? channel?]]
+  (:require [fluree.db.util.async :refer [<? <?? go-try channel?] :as async-util]
             [fluree.db.dbfunctions.core :as dbfunctions]
-            [fluree.db.util.async :as async-util]
             [fluree.db.query.range :as query-range]
             [fluree.db.constants :as const]
             [clojure.core.async :as async]
@@ -30,7 +29,7 @@
                    queued, and if so 'f' will be nil
   - collection - must queue all the collection flakes per sid, as they may be across
                  multiple transactions (but usually will not be). flake-or-flakes will be a sequence"
-  [fn-type {:keys [validate-fn] :as tx-state} f flakes pid-or-sid]
+  [fn-type {:keys [validate-fn]} f flakes pid-or-sid]
   (case fn-type
     :unique (swap! validate-fn update :queue conj f)
     :predicate (swap! validate-fn update :queue conj f)
@@ -118,7 +117,7 @@
   is deleted in the transaction, which we can validate once the transaction is complete by looking
   for the specific retraction flake we expect to see - else throw."
   [existing-flake _id pred-info object tx-state]
-  (let [f (fn [{:keys [flakes t] :as tx-state}]
+  (let [f (fn [{:keys [flakes t]}]
             (let [check-flake (flake/flip-flake existing-flake t)
                   retracted?  (contains? flakes check-flake)]
               (when-not retracted?
@@ -140,7 +139,7 @@
   - pred-info - pred-info function allows getting different information about this predicate
   - tx-state  - transaction state, which is also passed in as the only argument in the final validation fn"
   [tempid _id pred-info tx-state]
-  (let [f (fn [{:keys [tempids db-after] :as tx-state}]
+  (let [f (fn [{:keys [tempids db-after]}]
             (go-try
               (let [tempid-sid (get @tempids tempid)
                     _id*       (if (tempid/TempId? _id)
@@ -196,7 +195,7 @@
 
 
 (defn run-predicate-spec
-  [fn-promise ^Flake flake predicate-name specDoc {:keys [fuel t auth db-after] :as tx-state}]
+  [fn-promise ^Flake flake predicate-name specDoc {:keys [fuel t auth db-after]}]
   (let [sid (.-s flake)
         pid (.-p flake)
         o   (.-o flake)]
@@ -268,7 +267,7 @@
   "This function is designed to be called with a (partial pid pred-name txSpecDoc) and
   returns a function whose only argument is tx-state, which can be used to get the final
   list of predicate flakes affected by this predicate."
-  [pid pred-tx-fn pred-name tx-spec-doc {:keys [db-root auth instant fuel validate-fn t] :as tx-state}]
+  [pid pred-tx-fn pred-name tx-spec-doc {:keys [db-root auth instant fuel validate-fn t]}]
   (try
     (let [pid-flakes (get-in @validate-fn [:tx-spec pid])
           fuel-atom  (atom {:stack   []
@@ -337,7 +336,7 @@
 ;; collection specs
 
 (defn- collection-spec-response
-  [flakes collection c-spec-fn c-spec-doc response]
+  [flakes collection c-spec-doc response]
   (cond
     (util/exception? response)
     (ex-info (str "Internal execution error for collection spec: " (.getMessage ^Exception response) ". "
@@ -360,7 +359,7 @@
 (defn run-collection-spec
   "Runs a collection spec. Will only execute collection spec if there are still flakes for
   the subject that exist."
-  [collection sid c-spec-fn c-spec-doc {:keys [db-after instant validate-fn auth t fuel] :as tx-state}]
+  [collection sid c-spec-fn c-spec-doc {:keys [db-after instant validate-fn auth t fuel]}]
   (async/go
     (try
       (let [subject-flakes (get-in @validate-fn [:c-spec sid])
@@ -380,12 +379,12 @@
                               :auth_id auth
                               :t       t
                               :state   fuel-atom})
-                res*      (or (if (channel? res) (async/<! res) res))]
+                res*      (if (channel? res) (async/<! res) res)]
 
             ;; update main tx fuel count with the fuel spent to execute this tx function
             (update-tx-spent-fuel fuel (:spent @fuel-atom))
-            (collection-spec-response subject-flakes collection c-spec-fn c-spec-doc res*))))
-      (catch Exception e (collection-spec-response (get-in @validate-fn [:c-spec sid]) collection c-spec-fn c-spec-doc e)))))
+            (collection-spec-response subject-flakes collection c-spec-doc res*))))
+      (catch Exception e (collection-spec-response (get-in @validate-fn [:c-spec sid]) collection c-spec-doc e)))))
 
 
 (defn queue-collection-spec
@@ -470,7 +469,7 @@
             true))))))
 
 (defn run-permissions-checks
-  [all-flakes {:keys [db-before db-after] :as tx-state} parallelism]
+  [all-flakes {:keys [db-before db-after]} parallelism]
   (go-try
     (let [db-after       @db-after
           queue-ch       (async/chan parallelism)
@@ -540,7 +539,7 @@
                                   {:selectOne [] :where [] :optional []} deps)
                        (fdb/query-async (go-try db))
                        <?)]
-          (if (and (not (empty? res)) (every? nil? res))
+          (if (and (seq res) (every? nil? res))
             true
             (throw (ex-info (str "One or more of the dependencies for this transaction failed: " deps)
                             {:status 403 :error :db/invalid-auth}))))))))

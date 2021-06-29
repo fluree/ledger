@@ -1,6 +1,5 @@
 (ns fluree.db.ledger.storage.filestore
   (:require [clojure.java.io :as io]
-            [clojure.string :as str]
             [clojure.tools.logging :as log]
             [clojure.core.async :as async]
             [fluree.db.ledger.storage :refer [key->unix-path]]
@@ -13,7 +12,7 @@
   (try
     (with-open [out (io/output-stream (io/file path))]
       (.write out val))
-    (catch FileNotFoundException e
+    (catch FileNotFoundException _
       (try
         (io/make-parents (io/file path))
         (with-open [out (io/output-stream (io/file path))]
@@ -34,7 +33,7 @@
                 xout (ByteArrayOutputStream.)]
       (io/copy xin xout)
       (.toByteArray xout))
-    (catch FileNotFoundException e
+    (catch FileNotFoundException _
       nil)
     (catch Exception e (throw e))))
 

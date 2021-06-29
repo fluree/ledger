@@ -1,13 +1,12 @@
 (ns fluree.db.ledger.export
   (:require [clojure.java.io :as io]
-            [fluree.db.util.async :refer [<? <?? go-try]]
+            [fluree.db.util.async :refer [<? go-try]]
             [clojure.core.async :as async]
             [fluree.db.api :as fdb]
             [fluree.db.query.range :as query-range]
             [fluree.db.time-travel :as time-travel]
             [fluree.db.flake :as flake]
             [fluree.db.dbproto :as dbproto]
-            [fluree.db.util.log :as log]
             [clojure.string :as str]
             [clojure.data.xml :as xml]
             [fluree.db.util.core :as util]))
@@ -128,9 +127,9 @@
                                      (let [subject-xml (subject->xml db (conj subject-flakes flake) fdb-pfx)]
                                        (recur r s [] (conj acc subject-xml)))))))
         wrap-prefixes-fn (get-prefixes-xml-fn network dbid block)]
-    (do (-> (wrap-prefixes-fn subject-xmls)
-            (write-xml-to-file file-path))
-        file-path)))
+    (-> (wrap-prefixes-fn subject-xmls)
+        (write-xml-to-file file-path))
+    file-path))
 
 ;; TTL
 

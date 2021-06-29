@@ -1,8 +1,8 @@
 (ns fluree.db.ledger.consensus.raft
   (:require [fluree.raft :as raft]
-            [clojure.java.io :as io]
             [taoensso.nippy :as nippy]
             [clojure.core.async :as async :refer [<! <!!]]
+            [clojure.pprint :as cprint]
             [clojure.tools.logging :as log]
             [clojure.string :as str]
             [fluree.db.storage.core :as storage]
@@ -14,8 +14,7 @@
             [fluree.db.ledger.consensus.update-state :as update-state]
             [fluree.db.ledger.txgroup.monitor :as group-monitor]
             [fluree.db.ledger.consensus.dbsync2 :as dbsync2]
-            [fluree.crypto :as crypto]
-            [fluree.raft.log :as raft-log])
+            [fluree.crypto :as crypto])
   (:import (java.util UUID)))
 
 
@@ -32,10 +31,8 @@
   If multiple parts are returned, additional requests for each part will be
   requested. A snapshot should be broken into multiple parts if it is larger than
   the amount of data you want to push across the network at once."
-  [{:keys [path storage-read] :as config}]
-  (fn [id part]
-    ;; TODO: Actually use the part arg or get rid of it - WSM 2020-09-01
-    ;; in this example we do everything in one part, regardless of snapshot size
+  [{:keys [path storage-read]}]
+  (fn [id _]
     (let [file (str path id ".snapshot")
           ba   (<!! (storage-read file))]
       {:parts 1
@@ -49,9 +46,9 @@
   If snapshot-part = 1, should first delete any existing file if it exists (possible to have historic partial snapshot lingering).
 
   As soon as final part write succeeds, can safely garbage collect any old snapshots on disk except the most recent one."
-  [{:keys [path storage-delete storage-write] :as config}]
+  [{:keys [path storage-delete storage-write]}]
   (fn [snapshot-map]
-    (let [{:keys [leader-id snapshot-term snapshot-index snapshot-part snapshot-parts snapshot-data]} snapshot-map
+    (let [{:keys [snapshot-index snapshot-part snapshot-data]} snapshot-map
           file (str path snapshot-index ".snapshot")]
 
       ;; NOTE: Currently snapshot-part is always 1 b/c we never send multi-part snapshots.
@@ -74,7 +71,7 @@
 
   Called with snapshot-id to reify, which corresponds to the commit index the snapshot was taken.
   Should throw if snapshot not found, or unable to parse. This will stop raft."
-  [{:keys [path state-atom storage-read] :as config}]
+  [{:keys [path state-atom storage-read]}]
   (fn [snapshot-id]
     (try
       (let [file  (str path snapshot-id ".snapshot")
@@ -95,7 +92,7 @@
 
 
 (defn- purge-snapshots
-  [{:keys [path storage-list storage-delete max-snapshots] :as config}]
+  [{:keys [path storage-list storage-delete max-snapshots]}]
   (let [rm-snapshots (some->> (storage-list path)
                               <!!
                               (keep return-snapshot-id)
@@ -118,7 +115,7 @@
 (defn view-raft-state
   "Pretty prints current raft state."
   [raft]
-  (get-raft-state raft (fn [x] (clojure.pprint/pprint (dissoc x :config)))))
+  (get-raft-state raft (fn [x] (cprint/pprint (dissoc x :config)))))
 
 
 (defn leader-async
@@ -199,7 +196,7 @@
 (defn snapshot-list-indexes
   "Lists all stored snapshot indexes, sorted ascending. Used for bootstrapping a
   raft network from a previously made snapshot."
-  [{:keys [path storage-list] :as config}]
+  [{:keys [path storage-list]}]
   (log/debug "Initialized snapshot-list-indexes with path" path "and storage-list" storage-list)
   (fn []
     (log/debug "Listing snapshot indexes in" path)
@@ -236,8 +233,8 @@
 
 
 (defn state-machine
-  [server-id state-atom storage-read storage-write]
-  (fn [command raft-state]
+  [_ state-atom storage-read storage-write]
+  (fn [command _]
     (let [op     (first command)
           result (case op
 
@@ -305,7 +302,7 @@
 
                    :new-index (update-state/new-index command state-atom)
 
-                   :lowercase-all-names (update-state/lowercase-all-names command state-atom)
+                   :lowercase-all-names (update-state/lowercase-all-names state-atom)
 
                    :assoc-in (update-state/assoc-in* command state-atom)
 
@@ -542,7 +539,7 @@
 
 (defn monitor-raft
   "Monitor raft events and state for debugging"
-  ([raft] (monitor-raft raft (fn [x] (clojure.pprint/pprint x))))
+  ([raft] (monitor-raft raft (fn [x] (cprint/pprint x))))
   ([raft callback]
    (raft/monitor-raft (:raft raft) callback)))
 
@@ -732,7 +729,7 @@
 
 
 (defn raft-start-up
-  [group conn system* shutdown join?]
+  [group conn system* shutdown _]
   (async/go
     (try (let [fully-committed? (async/<! (index-fully-committed? group true))]
            (when (instance? Throwable fully-committed?)
@@ -748,7 +745,7 @@
                  current-state  @(:state-atom group-raft)
                  ledgers-info   (txproto/all-ledger-block current-state)]
              (when-not (nil? storage-path)                  ; TODO: Support full-text indexes on s3 storage too
-               (async/<! (dbsync2/check-full-text-synced conn storage-path ledgers-info)))
+               (async/<! (dbsync2/check-full-text-synced conn ledgers-info)))
              (if (instance? Exception sync-finished?)
                (dbsync2/terminate! conn
                                    "Terminating due to file syncing error, unable to sync required files with other servers."

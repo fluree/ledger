@@ -1,18 +1,17 @@
 (ns fluree.db.ledger.transact.tags
   (:refer-clojure :exclude [new resolve])
-  (:require [fluree.db.util.async :refer [<? <?? go-try merge-into? channel?]]
+  (:require [fluree.db.util.async :refer [<? go-try]]
             [fluree.db.dbproto :as dbproto]
             [fluree.db.ledger.transact.tempid :as tempid]
             [fluree.db.flake :as flake]
             [fluree.db.constants :as const]
-            [fluree.db.util.log :as log]
             [clojure.string :as str]))
 
 ;; operations related to resolving and creating new tags
 
 (defn- temp-flake->flake
   "Transforms a TempId based flake into a flake."
-  [{:keys [tempids t] :as tx-state} [tag-name tag-tempid]]
+  [{:keys [tempids t]} [tag-name tag-tempid]]
   (flake/->Flake (get @tempids tag-tempid) const/$_tag:id tag-name t true nil))
 
 

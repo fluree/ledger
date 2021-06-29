@@ -1,5 +1,5 @@
 (ns fluree.db.ledger.transact.json
-  (:require [fluree.db.util.async :refer [<? <?? go-try merge-into? channel?]]
+  (:require [fluree.db.util.async :refer [<? go-try]]
             [fluree.db.util.core :as util]
             [fluree.db.util.log :as log]
             [fluree.db.dbproto :as dbproto]
@@ -56,7 +56,7 @@
 
 (defn resolve-ident-strict
   "Resolves ident (from cache if exists). Will throw exception if ident cannot be resolved."
-  [ident {:keys [db-root idents] :as tx-state}]
+  [ident {:keys [db-root idents]}]
   (go-try
     (if-let [cached (get @idents ident)]
       cached
@@ -71,7 +71,7 @@
 
 (defn- resolve-collection-name
   "Resolves collection name from _id"
-  [_id {:keys [db-root] :as tx-state}]
+  [_id {:keys [db-root]}]
   (cond (tempid/TempId? _id)
         (:collection _id)
 
@@ -81,12 +81,6 @@
         (int? _id)
         (->> (flake/sid->cid _id)
              (dbproto/-c-prop db-root :name))))
-
-
-(defn- resolve-collection-id
-  "Resolves collection id from collection name"
-  [db _collection]
-  (dbproto/-c-prop db :id _collection))
 
 
 (defn predicate-details
@@ -128,7 +122,7 @@
   and return false.
 
   Ident is a two-tuple of [pred-id object/value]"
-  [ident {:keys [uniques] :as tx-state}]
+  [ident {:keys [uniques]}]
   ;; uniques is a set/#{} wrapped in an atom
   (let [uniques* (swap! uniques
                         (fn [uniques-set]
@@ -149,7 +143,7 @@
   resolve it to a different subject!)
 
   If error is not thrown, returns the provided object argument."
-  [object-ch _id pred-info {:keys [db-before t] :as tx-state}]
+  [object-ch _id pred-info {:keys [db-before] :as tx-state}]
   (go-try
     (let [object       (<? object-ch)
           pred-id      (pred-info :id)
@@ -539,14 +533,13 @@
 (defn do-transact
   [tx-state tx]
   (go-try
-    (let []
-      (->> tx
-           (mapcat #(extract-children % tx-state))
-           (statements-pipeline tx-state)
-           <?
-           (tempid/assign-subject-ids tx-state)
-           (finalize-flakes tx-state)
-           <?))))
+    (->> tx
+         (mapcat #(extract-children % tx-state))
+         (statements-pipeline tx-state)
+         <?
+         (tempid/assign-subject-ids tx-state)
+         (finalize-flakes tx-state)
+         <?)))
 
 
 (defn update-db-after
