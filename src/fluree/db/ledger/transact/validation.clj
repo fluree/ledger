@@ -1,5 +1,5 @@
 (ns fluree.db.ledger.transact.validation
-  (:require [fluree.db.util.async :refer [<? go-try channel?] :as async-util]
+  (:require [fluree.db.util.async :refer [<? <?? go-try channel?] :as async-util]
             [fluree.db.dbfunctions.core :as dbfunctions]
             [fluree.db.query.range :as query-range]
             [fluree.db.constants :as const]
