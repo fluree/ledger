@@ -1,10 +1,9 @@
 (ns fluree.db.ledger.transact.retract
-  (:require [fluree.db.util.async :refer [<? <?? go-try merge-into? channel?]]
+  (:require [fluree.db.util.async :refer [<? go-try]]
             [fluree.db.query.range :as query-range]
             [fluree.db.flake :as flake]
             [clojure.core.async :as async]
-            [fluree.db.dbproto :as dbproto]
-            [fluree.db.util.log :as log])
+            [fluree.db.dbproto :as dbproto])
   (:import (fluree.db.flake Flake)))
 
 ;;; functions to retract existing flakes from the ledger

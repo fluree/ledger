@@ -70,21 +70,25 @@
                              (throw (ex-info "No max novelty set, unable to reindex."
                                              {:status 500
                                               :error  :db/unexpected-error})))
-          db               (<? (reindex/write-genesis-block blank-db "forking" "Database is forking." fork-ledger))]
+          db               (<? (reindex/write-genesis-block
+                                 blank-db
+                                 {:status "forking"
+                                  :message "Database is forking."
+                                  :from-ledger fork-ledger}))]
       (loop [block 2
              db    db]
         (let [block-data (<? (storage/read-block conn forked-network forked-ledger-id block))]
           (if (or (> block to-block) (nil? block-data))
             (do (log/info (str "-->> Forked db index finished: " ledger " block: " (dec block)))
                 (if (> (get-in db [:novelty :size]) 0)
-                  (->> (async/<! (indexing/index db "ready" nil))
+                  (->> (async/<! (indexing/index db {:status "ready"}))
                        (txproto/write-index-point-async (-> db :conn :group))
                        (async/<!))
                   db))
             (let [{:keys [flakes t]} block-data
                   db*          (<? (dbproto/-with db block flakes))
                   novelty-size (get-in db* [:novelty :size])]
-              (log/info (str "  -> Reindex db: " ledger " block: " block " containing " (count flakes) " flakes. Novelty size: " novelty-size "."))
+              (log/info (str "  -> Reindex db: " ledger " block: " block " t: " t " containing " (count flakes) " flakes. Novelty size: " novelty-size "."))
               (if (>= novelty-size max-novelty)
                 (recur (inc block) (let [indexed-db (async/<! (indexing/index db*))]
                                      (async/<!! (txproto/write-index-point-async (-> indexed-db :conn :group) indexed-db))
@@ -115,25 +119,28 @@
             _            (loop [block 1]
                            (if (< to-block* block)
                              (<? (txproto/register-genesis-block-async (:group conn) network ledger-id))
-                             (let [block-data  (<? (storage/read-block conn fork-network fork-ledger-id block))
-                                   write-block (<? (storage/write-block conn network ledger-id block-data))]
+                             (do
+                               (->> (storage/read-block conn fork-network fork-ledger-id block)
+                                    <?
+                                    (storage/write-block conn network ledger-id)
+                                    <?)
                                (recur (inc block)))))
 
             ;; TODO - use closest index
             ;; If a closest-index we can use, start there, apply additional blocks and write out a new index.
             ;closest-index (<? (find-closest-index conn fork-network fork-ledger-id to-block*))
-            ]
 
-        (let [[network dbid] (str/split ledger "/")
-              indexed-db (<?? (reindex/reindex conn network dbid))
-              txid       (crypto/sha3-256 (:cmd command))
-              group      (-> indexed-db :conn :group)
-              block      (:block indexed-db)
-              _          (log/info " txid network ledger-id block (:fork indexed-db) (get-in indexed-db [:stats :indexed])" txid network ledger-id block (:fork indexed-db) (get-in indexed-db [:stats :indexed]))
-              _          (<?? (txproto/initialized-ledger-async group txid network ledger-id block (:fork indexed-db) (get-in indexed-db [:stats :indexed])))
-              sess       (session/session conn ledger)
-              _          (session/close sess)]
-          indexed-db)))))
+            [network dbid] (str/split ledger "/")
+            indexed-db (<?? (reindex/reindex conn network dbid))
+            txid       (crypto/sha3-256 (:cmd command))
+            group      (-> indexed-db :conn :group)
+            block      (:block indexed-db)
+            _          (log/info " txid network ledger-id block (:fork indexed-db) (get-in indexed-db [:stats :indexed])" txid network ledger-id block (:fork indexed-db) (get-in indexed-db [:stats :indexed]))
+            _          (<?? (txproto/initialized-ledger-async group txid network ledger-id block (:fork indexed-db) (get-in indexed-db [:stats :indexed])))
+            sess       (session/session conn ledger)
+            _          (session/close sess)
+            ]
+        indexed-db))))
 
 
 (defn fork
@@ -189,21 +196,4 @@
                       (recur (<? (dbproto/-with db block (:flakes block-data))) (inc block))))))))
           ;; no closest index, we need to rebuild entire db
           (forked-reindex conn ledger forked-ledger latest-block))))))
-
-
-;(defn fork-archive
-;  "Forks an archive file to a new dbid."
-;  [conn network dbid archive-network archive-dbid to-block]
-;  (when (storage/db-exists? conn network dbid)
-;    (throw (ex-info (str "Cannot fork to dbid: " dbid ", it already exists!")
-;                    {:status 400
-;                     :error  :db/invalid-action})))
-;  (let [blocks (cond->> (archive/read-archive conn archive-network archive-dbid)
-;                        to-block (take to-block))]
-;    ;; write out all blocks to our configured storage
-;    (doseq [block blocks]
-;      (storage/write-block conn network dbid block))
-;    ;; now generate an index for the DB. This will return the final DB
-;    (reindex/reindex conn network dbid "ready" nil)))
-
 

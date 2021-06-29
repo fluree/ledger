@@ -93,7 +93,7 @@
                      (assoc-in req [:request :Prefix] path)
                      req)
         resp       (aws/invoke client req)
-        _          (if (:cognitect.anomalies/category resp)
+        _          (when (:cognitect.anomalies/category resp)
                      (if-let [err (:cognitect.aws.client/throwable resp)]
                        err
                        (ex-info "S3 list failed" {:response resp})))

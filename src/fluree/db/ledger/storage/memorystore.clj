@@ -1,5 +1,5 @@
 (ns fluree.db.ledger.storage.memorystore
-  (:require [fluree.db.util.async :refer [<? go-try]]))
+  (:require [fluree.db.util.async :refer [go-try]]))
 
 
 (def memory-store (atom {}))

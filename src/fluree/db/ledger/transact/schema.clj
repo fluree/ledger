@@ -2,7 +2,6 @@
   (:require [fluree.db.constants :as const]
             [fluree.db.flake :as flake]
             [fluree.db.util.core :as util]
-            [fluree.db.util.log :as log]
             [fluree.db.dbproto :as dbproto])
   (:import (fluree.db.flake Flake)))
 
@@ -219,7 +218,7 @@
   "Adds any predicate subject flakes that are removing
   an existing index, either via index: true or unique: true to the
   remove-from-post atom in tx-state."
-  [flakes index-flakes {:keys [remove-from-post] :as tx-state}]
+  [flakes index-flakes {:keys [remove-from-post]}]
   (when-let [remove-post-sids (->> index-flakes
                                    (keep #(when (and (true? (.-op %)) (false? (.-o %)))
                                             (.-s %)))
@@ -282,7 +281,7 @@
   (i.e. if ':unique true' was set to ':unique false', but separately ':index true' was set, we'd still
   be indexing)... so we validate that indexing for these changes was actually turned off here as a final
   check."
-  [{:keys [remove-from-post db-after] :as tx-state}]
+  [{:keys [remove-from-post db-after]}]
   (when-let [removes @remove-from-post]
     ;; need to validate removes are truly index removes in new db (schema might have been changed from transaction)
     (->> removes

@@ -65,11 +65,11 @@
 (defn get-history-in-range
   "Filters through history and pulls only items within the provided range.
   >= lhs, < rhs. When rhs is nil, no end."
-  [history lhs rhs compare]
+  [history lhs rhs fn-compare]
   (let [pred (if (nil? rhs)
-               (fn [^Flake f] (>= 0 (compare lhs f)))
-               (fn [^Flake f] (and (>= 0 (compare lhs f))
-                                   (< 0 (compare rhs f)))))]
+               (fn [^Flake f] (>= 0 (fn-compare lhs f)))
+               (fn [^Flake f] (and (>= 0 (fn-compare lhs f))
+                                   (< 0 (fn-compare rhs f)))))]
     (filter pred history)))
 
 (defn find-combine-leaf
@@ -77,7 +77,7 @@
 
   children will either be the new children if direction is :previous, or
   the original children if the direction is :next"
-  [children leaf-i t idx-novelty idx-type direction remove-preds]
+  [children leaf-i t idx-novelty direction remove-preds]
   (go-try
     (let [next-node (if (= :next direction)
                       (fn [n] (val (nth children (- leaf-i n)))) ;; original children, work left from current index
@@ -94,7 +94,7 @@
               resolved     (<? (dbproto/-resolve-to-t combine-node t idx-novelty false remove-preds))
               history      (<? (dbproto/-resolve-history-range combine-node nil t idx-novelty))
               his*         (into history his)]
-          (cond (not (empty? (:flakes resolved)))
+          (cond (seq (:flakes resolved))
                 [n resolved (flake/size-bytes (:flakes resolved)) his*]
 
                 (end? n)
@@ -155,22 +155,22 @@
          (let [[skip n combine-leaf combine-bytes
                 combine-his] (cond leftmost?
                                    (let [[n combine-leaf combine-bytes combine-his]
-                                         (<? (find-combine-leaf new-children leaf-i t idx-novelty idx-type :previous remove-preds))]
+                                         (<? (find-combine-leaf new-children leaf-i t idx-novelty :previous remove-preds))]
                                      [:previous n combine-leaf combine-bytes combine-his])
 
                                    ;; rightmost
                                    (= leaf-i (-> old-children count dec))
                                    (let [[n combine-leaf combine-bytes combine-his]
-                                         (<? (find-combine-leaf old-children leaf-i t idx-novelty idx-type :next remove-preds))]
+                                         (<? (find-combine-leaf old-children leaf-i t idx-novelty :next remove-preds))]
                                      [:next n combine-leaf combine-bytes combine-his])
 
                                    ;; in the middle
                                    :else (let [;; prev-leaf could be empty
                                                [prev-n prev-leaf prev-bytes prev-combine-his]
-                                               (<? (find-combine-leaf new-children leaf-i t idx-novelty idx-type :previous remove-preds))
+                                               (<? (find-combine-leaf new-children leaf-i t idx-novelty :previous remove-preds))
                                                ;; next-leaf could be empty
                                                [next-n next-leaf next-bytes next-combine-his]
-                                               (<? (find-combine-leaf old-children leaf-i t idx-novelty idx-type :next remove-preds))]
+                                               (<? (find-combine-leaf old-children leaf-i t idx-novelty :next remove-preds))]
                                            (if (> prev-bytes next-bytes)
                                              [:next next-n next-leaf next-bytes next-combine-his]
                                              [:previous prev-n prev-leaf prev-bytes prev-combine-his])))
@@ -283,7 +283,7 @@
                                                                       (<= %2 child-rhs-pred) true))
                                                              (conj %1 %2) %1) #{} remove-preds))
                                                 #{})
-                                dirty?        (or (not (empty? novelty)) (not (empty? remove-preds?)))
+                                dirty?        (or (seq novelty) (seq remove-preds?))
                                 [new-nodes skip n] (if dirty?
                                                      (if at-leaf?
                                                        (<? (index-leaf conn network dbid child block t idx-novelty child-rhs children children* child-i remove-preds?))
@@ -332,7 +332,7 @@
      (assert (#{:spot :psot :post :opst} idx-type) (str "Reindex attempt on unknown index type: " idx-type))
      (let [{:keys [conn novelty block t network dbid]} db
            idx-novelty (get novelty idx-type)
-           dirty?      (or (not (empty? idx-novelty)) remove-preds)
+           dirty?      (or (seq idx-novelty) remove-preds)
            idx-root    (get db idx-type)]
        (if-not dirty?
          idx-root
@@ -349,7 +349,7 @@
   so we know the 'rhs' value of each node going into it."
   ([db]
    (index db {:status "ready"}))
-  ([db {:keys [status message ecount remove-preds]}]
+  ([db {:keys [ecount remove-preds]}]
    (go-try
      (let [{:keys [novelty block t network dbid]} db
            db-dirty?    (or (some #(not-empty (get novelty %)) [:spot :psot :post :opst])
@@ -408,7 +408,7 @@
        (let [latest-db     (<? (session/current-db session))
              novelty-size  (get-in latest-db [:novelty :size])
              novelty-min   (novelty-min session)
-             remove-preds? (and (not (nil? remove-preds)) (not (empty? remove-preds)))
+             remove-preds? (and (not (nil? remove-preds)) (seq remove-preds))
              needs-index?  (or remove-preds? (>= novelty-size novelty-min))]
          (if needs-index?
            ;; kick off indexing with this DB
@@ -417,7 +417,7 @@
            false)))))
   ([session db opts]
    (go-try
-     (let [{:keys [conn block network dbid]} db
+     (let [{:keys [block network]} db
            last-index (session/indexed session)]
        (cond
          (and last-index (<= block last-index))
@@ -454,7 +454,7 @@
   "Checks continuity of provided index in that the 'rhs' is equal to the first-flake of the following segment."
   ([idx-root] (validate-idx-continuity idx-root false))
   ([idx-root throw?] (validate-idx-continuity idx-root throw? nil))
-  ([idx-root throw? compare]
+  ([idx-root throw? fn-compare]
    (let [node     (async/<!! (dbproto/-resolve idx-root))
          children (:children node)
          last-i   (dec (count children))]
@@ -476,9 +476,9 @@
          (println "      last-rhs: " last-rhs)
          (println "     leftmost?: " leftmost?)
          (println "           rhs: " rhs)
-         (when (and compare
+         (when (and fn-compare
                     child-first rhs)
-           (println "         comp: " (compare child-first rhs)))
+           (println "         comp: " (fn-compare child-first rhs)))
          (when (and throw?
                     (not (zero? i))
                     (not continuous?))
@@ -506,10 +506,10 @@
           post-comp (.comparator (-> db :novelty :post))
           psot-comp (.comparator (-> db :novelty :psot))
           opst-comp (.comparator (-> db :novelty :opst))]
-      (do (validate-idx-continuity (:spot db) true spot-comp)
-          (validate-idx-continuity (:post db) true post-comp)
-          (validate-idx-continuity (:psot db) true psot-comp)
-          (validate-idx-continuity (:opst db) true opst-comp))))
+      (validate-idx-continuity (:spot db) true spot-comp)
+      (validate-idx-continuity (:post db) true post-comp)
+      (validate-idx-continuity (:psot db) true psot-comp)
+      (validate-idx-continuity (:opst db) true opst-comp)))
 
   (check-ctnty db)
 

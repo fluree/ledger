@@ -1,5 +1,5 @@
 (ns fluree.db.ledger.transact.tx-meta
-  (:require [fluree.db.util.async :refer [<? go-try merge-into? channel?]]
+  (:require [fluree.db.util.async :refer [<? go-try]]
             [fluree.db.dbproto :as dbproto]
             [fluree.db.flake :as flake]
             [fluree.db.constants :as const]
@@ -21,7 +21,7 @@
 
 (defn tx-meta-flakes
   ([tx-state] (tx-meta-flakes tx-state nil))
-  ([{:keys [auth authority txid tx-string signature nonce t] :as tx-state} error-str]
+  ([{:keys [auth authority txid tx-string signature nonce t]} error-str]
    (let [tx-flakes [(flake/->Flake t const/$_tx:id txid t true nil)
                     (flake/->Flake t const/$_tx:tx tx-string t true nil)
                     (flake/->Flake t const/$_tx:sig signature t true nil)]]
@@ -35,7 +35,7 @@
 (defn generate-hash-flake
   "Generates transaction hash, and returns the hash flake.
   Flakes must already be sorted in proper block order."
-  [flakes {:keys [t] :as tx-state}]
+  [flakes {:keys [t]}]
   (let [tx-hash (tx-util/gen-tx-hash flakes true)]
     (flake/->Flake t const/$_tx:hash tx-hash t true nil)))
 
@@ -82,7 +82,7 @@
   - they never attempt to set the fluree-only predicates defined by system-predicates above
   - they never attempt to set a 't' value beyond the current t (historical t values are fine, assuming
     they have permission to do so which would be handled via smartfunction"
-  [tx-meta-sid {:keys [validate-fn] :as tx-state}]
+  [tx-meta-sid {:keys [validate-fn]}]
   (let [subject-flakes (get-in @validate-fn [:c-spec tx-meta-sid])]
     (doseq [^Flake flake subject-flakes]
       (when (system-predicates (.-p flake))

@@ -1,11 +1,10 @@
 (ns fluree.db.ledger.mutable
   (:require [fluree.db.api :as fdb]
-            [fluree.db.util.async :refer [<? <?? go-try channel?]]
+            [fluree.db.util.async :refer [<? <?? go-try]]
             [fluree.db.query.range :as query-range]
             [fluree.db.time-travel :as time-travel]
             [fluree.db.storage.core :as storage]
             [fluree.db.constants :as const]
-            [clojure.string :as str]
             [fluree.db.util.log :as log]
             [fluree.db.serde.protocol :as serdeproto]
             [fluree.db.ledger.reindex :as reindex]))
@@ -60,7 +59,7 @@
 (defn identify-hide-blocks-flakes
   [db {:keys [block hide purge] :as query-map}]
   (go-try (let [[pattern idx] (fdb/get-history-pattern (or hide purge))
-                [block-start block-end] (if block (<? (fdb/resolve-block-range db query-map)))
+                [block-start block-end] (when block (<? (fdb/resolve-block-range db query-map)))
                 from-t    (if (and block-start (not= 1 block-start))
                             (dec (:t (<? (time-travel/as-of-block db (dec block-start))))) -1)
                 to-t      (if block-end
@@ -89,9 +88,9 @@
                 [block-map fuel] (<? (identify-hide-blocks-flakes db query-map))
                 _          (when (not-empty block-map)
                              (loop [[[block flakes] & r] block-map]
-                               (do (<?? (hide-block conn nw ledger block flakes))
-                                   (if r (recur r)
-                                         true))))
+                               (<?? (hide-block conn nw ledger block flakes))
+                               (if r (recur r)
+                                     true)))
                 ; Pass in a custom ecount, so as not to have multiple items
                 ; with same subject id
                 old-ecount (:ecount db)
@@ -109,9 +108,9 @@
                 [block-map fuel] (<? (identify-hide-blocks-flakes db query-map))
                 _          (when (not-empty block-map)
                              (loop [[[block flakes] & r] block-map]
-                               (do (<?? (purge-block conn nw ledger block flakes))
-                                   (if r (recur r)
-                                         true))))
+                               (<?? (purge-block conn nw ledger block flakes))
+                               (if r (recur r)
+                                     true)))
                 ;; Pass in a custom ecount, so as not to have multiple items
                 ;; with same subject id
                 old-ecount (:ecount db)

@@ -16,3 +16,6 @@ default_private_key.txt
 /resources/adminUI
 /node_modules
 /pom.xml
+/.clj-kondo/.cache
+/.eastwood
+/scanning_results

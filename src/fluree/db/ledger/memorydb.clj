@@ -2,10 +2,9 @@
   (:require [clojure.core.async :as async]
             [fluree.db.ledger.bootstrap :as bootstrap]
             [fluree.db.query.schema :as schema]
-            [fluree.db.util.async :refer [go-try <?]]
+            [fluree.db.util.async :refer [<?] :as async-util]
             [fluree.db.dbproto :as dbproto]
-            [fluree.db.flake :as flake]
-            [fluree.db.util.async :as async-util]))
+            [fluree.db.flake :as flake]))
 
 ;; One-off in-memory dbs, eventually move to fluree/db repository so local in-memory dbs can be launched
 ;; inside application servers, web browsers, ?? - to maintain local state but have all of the other benefits
@@ -14,9 +13,10 @@
 
 ;; For now, requires bootstrap and transact namespaces, which are only in fluree/ledger
 
-(defn fake-conn []
+(defn fake-conn
   "Returns a fake connection object that is suitable for use with the memorydb if
   no other conn is available."
+  []
   {:transactor? false})
 
 (defn new-db
@@ -53,10 +53,4 @@
                     (map (fn [[s p o op]]
                            (flake/->Flake s p o t (if (false? op) false true) nil))))]
     (transact-flakes db* flakes)))
-
-
-(defn transact
-  "Performs a fully validating transaction to an in-memory db"
-  [db transaction]
-  ::coming-soon!)
 
