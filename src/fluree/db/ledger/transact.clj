@@ -3,18 +3,15 @@
             [fluree.db.flake :as flake]
             [fluree.db.dbproto :as dbproto]
             [fluree.db.util.core :as util]
-            [fluree.db.dbproto :as dbproto]
             [fluree.crypto :as crypto]
-            [fluree.db.dbproto :as dbproto]
             [fluree.db.ledger.indexing :as indexing]
             [fluree.db.session :as session]
             [fluree.db.util.tx :as tx-util]
             [fluree.db.query.fql :as fql]
             [fluree.db.constants :as const]
-            [fluree.db.util.async :refer [<? go-try merge-into? channel?]]
+            [fluree.db.util.async :refer [<? go-try]]
             [fluree.db.ledger.txgroup.txgroup-proto :as txproto]
-            [fluree.db.ledger.transact.json :as tx-json])
-  (:import (java.time Instant)))
+            [fluree.db.ledger.transact.json :as tx-json]))
 
 
 (defn valid-authority?
@@ -143,25 +140,24 @@
                                        :instant     block-instant
                                        :flakes      (into [] all-flakes)
                                        :block-bytes (- (get-in db-after* [:stats :size]) (get-in db-before [:stats :size]))
-                                       :txns        txns*}]
-
-              ;; update db status for tx group
-              (let [new-block-resp (<? (txproto/propose-new-block-async
-                                         (-> session :conn :group) (:network session)
-                                         (:dbid session) (dissoc block-result :db-before :db-after)))]
-                (if (true? new-block-resp)
-                  (do
-                    ;; update cached db
-                    ;(let [new-db-ch (async/promise-chan)]
-                    ;  (async/put! new-db-ch (:db-after block-result))
-                    ;  (session/cas-db! session db-before-ch new-db-ch))
-                    ;; reindex if needed
-                    ;; to do -add opts
-                    (<? (indexing/index* session {:remove-preds remove-preds*}))
-                    block-result)
-                  (do
-                    (log/warn "Proposed block was not accepted by the network because: "
-                              (pr-str new-block-resp)
-                              "Proposed block: "
-                              (dissoc block-result :db-before :db-after))
-                    false))))))))))
+                                       :txns        txns*}
+                  ;; update db status for tx group
+                  new-block-resp (<? (txproto/propose-new-block-async
+                                       (-> session :conn :group) (:network session)
+                                       (:dbid session) (dissoc block-result :db-before :db-after)))]
+              (if (true? new-block-resp)
+                (do
+                  ;; update cached db
+                  ;(let [new-db-ch (async/promise-chan)]
+                  ;  (async/put! new-db-ch (:db-after block-result))
+                  ;  (session/cas-db! session db-before-ch new-db-ch))
+                  ;; reindex if needed
+                  ;; to do -add opts
+                  (<? (indexing/index* session {:remove-preds remove-preds*}))
+                  block-result)
+                (do
+                  (log/warn "Proposed block was not accepted by the network because: "
+                            (pr-str new-block-resp)
+                            "Proposed block: "
+                            (dissoc block-result :db-before :db-after))
+                  false)))))))))

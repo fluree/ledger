@@ -6,27 +6,30 @@
             [fluree.db.ledger.transact :as transact]
             [fluree.db.ledger.bootstrap :as bootstrap]
             [fluree.db.util.json :as json]
-            [fluree.db.util.async :refer [<? <?? go-try]]
+            [fluree.db.util.async :refer [<? go-try]]
             [fluree.db.ledger.txgroup.txgroup-proto :as txproto]
-            [fluree.db.api :as fdb]
-            [clojure.string :as str]))
+            [fluree.db.api :as fdb]))
 
 ;; For now, just use this as a lock to ensure multiple processes are not trying to redistribute work simultaneously.
 (def ^:private redistribute-workers-lock (atom nil))
 
+;; Maximum size for a transaction, default is 2mb
+(def ^:const default-max-txn-size 2e6)
 
-(defn- acquire-lock []
+(defn- acquire-lock
   "Returns true if acquired, false otherwise."
-  (let [myid                (rand-int (Integer/MAX_VALUE))
-        acquire-lock-result (swap! redistribute-workers-lock (fn [existing-id]
-                                                               (if existing-id
-                                                                 existing-id
-                                                                 myid)))]
+  []
+  (let [myid (rand-int (Integer/MAX_VALUE))
+        _    (swap! redistribute-workers-lock (fn [existing-id]
+                                                (if existing-id
+                                                  existing-id
+                                                  myid)))]
     (= myid @redistribute-workers-lock)))
 
 
-(defn- release-lock []
+(defn- release-lock
   "Releases lock"
+  []
   (reset! redistribute-workers-lock nil))
 
 
@@ -152,7 +155,7 @@
     ;; we have a lock
     :else
     (if-let [worker-status (worker-status group)]
-      (let [{:keys [networks unassigned servers networks-per-server overassigned underassigned]} worker-status
+      (let [{:keys [unassigned networks-per-server overassigned underassigned]} worker-status
             to-assign (into unassigned (->> overassigned (mapcat #(drop networks-per-server (second %)))))]
         ;(log/warn " ------ networks that need assignment: " to-assign " underassigned servers: " underassigned)
         (loop [[next-server & r] underassigned
@@ -216,11 +219,12 @@
   - dbid
   - instant
 
- Commands can optionally contain multiTx, which allows for multiple transactions to be handle together in the same block. In order for multiTx to be allowed, all transactions need to be in the queue.
- The order of txns listed in the last txn submitted is the order in which the transactions are processed."
+ Commands can optionally contain multiTx, which allows for multiple transactions to be handle together in the
+ same block. In order for multiTx to be allowed, all transactions need to be in the queue.  The order of txns
+ listed in the last txn submitted is the order in which the transactions are processed."
   [db cmd-queue]
   ;; TODO - need to check each command id to ensure it hasn't yet been processed
-  (let [max-size     2e6                                    ;; two mb, TODO - pull from db settings
+  (let [max-size     (or (get-in db [:settings :txMax]) default-max-txn-size)
         sorted-queue (->> cmd-queue
                           (sort-by :instant))]
     (loop [[next-cmd & r] sorted-queue

@@ -1,7 +1,7 @@
 (ns fluree.db.ledger.transact.auth
   (:refer-clojure :exclude [resolve])
   (:require [clojure.core.async :as async]
-            [fluree.db.util.async :refer [<? <?? go-try merge-into? channel?]]
+            [fluree.db.util.async :refer [<? go-try]]
             [fluree.db.dbproto :as dbproto]
             [fluree.db.util.core :as util]
             [fluree.db.auth :as auth]

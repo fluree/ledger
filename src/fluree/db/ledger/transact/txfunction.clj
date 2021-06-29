@@ -13,6 +13,6 @@
 
 (defn execute
   "Returns a core async channel with response"
-  [tx-fn _id pred-info {:keys [auth db-root instant fuel] :as tx-state}]
+  [tx-fn _id pred-info {:keys [auth db-root instant fuel]}]
   (dbfunctions/execute-tx-fn db-root auth nil _id (pred-info :id) (:fn-str tx-fn) fuel instant))
 

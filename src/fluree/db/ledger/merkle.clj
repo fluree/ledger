@@ -1,6 +1,5 @@
 (ns fluree.db.ledger.merkle
-  (:require [fluree.crypto :as crypto]
-            [fluree.db.util.log :as log]))
+  (:require [fluree.crypto :as crypto]))
 
 (defn exp [x n]
   (loop [acc 1 n n]

@@ -114,7 +114,7 @@
                 (if r
                   (recur r)                                 ;; more servers to try
                   (raise result
-                         (format "Something went wrong. Trying to copy %s. Attempted all servers: " file-key server-list)
+                         (format "Something went wrong. Trying to copy %s. Attempted all servers: %s" file-key server-list)
                          server))
 
                 ;; we have a result!
@@ -300,7 +300,8 @@
                 (do
                   (async/close! sync-chan)                  ;; close sync-chan so pipeline will close
                   ::done)
-                (let [next-result (<? c)]
+                (do
+                  (<? c)
                   (recur r))))
             (catch Exception e
               (async/close! sync-chan)
@@ -329,7 +330,7 @@
 (defn check-full-text-synced
   "Takes an array of arrays.
   [ [nw/ledger block] [nw/ledger block] [nw/ledger block] ]"
-  [conn storage-dir ledger-block-arr]
+  [conn ledger-block-arr]
   (go-try
     (loop [[[ledger block] & r] ledger-block-arr]
       (if ledger

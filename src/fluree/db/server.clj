@@ -124,7 +124,7 @@
         (log/error e "Uncaught exception on" (.getName thread)))))
 
    (let [config         (settings/build-settings settings)
-         {:keys [transactor? mode consensus conn join?]} config
+         {:keys [transactor? consensus conn join?]} config
          consensus-type (:type consensus)
          storage-type   (:storage-type conn)
          memory?        (= :memory storage-type)
@@ -168,9 +168,9 @@
                                       :stats stats)
          _              (when (and (or memory? (= consensus-type :in-memory))
                                    (not (and memory? (= consensus-type :in-memory))))
-                          (do (log/warn "Error during start-up. Currently if storage-type is 'memory', then consensus-type has to be 'in-memory' and vice versa.")
-                              (shutdown system*)
-                              (System/exit 1)))]
+                          (log/warn "Error during start-up. Currently if storage-type is 'memory', then consensus-type has to be 'in-memory' and vice versa.")
+                          (shutdown system*)
+                          (System/exit 1))]
 
      ;; wait for initialization, and kick off some startup activities
      (when transactor?
@@ -193,7 +193,7 @@
   (System/exit 0))
 
 
-(defn -main [& args]
+(defn -main []
   (if-let [command (:fdb-command environ/env)]
     (execute-command command)
     (let [system (startup)]

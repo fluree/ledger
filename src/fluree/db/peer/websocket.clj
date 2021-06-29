@@ -5,7 +5,6 @@
             [clojure.tools.logging :as log]
             [manifold.stream :as s]
             [fluree.db.util.json :as json]
-            [fluree.db.flake :as flake]
             [fluree.db.permissions-validate :as permissions-validate]
             [fluree.db.peer.messages :as messages]
             [fluree.db.api :as fdb]
@@ -23,7 +22,7 @@
   [ws-id]
   (swap! ws-connections update-in [ws-id :session]
          (fn [sessions-map]
-           (doseq [[ledger-ident chan] sessions-map]
+           (doseq [[_ chan] sessions-map]
              (when chan (async/close! chan)))
            ;; nil out sessions
            nil)))
@@ -33,7 +32,7 @@
   "Cleanup when a websocket is closed."
   [ws-id producer-chan]
   (try
-    ;(close-all-sessions ws-id)
+    (close-all-sessions ws-id)
     (async/close! producer-chan)
     (swap! ws-connections (fn [ws-state]
                             ;(when-let [send-chan (get-in ws-state [ws-id :send-chan])]
@@ -123,7 +122,7 @@
                   ;; register message handler for requests, create a buffer to allow some processing time.
                   ;; send back a connection message with assigned ws-id
                   (d/chain (s/put! ws (json/stringify [:set-ws-id nil ws-id]))
-                           #(if (false? %)
+                           #(when (false? %)
                               ;; failed, close
                               (s/close! ws)))
                   (msg-producer system ws-id ws producer-chan)

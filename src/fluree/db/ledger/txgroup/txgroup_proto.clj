@@ -349,9 +349,10 @@ or this server is not responsible for this ledger, will return false. Else true 
   [group network ledger-id command-id command]
   (kv-assoc-in-async group [:cmd-queue network command-id] {:command command :size (count (:cmd command)) :id command-id :network network :dbid ledger-id :instant (System/currentTimeMillis)}))
 
+;;TODO - could not find any references, need to determine if indirectly referenced as a parameter
 (defn remove-cmd-from-queue-async
   "Remotes a tx from the queue"
-  [group network ledger-id txid]
+  [group network _ txid]
   (kv-dissoc-in-async group [:cmd-queue network txid]))
 
 ;; Block commands
@@ -417,20 +418,6 @@ or this server is not responsible for this ledger, will return false. Else true 
 
 
 ;; storage commands
-
-(defn storage-write-async
-  "Performs a fully consistent storage write."
-  [raft k data]
-  (let [command [:storage-write k data]]
-    (-new-entry-async raft command)))
-
-
-(defn storage-write
-  "Performs a fully consistent storage write."
-  [raft k data]
-  (async/<!! (storage-write-async raft k data)))
-
-
 (defn storage-read-async*
   "Performs a fully consistent storage-read of provided key."
   [raft key]
