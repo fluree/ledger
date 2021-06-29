@@ -94,9 +94,8 @@
                      req)
         resp       (aws/invoke client req)
         _          (when (:cognitect.anomalies/category resp)
-                     (if-let [err (:cognitect.aws.client/throwable resp)]
-                       err
-                       (ex-info "S3 list failed" {:response resp})))
+                     (throw (or (:cognitect.aws.client/throwable resp)
+                                (ex-info "S3 list failed" {:response resp}))))
         objects    (:Contents resp)
         bucket-url (partial key->url conn)]
     (map (fn [{key :Key, size :Size}]
