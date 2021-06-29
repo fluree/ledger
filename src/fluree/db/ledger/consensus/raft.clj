@@ -33,9 +33,6 @@
   the amount of data you want to push across the network at once."
   [{:keys [path storage-read]}]
   (fn [id _]
-    ;; TODO: Actually use the part arg or get rid of it - WSM 2020-09-01
-    ;; in this example we do everything in one part, regardless of snapshot size
-    ;; part is being passed in as second item to function
     (let [file (str path id ".snapshot")
           ba   (<!! (storage-read file))]
       {:parts 1
