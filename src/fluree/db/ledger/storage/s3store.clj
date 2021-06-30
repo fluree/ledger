@@ -98,15 +98,16 @@
         req        (if path
                      (assoc-in req [:request :Prefix] path)
                      req)
-        resp       (aws/invoke client req)
-        _          (when (:cognitect.anomalies/category resp)
-                     (throw (or (:cognitect.aws.client/throwable resp)
-                                (ex-info "S3 list failed" {:response resp}))))
-        objects    (:Contents resp)
-        bucket-url (partial key->url conn)]
-    (map (fn [{key :Key, size :Size}]
-           {:name key, :url (bucket-url key), :size size})
-         objects)))
+        resp       (aws/invoke client req)]
+    (if (:cognitect.anomalies/category resp)
+      (if (:cognitect.aws.client/throwable resp)
+        resp
+        (ex-info "S3 list failed" {:response resp}))
+      (let [objects    (:Contents resp)
+            bucket-url (partial key->url conn)]
+        (map (fn [{key :Key, size :Size}]
+               {:name key, :url (bucket-url key), :size size})
+             objects)))))
 
 
 (defn connection-storage-list
