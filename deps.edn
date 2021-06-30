@@ -12,9 +12,9 @@
         clucie/clucie {:mvn/version "0.4.2"}
 
         ;; AWS S3 API
-        com.cognitect.aws/api {:mvn/version "0.8.505"}
-        com.cognitect.aws/endpoints {:mvn/version "1.1.11.1001"}
-        com.cognitect.aws/s3 {:mvn/version "811.2.889.0"}
+        com.cognitect.aws/api {:mvn/version "0.8.515"}
+        com.cognitect.aws/endpoints {:mvn/version "1.1.12.13"}
+        com.cognitect.aws/s3 {:mvn/version "811.2.934.0"}
 
         ;; web server
         aleph-middleware/aleph-middleware {:mvn/version "0.2.0"}
