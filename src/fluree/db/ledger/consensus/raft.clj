@@ -876,13 +876,13 @@
     (if join?
       ;; If joining an existing network, connects to all other servers
       (let [connect-servers (filter #(not= this-server (:server-id %)) server-configs)
-            handler-fn      (partial message-consume (:raft raft-instance) (:storage-read raft-configs))]
+            handler-fn      (partial message-consume (:raft raft-instance) (:storage-ledger-read raft-configs))]
         (doseq [connect-to connect-servers]
           (ftcp/launch-client-connection this-server-cfg connect-to handler-fn)))
 
       ;; simple rule (for now) is we connect to servers whose id is > (lexical sort) than our own
       (let [connect-servers (filter #(> 0 (compare this-server (:server-id %))) server-configs)
-            handler-fn      (partial message-consume (:raft raft-instance) (:storage-read raft-configs))]
+            handler-fn      (partial message-consume (:raft raft-instance) (:storage-ledger-read raft-configs))]
         (doseq [connect-to connect-servers]
           (ftcp/launch-client-connection this-server-cfg connect-to handler-fn))))
 
