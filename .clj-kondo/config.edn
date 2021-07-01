@@ -1,2 +1,7 @@
 {:source-paths #{"src"}
+ :lint-as {manifold.deferred/let-flow clojure.core/let}
+ :linters {:unused-binding
+           [{:exclude-destructured-keys-in-fn-args true}
+            {:exclude [fluree.db.ledger.consensus.none/->InMemoryGroup]}]}
+ :skip-comments true
  :output {:pattern "::{{level}} file={{filename}},line={{row}},col={{col}}::{{message}}"}}
