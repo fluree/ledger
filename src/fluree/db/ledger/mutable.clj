@@ -6,7 +6,6 @@
             [fluree.db.storage.core :as storage]
             [fluree.db.constants :as const]
             [fluree.db.util.log :as log]
-            [fluree.db.serde.protocol :as serdeproto]
             [fluree.db.ledger.reindex :as reindex]))
 
 (defn next-version
@@ -127,7 +126,7 @@
   (<?? (purge-flakes conn "fluree" "test" {:purge [422212465065991]}))
 
   (->> (<?? (storage/storage-read conn "fluree_test_block_000000000000004:v2"))
-       (serdeproto/-deserialize-block (:serializer conn)))
+       ( fluree.db.serde.protocol/-deserialize-block (:serializer conn)))
 
   )
 

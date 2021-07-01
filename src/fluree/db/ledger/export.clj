@@ -1,8 +1,6 @@
 (ns fluree.db.ledger.export
   (:require [clojure.java.io :as io]
             [fluree.db.util.async :refer [<? go-try]]
-            [clojure.core.async :as async]
-            [fluree.db.api :as fdb]
             [fluree.db.query.range :as query-range]
             [fluree.db.time-travel :as time-travel]
             [fluree.db.flake :as flake]
@@ -198,8 +196,8 @@
 
 (comment
 
-  (def db (async/<!! (fdb/db (:conn user/system) "test/one")))
-  (async/<!! (db->export db :xml))
+  (def db (clojure.core.async/<!! (fluree.db.api/db (:conn user/system) "test/one")))
+  (clojure.core.async/<!! (db->export db :xml))
 
   (:conn user/system)
   (:group (:conn user/system))

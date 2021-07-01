@@ -4,7 +4,6 @@
             [fluree.crypto.scrypt :as scrypt]
             [fluree.crypto.secp256k1 :as secp256k1]
             [alphabase.core :as alphabase]
-            [fluree.db.util.json :as json]
             [fluree.db.util.core :as util]
             [fluree.db.api :as fdb]
             [fluree.db.util.async :refer [go-try <?]]
@@ -384,7 +383,7 @@
   (let [header     {:alg "HS256",
                     :typ "JWT"}
         header-enc (-> header
-                       json/stringify-UTF8
+                       fluree.db.util.json/stringify-UTF8
                        alphabase/bytes->base64)]
 
     header-enc

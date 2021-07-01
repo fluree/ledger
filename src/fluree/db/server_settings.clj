@@ -1,6 +1,5 @@
 (ns fluree.db.server-settings
   (:require [clojure.string :as str]
-            [environ.core :as environ]
             [clojure.java.io :as io]
             [clojure.tools.logging :as log]
             [fluree.db.util.core :as util]
@@ -701,7 +700,7 @@
 (comment
 
 
-  environ/env
+  environ.core/env
 
   (->
-    (build-env environ/env)))
+    (build-env environ.core/env)))

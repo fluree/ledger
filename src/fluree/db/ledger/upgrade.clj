@@ -170,8 +170,7 @@
   "Synchronous"
   [conn from-v to-v]
   (let [from-v (or from-v 1)
-        to-v   (or to-v const/data_version)
-        _ (fluree.db.util.log/info (str "upgrade from " from-v " to " to-v))]                ;; v0-9-5-PREVIEW2 was first version marker we used - default
+        to-v   (or to-v const/data_version)]                ;; v0-9-5-PREVIEW2 was first version marker we used - default
     (cond
       (= from-v to-v)
       true                                                  ;; no upgrade
