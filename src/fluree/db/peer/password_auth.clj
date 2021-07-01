@@ -53,14 +53,6 @@
                     :salt (alphabase/bytes->hex salt')))))
 
 
-(defn new-key-pair
-  "Will generate a new key pair and return map with private key, public key, salt and auth-id.
-  If optional secret is provided (byte-array), will utilize hmac sha2 encoding of password
-  instead of standard sha2."
-  [secret password]
-  (key-pair-from-password secret password nil))
-
-
 (defn verify-identity
   "Will verify password + salt against one or more auth-ids.
   If an auth-id matches, returns a map with hex values of private key, public key, auth-id and salt.

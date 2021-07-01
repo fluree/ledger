@@ -84,12 +84,6 @@
     true))
 
 
-(defn rename-db
-  [db]
-  (let [[nw db] (str/split db "/")]
-    (str (rename-nw-or-db nw) "/" (rename-nw-or-db db))))
-
-
 (defn v2->v3
   "Add _shard collection, ensure db names conform to new standard"
   [conn]

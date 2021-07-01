@@ -252,23 +252,6 @@
       indexed-db)))
 
 
-(defn create-network-bootstrap-command
-  "For a new network, we create a new signed command to create master network db."
-  [db-name private-key]
-  (let [auth  (crypto/account-id-from-private private-key)
-        epoch (System/currentTimeMillis)
-        cmd   (-> {:type   :new-db
-                   :db     db-name
-                   :auth   auth
-                   :doc    "Master network database."
-                   :nonce  epoch
-                   :expire (+ 300000 epoch)}
-                  (json/stringify))
-        sig   (crypto/sign-message cmd private-key)]
-    {:cmd cmd
-     :sig sig}))
-
-
 (def bootstrap-txn
   [{:_id     ["_collection" const/$_predicate]
     :name    "_predicate"

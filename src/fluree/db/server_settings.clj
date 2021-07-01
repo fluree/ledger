@@ -93,19 +93,6 @@
    :fdb-api-open               true})
 
 
-;; FDB_SETTINGS: dbaas
-(def env-dbaas-settings
-  {:fdb-storage-type           "file"
-   :fdb-memory-cache           "2gb"
-   :fdb-memory-reindex         "1mb"
-   :fdb-memory-reindex-max     "5mb"
-   :fdb-stats-report-frequency "1m"
-   :fdb-debug-mode             false
-
-   ;; api options
-   :fdb-api-port               8090})
-
-
 (defn- read-properties-file
   "Reads properties file at file-name, if it doesn't exist returns nil."
   [file-name]
@@ -271,11 +258,6 @@
         (double)
         (Math/round))))
 
-
-(defn env-servers
-  "Takes a comma separated list of servers and returns a vector of server strings"
-  [s]
-  (str/split s #","))
 
 
 (defn- env-storage-type
