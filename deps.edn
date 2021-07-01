@@ -41,11 +41,11 @@
   {:extra-paths ["test"]
    :extra-deps {com.cognitect/test-runner
                 {:git/url "https://github.com/cognitect-labs/test-runner.git"
-                 :sha "b6b3193fcc42659d7e46ecd1884a228993441182"}}
+                 :sha "62ef1de18e076903374306060ac0e8a752e57c86"}}
    :main-opts ["-m" "cognitect.test-runner"]}
 
   :jar
-  {:replace-deps {com.github.seancorfield/depstar {:mvn/version "2.0.206"}}
+  {:replace-deps {com.github.seancorfield/depstar {:mvn/version "2.1.245"}}
    :exec-fn hf.depstar/jar
    :exec-args {:jar "target/fluree-ledger.jar"
                :group-id :mvn/group-id
@@ -54,7 +54,7 @@
                :sync-pom true}}
 
   :uberjar
-  {:replace-deps {com.github.seancorfield/depstar {:mvn/version "2.0.206"}}
+  {:replace-deps {com.github.seancorfield/depstar {:mvn/version "2.1.245"}}
    :exec-fn hf.depstar/uberjar
    :exec-args {:jar "target/fluree-ledger.standalone.jar"
                :aot true
@@ -78,7 +78,7 @@
 
   :ancient
   {:extra-deps {com.github.liquidz/antq {:mvn/version "RELEASE"}}
-   :main-opts ["-m" "antq.core"]}
+   :main-opts ["-m" "antq.core" "--skip=github-action"]}
 
   :clj-kondo
   {:extra-deps {clj-kondo/clj-kondo {:mvn/version "2021.06.18"}}
