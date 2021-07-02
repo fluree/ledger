@@ -98,7 +98,7 @@ target/fluree-ledger.jar: resources/adminUI $(SOURCES) $(RESOURCES)
 jar: target/fluree-ledger.jar
 
 test:
-	clojure -M:test
+	clojure -M:test:runner
 
 target/fluree-ledger.standalone.jar: resources/adminUI $(SOURCES) $(RESOURCES)
 	clojure -X:uberjar
