@@ -1,6 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-
-<!--Turn off logging during tests.-->
-<configuration />
-
-<!--If you need to debug something test-related with logs, delete this file temporarily.-->
