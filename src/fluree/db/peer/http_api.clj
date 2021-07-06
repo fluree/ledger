@@ -887,12 +887,6 @@
     deferred))
 
 
-
-(defn subscription-handler
-  [system request])
-
-
-
 ; From https://gist.github.com/dannypurcell/8215411
 (defn ignore-trailing-slash
   "Modifies the request uri before calling the handler.
@@ -926,7 +920,6 @@
     (compojure/GET "/fdb/version" request (version-handler system request))
     (compojure/POST "/fdb/add-server" request (add-server system request))
     (compojure/POST "/fdb/remove-server" request (remove-server system request))
-    (compojure/POST "/fdb/sub" request (subscription-handler system request))
     (compojure/GET "/fdb/new-keys" request (keys-handler system request))
     (compojure/POST "/fdb/new-keys" request (keys-handler system request))
     (compojure/POST "/fdb/dbs" request (get-ledgers system request))

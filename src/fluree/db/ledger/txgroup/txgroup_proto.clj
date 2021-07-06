@@ -62,22 +62,11 @@
   (let [command [:max-in ks v]]
     (-new-entry-async group command)))
 
-(defn kv-max-in
-  "Writes value to specified key sequence. Will only write is proposed value is greater
-  than the current value. Returns true if value is written, false if it is not written."
-  [group ks v]
-  (async/<!! (kv-max-in-async group ks v)))
-
 (defn kv-get-in-async*
   "Perform a fully consistent get-in operation (sends operation to all raft servers for sync)"
   [raft ks]
   (let [command [:get-in ks]]
     (-new-entry-async raft command)))
-
-(defn kv-get-in-sync
-  "Perform a fully consistent get-in operation (sends operation to all raft servers for sync)"
-  [raft ks]
-  (async/<!! (kv-get-in-async* raft ks)))
 
 (defn kv-cas-in-async
   "Compare and swap. Compares current value and compare value at compare key sequence.
@@ -89,14 +78,6 @@
    (let [command [:cas-in ks swap-v compare-ks compare-v]]
      (-new-entry-async raft command))))
 
-(defn kv-cas-in
-  "Compare and swap. Compares current value and compare value at compare key sequence.
-  If equal, sets swap value at swap key sequence. If compare key sequence is not provided, uses
-  the swap key sequence for compare."
-  ([raft ks swap-v compare-v]
-   (async/<!! (kv-cas-in-async raft ks swap-v ks compare-v)))
-  ([raft ks swap-v compare-ks compare-v]
-   (async/<!! (kv-cas-in-async raft ks swap-v compare-ks compare-v))))
 
 ;; version, this-server commands
 
@@ -113,11 +94,6 @@
   (assert (number? version)) (kv-assoc-in group [:version] version))
 
 ;; Index functions
-
-(defn indexes
-  "Returns all index points for given ledger."
-  [group-raft network ledger-id]
-  (kv-get-in group-raft [:networks network :dbs ledger-id :indexes]))
 
 (defn latest-index*
   "Returns latest index for given ledger given current state."
@@ -168,23 +144,13 @@ or this server is not responsible for this ledger, will return false. Else true 
   [group]
   (-> (-local-state group) :networks (keys)))
 
-(defn network-status
-  "Returns all info we have on given network"
-  [group-raft network]
-  (kv-get-in group-raft [:networks network]))
-
 (defn initialize-network
   "Marks network as initialized"
   [group-raft network]
   (kv-assoc-in group-raft [:networks network :initialized?] true))
 
-(defn network-initialized?
-  "Returns true if network is initialized (network DB is present and has base schema committed."
-  [group-raft network]
-  (boolean (kv-get-in group-raft [:networks network :initialized?])))
 
 ;; Ledger commands
-
 
 (defn ledger-list*
   "Returns a list of all ready or initialized ledgers for all networks as a two-tuple, [network ledger-id]."
@@ -274,11 +240,6 @@ or this server is not responsible for this ledger, will return false. Else true 
   (let [command [:new-db network ledger-id cmd-id signed-cmd]]
     (-new-entry-async group command)))
 
-(defn delete-ledger-async
-  [group network ledger-id cmd-id signed-cmd]
-  (let [command [:delete-db network ledger-id cmd-id signed-cmd]]
-    (-new-entry-async group command)))
-
 (defn find-all-dbs-to-initialize
   "Finds all dbs that need to be initialized in a given network.
   Returns a list of tuples: [network dbid command fork forkBlock]"
@@ -297,10 +258,6 @@ or this server is not responsible for this ledger, will return false. Else true 
 (defn private-key
   [group]
   (get-in (-local-state group) [:private-keys]))
-
-(defn private-keys
-  [group account-id]
-  (get-in (-local-state group) [:private-keys account-id]))
 
 (defn set-shared-private-key
   "Sets a default public key to use for any network operations (creating a new network)"
@@ -349,11 +306,6 @@ or this server is not responsible for this ledger, will return false. Else true 
   [group network ledger-id command-id command]
   (kv-assoc-in-async group [:cmd-queue network command-id] {:command command :size (count (:cmd command)) :id command-id :network network :dbid ledger-id :instant (System/currentTimeMillis)}))
 
-;;TODO - could not find any references, need to determine if indirectly referenced as a parameter
-(defn remove-cmd-from-queue-async
-  "Remotes a tx from the queue"
-  [group network _ txid]
-  (kv-dissoc-in-async group [:cmd-queue network txid]))
 
 ;; Block commands
 
@@ -362,35 +314,12 @@ or this server is not responsible for this ledger, will return false. Else true 
   [group-state network ledger-id]
   (get-in group-state [:networks network :dbs ledger-id :block]))
 
-(defn block-height
-  "Returns current block height for given ledger."
-  [group network ledger-id]
-  (block-height* (-local-state group) network ledger-id))
-
 (defn propose-new-block-async
   [group network ledger-id block-data]
   (let [command [:new-block network ledger-id block-data (this-server group)]]
     (-new-entry-async group command)))
 
-(defn register-next-block-async
-  "Proposes a new block for a given ledger."
-  [group network ledger-id block txids server]
-  (kv-assoc-in-async group [:networks network :dbs ledger-id :next-block]
-                     {:block   block
-                      :txids   txids
-                      :server  server
-                      :instant (System/currentTimeMillis)}))
-
-(defn clear-proposed-block-async
-  [group network ledger-id]
-  (kv-dissoc-in-async group [:networks network :dbs ledger-id :next-block]))
-
-(defn proposed-block
-  "Returns current proposed block, if any, for given ledger."
-  [group network ledger-id]
-  (kv-get-in group [:networks network :dbs ledger-id :next-block]))
-
-;; TODO - this should use a CAS, to ensure DB does not currently exists.
+;; TODO - this should use a CAS, to ensure DB does not currently exist.
 (defn register-genesis-block-async
   "Only for use by bootstrap or copy. Registers a new genesis block.
   Will reject if any value exists currently"
@@ -411,34 +340,12 @@ or this server is not responsible for this ledger, will return false. Else true 
         compare-v  current-block]
     (kv-cas-in-async raft [:networks network :dbs ledger-id :next-block] next-block-data compare-ks compare-v)))
 
-(defn set-next-block
-  "Sets next block."
-  [raft network ledger-id next-block-data current-block]
-  (async/<!! (set-next-block-async raft network ledger-id next-block-data current-block)))
-
 
 ;; storage commands
-(defn storage-read-async*
-  "Performs a fully consistent storage-read of provided key."
-  [raft key]
-  (let [command [:storage-read key]]
-    (-new-entry-async raft command)))
-
-
-(defn storage-read*
-  "Performs a fully consistent storage-read of provided key."
-  [raft key]
-  (async/<!! (storage-read-async* raft key)))
-
 
 (defn storage-write-async
   "Performs a fully consistent storage write."
   [raft k data]
   (let [command [:storage-write k data]]
     (-new-entry-async raft command)))
-
-(defn storage-write
-  "Performs a fully consistent storage write."
-  [raft k data]
-  (async/<!! (storage-write-async raft k data)))
 
