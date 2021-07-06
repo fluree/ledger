@@ -195,9 +195,10 @@
 
 
 (comment
-
-  (def db (clojure.core.async/<!! (fluree.db.api/db (:conn user/system) "test/one")))
-  (clojure.core.async/<!! (db->export db :xml))
+  (require '[clojure.core.async :as async]
+           '[fluree.db.api :as fdb])
+  (def db (async/<!! (fdb/db (:conn user/system) "test/one")))
+  (async/<!! (db->export db :xml))
 
   (:conn user/system)
   (:group (:conn user/system))

@@ -371,11 +371,11 @@
   (key-pair-from-password secret "lois" nil)
 
 
-
+  (require '[fluree.db.util.json :as json])
   (let [header     {:alg "HS256",
                     :typ "JWT"}
         header-enc (-> header
-                       fluree.db.util.json/stringify-UTF8
+                       json/stringify-UTF8
                        alphabase/bytes->base64)]
 
     header-enc
@@ -399,7 +399,7 @@
   (crypto/aes-decrypt new-enc iv secret :string :hex)
   (vec (alphabase/hex->bytes "6b7605abb089f63bf8c900026112eacf6ee768f25b80222dbb7731b8573a551e"))
 
-  (-> (fluree.crypto/aes-encrypt "6b7605abb089f63bf8c900026112eacf6ee768f25b80222dbb7731b8573a551e" iv secret)
-      (fluree.crypto/aes-decrypt iv secret))
+  (-> (crypto/aes-encrypt "6b7605abb089f63bf8c900026112eacf6ee768f25b80222dbb7731b8573a551e" iv secret)
+      (crypto/aes-decrypt iv secret))
 
   )

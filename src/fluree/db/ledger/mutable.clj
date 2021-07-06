@@ -120,13 +120,14 @@
              :fuel   fuel})))
 
 (comment
+  (require '[fluree.db.serde.protocol :as serdeproto])
   (def conn (:conn user/system))
 
   (<?? (hide-flakes conn "fluree" "test" {:hide [87960930223081]}))
   (<?? (purge-flakes conn "fluree" "test" {:purge [422212465065991]}))
 
   (->> (<?? (storage/storage-read conn "fluree_test_block_000000000000004:v2"))
-       ( fluree.db.serde.protocol/-deserialize-block (:serializer conn)))
+       (serdeproto/-deserialize-block (:serializer conn)))
 
   )
 
