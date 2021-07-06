@@ -20,17 +20,23 @@
 
 (defn read
   "Returns a byte array of the data under key `k` (converted to a UNIX-style
-  path with key->unix-path) of this store's S3 bucket."
+  path with key->unix-path) of this store's S3 bucket. Returns an exception if
+  an error occurs."
   [{:keys [client bucket]} base-path k]
   (with-open [out (ByteArrayOutputStream.)]
     (let [s3-key (key->unix-path base-path k)
-          {in :Body} (aws/invoke client {:op      :GetObject
-                                         :request {:Bucket bucket, :Key s3-key}})]
+          resp (aws/invoke client {:op      :GetObject
+                                   :request {:Bucket bucket, :Key s3-key}})]
       (log/debug "Reading" s3-key "in bucket" bucket)
-      (when in
-        (io/copy in out)
-        (.close in)
-        (.toByteArray out)))))
+      (if (:cognitect.anomalies/category resp)
+        (if (:cognitect.aws.client/throwable resp)
+          resp
+          (ex-info "S3 read failed" {:response resp}))
+        (let [{in :Body} resp]
+          (when in
+            (io/copy in out)
+            (.close in)
+            (.toByteArray out)))))))
 
 
 (defn connection-storage-read
@@ -92,16 +98,16 @@
         req        (if path
                      (assoc-in req [:request :Prefix] path)
                      req)
-        resp       (aws/invoke client req)
-        _          (when (:cognitect.anomalies/category resp)
-                     (if-let [err (:cognitect.aws.client/throwable resp)]
-                       err
-                       (ex-info "S3 list failed" {:response resp})))
-        objects    (:Contents resp)
-        bucket-url (partial key->url conn)]
-    (map (fn [{key :Key, size :Size}]
-           {:name key, :url (bucket-url key), :size size})
-         objects)))
+        resp       (aws/invoke client req)]
+    (if (:cognitect.anomalies/category resp)
+      (if (:cognitect.aws.client/throwable resp)
+        resp
+        (ex-info "S3 list failed" {:response resp}))
+      (let [objects    (:Contents resp)
+            bucket-url (partial key->url conn)]
+        (map (fn [{key :Key, size :Size}]
+               {:name key, :url (bucket-url key), :size size})
+             objects)))))
 
 
 (defn connection-storage-list

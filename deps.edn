@@ -13,9 +13,9 @@
         clucie/clucie {:mvn/version "0.4.2"}
 
         ;; AWS S3 API
-        com.cognitect.aws/api {:mvn/version "0.8.505"}
-        com.cognitect.aws/endpoints {:mvn/version "1.1.11.960"}
-        com.cognitect.aws/s3 {:mvn/version "810.2.817.0"}
+        com.cognitect.aws/api {:mvn/version "0.8.515"}
+        com.cognitect.aws/endpoints {:mvn/version "1.1.12.13"}
+        com.cognitect.aws/s3 {:mvn/version "811.2.934.0"}
 
         ;; web server
         aleph-middleware/aleph-middleware {:mvn/version "0.2.0"}
@@ -38,14 +38,17 @@
    :extra-deps {org.clojure/tools.namespace {:mvn/version "1.1.0"}}}
 
   :test
-  {:extra-paths ["test"]
+  {:extra-paths ["test"]}
+
+  :runner
+  {:extra-paths ["test-resources"]
    :extra-deps {com.cognitect/test-runner
                 {:git/url "https://github.com/cognitect-labs/test-runner.git"
-                 :sha "b6b3193fcc42659d7e46ecd1884a228993441182"}}
+                 :sha "62ef1de18e076903374306060ac0e8a752e57c86"}}
    :main-opts ["-m" "cognitect.test-runner"]}
 
   :jar
-  {:replace-deps {com.github.seancorfield/depstar {:mvn/version "2.0.206"}}
+  {:replace-deps {com.github.seancorfield/depstar {:mvn/version "2.1.245"}}
    :exec-fn hf.depstar/jar
    :exec-args {:jar "target/fluree-ledger.jar"
                :group-id :mvn/group-id
@@ -54,7 +57,7 @@
                :sync-pom true}}
 
   :uberjar
-  {:replace-deps {com.github.seancorfield/depstar {:mvn/version "2.0.206"}}
+  {:replace-deps {com.github.seancorfield/depstar {:mvn/version "2.1.245"}}
    :exec-fn hf.depstar/uberjar
    :exec-args {:jar "target/fluree-ledger.standalone.jar"
                :aot true
