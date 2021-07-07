@@ -18,7 +18,6 @@
             [fluree.db.server :as server]
             [fluree.db.server-settings :as settings]
             [fluree.db.ledger.bootstrap :as bootstrap]
-            [fluree.db.ledger.fork :as fork]
             [fluree.db.ledger.consensus.raft :as raft]
             [fluree.db.ledger.txgroup.core :as txgroup]
             [fluree.db.peer.http-api :as http-api]
@@ -358,8 +357,6 @@
   (storage/read-db-root conn "dev" "bptestfork5" 1)
 
   (async/<!! (storage/read-block conn "dev" "$network" 2))
-
-  (fork/find-closest-index conn "dev" "$network" 7)
 
   (session/blank-db conn "dev/_there"))
 

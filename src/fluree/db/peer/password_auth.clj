@@ -4,7 +4,6 @@
             [fluree.crypto.scrypt :as scrypt]
             [fluree.crypto.secp256k1 :as secp256k1]
             [alphabase.core :as alphabase]
-            [fluree.db.util.json :as json]
             [fluree.db.util.core :as util]
             [fluree.db.api :as fdb]
             [fluree.db.util.async :refer [go-try <?]]
@@ -52,14 +51,6 @@
          keypair (crypto/generate-key-pair private)]
      (assoc keypair :id (crypto/account-id-from-public (:public keypair))
                     :salt (alphabase/bytes->hex salt')))))
-
-
-(defn new-key-pair
-  "Will generate a new key pair and return map with private key, public key, salt and auth-id.
-  If optional secret is provided (byte-array), will utilize hmac sha2 encoding of password
-  instead of standard sha2."
-  [secret password]
-  (key-pair-from-password secret password nil))
 
 
 (defn verify-identity
@@ -380,7 +371,7 @@
   (key-pair-from-password secret "lois" nil)
 
 
-
+  (require '[fluree.db.util.json :as json])
   (let [header     {:alg "HS256",
                     :typ "JWT"}
         header-enc (-> header
@@ -408,7 +399,7 @@
   (crypto/aes-decrypt new-enc iv secret :string :hex)
   (vec (alphabase/hex->bytes "6b7605abb089f63bf8c900026112eacf6ee768f25b80222dbb7731b8573a551e"))
 
-  (-> (fluree.crypto/aes-encrypt "6b7605abb089f63bf8c900026112eacf6ee768f25b80222dbb7731b8573a551e" iv secret)
-      (fluree.crypto/aes-decrypt iv secret))
+  (-> (crypto/aes-encrypt "6b7605abb089f63bf8c900026112eacf6ee768f25b80222dbb7731b8573a551e" iv secret)
+      (crypto/aes-decrypt iv secret))
 
   )

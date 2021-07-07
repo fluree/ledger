@@ -81,7 +81,7 @@
 
   :ancient
   {:extra-deps {com.github.liquidz/antq {:mvn/version "RELEASE"}}
-   :main-opts ["-m" "antq.core"]}
+   :main-opts ["-m" "antq.core" "--skip=github-action"]}
 
   :clj-kondo
   {:extra-deps {clj-kondo/clj-kondo {:mvn/version "2021.06.18"}}
