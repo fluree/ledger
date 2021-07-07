@@ -484,12 +484,13 @@
                                 (try (Integer/parseInt timeout)
                                      (catch Exception _ 60000))
                                 60000)
-              [header body] (<? (action-handler action* system action-param auth-map ledger request-timeout))
+              [header body]   (<? (action-handler action* system action-param auth-map ledger request-timeout))
               request-time    (- (System/nanoTime) start)
               resp-body       (json/stringify-UTF8 body)
               resp-headers    (reduce-kv (fn [acc k v]
                                            (assoc acc (str "x-fdb-" (util/keyword->str k)) v))
                                          {"Content-Type" "application/json; charset=utf-8"
+                                          "x-fdb-server-time" (util/current-time-millis)
                                           "x-fdb-time"   (format "%.2fms" (float (/ request-time 1000000)))
                                           "x-fdb-fuel"   (or (get header :fuel) (get body :fuel) 0)}
                                          header)
@@ -962,7 +963,7 @@
       (->> (wrap-errors (:debug-mode? system)))
       (cors/wrap-cors
         :access-control-allow-origin [#".+"]
-        :access-control-expose-headers ["X-Fdb-Block" "X-Fdb-Fuel" "X-Fdb-Status" "X-Fdb-Time" "X-Fdb-Version"]
+        :access-control-expose-headers ["X-Fdb-Block" "X-Fdb-Fuel" "X-Fdb-Server-Time" "X-Fdb-Status" "X-Fdb-Time" "X-Fdb-Version"]
         :access-control-allow-methods [:get :put :post :delete])
       ignore-trailing-slash))
 
