@@ -552,7 +552,7 @@
 (defn build-transaction
   [tx-state]
   (go-try
-    (let [{:keys [db-before auth-id authority-id txid tx t tx-type fuel permissions]} tx-state
+    (let [{:keys [db-before auth-id authority-id txid tx t tx-type fuel permissions tx-string]} tx-state
           tx-flakes        (<? (do-transact tx-state tx))
           tx-meta-flakes   (tx-meta/tx-meta-flakes tx-state nil)
           tempids-map      (tempid/result-map tx-state)
@@ -583,6 +583,7 @@
                              (<? (tx-validate/run-permissions-checks all-flakes tx-state parallelism)))]
 
       (cond-> {:txid         txid
+               :tx-string    tx-string
                :t            t
                :auth         auth-id
                :authority    authority-id

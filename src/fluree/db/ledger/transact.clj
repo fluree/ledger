@@ -56,9 +56,9 @@
              txns             {}
              remove-preds-acc #{}]
         (let [start-time    (util/current-time-millis)
-              tx-result     (<? (tx-json/transact db cmd-data next-t block-instant))
               {:keys [db-after bytes fuel flakes tempids auth authority status error errors
-                      hash remove-preds]} tx-result
+                      hash remove-preds tx-string] :as tx-result}
+              (<? (tx-json/transact db cmd-data next-t block-instant))
               block-bytes*  (+ block-bytes bytes)
               block-fuel*   (+ block-fuel fuel)
               block-flakes* (into block-flakes flakes)
@@ -77,7 +77,8 @@
                                                           :auth      auth
                                                           :hash      hash
                                                           :authority authority
-                                                          :type      cmd-type}))
+                                                          :type      cmd-type
+                                                          :command   tx-string}))
               remove-preds* (into remove-preds-acc remove-preds)]
           (if r
             (recur r (dec next-t) db-after block-bytes* block-fuel* block-flakes* cmd-types* txns*
