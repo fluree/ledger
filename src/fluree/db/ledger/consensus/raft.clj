@@ -112,12 +112,6 @@
   (raft/get-raft-state (:raft raft) callback))
 
 
-(defn view-raft-state
-  "Pretty prints current raft state."
-  [raft]
-  (get-raft-state raft (fn [x] (cprint/pprint (dissoc x :config)))))
-
-
 (defn leader-async
   "Returns leader as a core async channel once available.
   Default timeout supplied, or specify one."
@@ -649,24 +643,10 @@
     (new-entry-async raft command)))
 
 
-(defn acquire-lease
-  [raft ks id expire-ms]
-  (<!! (acquire-lease-async raft ks id expire-ms)))
-
-
 (defn release-lease-async
   [raft ks id]
   (let [command [:lease-release ks id]]
     (new-entry-async raft command)))
-
-
-(defn lessor
-  "Returns id of lease holder at specified key-seq if a lease exists and not expired, else nil."
-  [raft ks]
-  (let [lease (txproto/kv-get-in raft ks)]
-    (if (or (nil? lease) (< (:expire lease) (System/currentTimeMillis)))
-      nil
-      (:id lease))))
 
 
 (defn server-active?

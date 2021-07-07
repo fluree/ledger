@@ -6,7 +6,6 @@
             [fluree.db.storage.core :as storage]
             [fluree.db.constants :as const]
             [fluree.db.util.log :as log]
-            [fluree.db.serde.protocol :as serdeproto]
             [fluree.db.ledger.reindex :as reindex]))
 
 (defn next-version
@@ -120,6 +119,7 @@
              :fuel   fuel})))
 
 (comment
+  (require '[fluree.db.serde.protocol :as serdeproto])
   (def conn (:conn user/system))
 
   (<?? (hide-flakes conn "fluree" "test" {:hide [87960930223081]}))

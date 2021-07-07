@@ -84,12 +84,6 @@
     true))
 
 
-(defn rename-db
-  [db]
-  (let [[nw db] (str/split db "/")]
-    (str (rename-nw-or-db nw) "/" (rename-nw-or-db db))))
-
-
 (defn v2->v3
   "Add _shard collection, ensure db names conform to new standard"
   [conn]
@@ -170,8 +164,7 @@
   "Synchronous"
   [conn from-v to-v]
   (let [from-v (or from-v 1)
-        to-v   (or to-v const/data_version)
-        _ (fluree.db.util.log/info (str "upgrade from " from-v " to " to-v))]                ;; v0-9-5-PREVIEW2 was first version marker we used - default
+        to-v   (or to-v const/data_version)]                ;; v0-9-5-PREVIEW2 was first version marker we used - default
     (cond
       (= from-v to-v)
       true                                                  ;; no upgrade

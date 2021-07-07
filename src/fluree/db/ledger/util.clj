@@ -41,11 +41,3 @@ throwable error."
 throwable error."
   [ch]
   (throw-if-exception (<!! ch)))
-
-
-(defn seq!!
-  "Returns a (blocking!) lazy sequence read from a channel."
-  [c]
-  (lazy-seq
-    (when-let [v (<?? c)]
-      (cons v (seq!! c)))))
