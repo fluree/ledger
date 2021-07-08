@@ -112,7 +112,7 @@ ifneq ($(strip $(shell which git)),)
 endif
 
 docker-image:
-	docker build --build-arg DEPS_KEY=$(DEPS_KEY) --build-arg DEPS_SECRET=$(DEPS_SECRET) -t fluree/ledger:$(VERSION) .
+	docker build -t fluree/ledger:$(VERSION) .
 ifdef git_tag
 	docker tag fluree/ledger:$(VERSION) fluree/ledger:$(git_tag)
 endif
