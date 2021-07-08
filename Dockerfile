@@ -1,4 +1,4 @@
-FROM clojure:tools-deps-1.10.3.814-slim-buster AS builder
+FROM clojure:tools-deps-1.10.3.855-slim-buster AS builder
 
 RUN apt-get update && apt-get install --assume-yes --no-install-recommends curl
 
