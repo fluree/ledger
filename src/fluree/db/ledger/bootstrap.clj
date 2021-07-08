@@ -392,6 +392,14 @@
     :id  "_predicate/type:json"}
    {:_id ["_tag" const/_predicate$type:geojson]
     :id  "_predicate/type:geojson"}
+   {:_id ["_tag" const/_predicate$type:date]
+    :id  "_predicate/type:date"}
+   {:_id ["_tag" const/_predicate$type:time]
+    :id  "_predicate/type:time"}
+   {:_id ["_tag" const/_predicate$type:dateTime]
+    :id  "_predicate/type:dateTime"}
+   {:_id ["_tag" const/_predicate$type:duration]
+    :id  "_predicate/type:duration"}
 
    ;; _rule ops
    {:_id ["_tag" const/_rule$ops:all]
