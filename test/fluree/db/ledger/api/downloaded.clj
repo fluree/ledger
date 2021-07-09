@@ -314,7 +314,7 @@
         flakeValSet         (-> (map (fn [flake]
                                        (nth flake 2)) (-> res :data :flakes)) set)]
 
-    (is (= (-> res :data keys set) #{:tempids :block :hash :instant :type :duration :fuel :auth :status :id :bytes :t :flakes}))
+    (is (= (-> res :data keys set) #{:tempids :block :hash :instant :type :duration :fuel :auth :status :id :bytes :t :flakes :cmd}))
 
     (is (= 11 (-> res :data :flakes count)))
 
@@ -609,6 +609,3 @@
   (command-add-person)
   (get-all-dbs)
   (health-check))
-
-
-

@@ -256,6 +256,11 @@
                                     ;; write out block data - todo: ensure raft shutdown happens successfully if write fails
                                     (storage-write file-key (avro/serialize-block block-map))
 
+                                    (doseq [[txid tx-map] txns]
+                                      (let [tx-key (storage/ledger-transaction-key network dbid txid)]
+                                        (log/trace "Writing transaction data:" tx-map "to:" tx-key)
+                                        (storage-write tx-key (avro/serialize-transaction tx-map))))
+
                                     ;; update current block, and remove txids from queue
                                     (swap! state-atom
                                            (fn [state] (update-state/update-ledger-block network dbid txids state block)))
