@@ -80,7 +80,8 @@
                                                           :hash      hash
                                                           :authority authority
                                                           :type      cmd-type
-                                                          :cmd       tx-string}))
+                                                          :cmd       tx-string
+                                                          :flakes    flakes}))
               remove-preds* (into remove-preds-acc remove-preds)]
           (if r
             (recur r (dec next-t) db-after block-bytes* block-fuel* block-flakes* cmd-types* txns*

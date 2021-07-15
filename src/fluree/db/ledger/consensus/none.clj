@@ -78,6 +78,10 @@
                                     ;; write out block data - todo: ensure raft shutdown happens successfully if write fails
                                     (memorystore/connection-storage-write file-key block-map)
 
+                                    (doseq [[txid tx-map] txns]
+                                      (let [tx-key (storage/ledger-transaction-key network dbid txid)]
+                                        (memorystore/connection-storage-write tx-key tx-map)))
+
                                     ;; update current block, and remove txids from queue
                                     (swap! state-atom
                                            (fn [state] (update-state/update-ledger-block network dbid txids state block)))
@@ -223,5 +227,3 @@
          :close            close-fn
          :open-api         open-api}
         map->InMemoryGroup)))
-
-

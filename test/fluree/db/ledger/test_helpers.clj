@@ -38,10 +38,16 @@
            msg
            "\n\n*************************************"))
 
+(defn start-server
+  [opts]
+  (-> @config
+      (merge opts)
+      server/startup))
+
 (defn start
   [opts]
   (print-banner "STARTING")
-  (alter-var-root #'system (constantly (server/startup (merge @config opts))))
+  (alter-var-root #'system (constantly (start-server opts)))
   :started)
 
 
