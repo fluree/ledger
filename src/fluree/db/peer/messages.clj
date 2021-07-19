@@ -250,6 +250,10 @@
                                                         auth-or-jwt)
                                               root-db (async/<!! (fdb/db (:conn system) ledger))]
                                           (async/<!! (dbproto/-subid root-db auth-id))))
+                          _           (when-not (or auth open-api?)
+                                        (throw (ex-info "To access the server, either open-api must be true or a valid auth must be provided."
+                                                        {:status 401
+                                                         :error  :db/invalid-request})))
 
                           dbv         (session/resolve-ledger (:conn system) ledger)
                           [network dbid] dbv
