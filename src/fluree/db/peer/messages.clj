@@ -209,10 +209,15 @@
                   (async/close! producer-chan))
          :ping (async/put! producer-chan [:pong req-id true nil])
 
-         :settings (success! {:open-api?         (-> system :group :open-api)
-                              :password-enabled? (pw-auth/password-enabled? (:conn system))
-                              :jwt-secret        (-> system :conn :meta :password-auth :secret
-                                                     (ab-core/byte-array-to-base :hex))})
+         :settings (let [open-api? (-> system :group :open-api)
+                         has-auth? (-> (get-in @subscription-auth [ws-id])
+                                       (as-> wsm (reduce-kv (fn [res _ val] (if (map? val) (into res (vals val)) res)) [] wsm))
+                                       seq)]
+                     (cond-> {:open-api?          open-api?
+                              :password-enabled?  (-> system :conn pw-auth/password-enabled?)}
+                             (or open-api? has-auth?) (assoc :jwt-secret (-> system :conn :meta :password-auth :secret
+                                                                         (ab-core/byte-array-to-base :hex)))
+                             true success!))
 
          :cmd (success! (process-command system arg))
 
@@ -245,6 +250,10 @@
                                                         auth-or-jwt)
                                               root-db (async/<!! (fdb/db (:conn system) ledger))]
                                           (async/<!! (dbproto/-subid root-db auth-id))))
+                          _           (when-not (or auth open-api?)
+                                        (throw (ex-info "To access the server, either open-api must be true or a valid auth must be provided."
+                                                        {:status 401
+                                                         :error  :db/invalid-request})))
 
                           dbv         (session/resolve-ledger (:conn system) ledger)
                           [network dbid] dbv
