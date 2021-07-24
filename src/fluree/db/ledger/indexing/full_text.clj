@@ -183,31 +183,23 @@
   [writer {:keys [network dbid] :as db} {:keys [flakes] :as block}]
   (let [start-time  (Instant/now)
         coordinates {:network network, :dbid dbid, :block (:block block)}]
-
     (log/info (str "Full-Text Search Index began processing new block at: "
                    start-time)
               coordinates)
-
     (go
-
       (let [stats    (if (schema/get-language-change flakes)
                        (<! (reset-index writer db))
                        (<! (update-index writer db block)))
-
             end-time (Instant/now)
             duration (- (.toEpochMilli end-time)
                         (.toEpochMilli start-time))
-
             status   (-> stats
                          (merge coordinates)
                          (assoc :duration duration))]
-
         (full-text/register-block writer status)
-
         (log/info (str "Full-Text Search Index ended processing new block at: "
                        end-time)
                   status)
-
         status))))
 
 
@@ -216,7 +208,6 @@
   (let [block-chan (-> db
                        (fdb/block-range start-block end-block)
                        (async/pipe (chan 1 (mapcat seq))))]
-
     (go-loop [results []]
       (if-let [block (<! block-chan)]
         (let [write-status (<! (write-block writer db block))]
@@ -235,7 +226,7 @@
     (log/info (str "Syncing full text index from block: " first-block
                    " to block " last-block " for ledger " network "/"
                    dbid))
-    (write-range writer db (inc last-indexed) block)))
+    (write-range writer db first-block last-block)))
 
 (defn full-reset
   [writer db]
@@ -270,12 +261,10 @@
         (if-let [[msg resp-ch] (<! write-q)]
           (let [{:keys [db]} msg
                 lang         (-> db :settings :language (or :default))]
-
             (with-open [store  (-> base-path
                                    (full-text/storage-path db)
                                    full-text/storage)
                         writer (full-text/writer store lang)]
-
               (let [result  (case (:action msg)
                               :block (let [{:keys [block]} msg]
                                        (<! (write-block writer db block)))
@@ -285,15 +274,12 @@
                               :reset (<! (full-reset writer db))
                               :sync  (<! (sync-index writer db))
                               ::unrecognized-action)]
-
                 (if result
                   (async/put! resp-ch result (fn [val]
                                                (when val
                                                  (async/close! resp-ch))))
                   (async/close! resp-ch))))
-
             (recur))
-
           (log/info "Stopping Full Text Indexer")))
 
       {:close   closer
