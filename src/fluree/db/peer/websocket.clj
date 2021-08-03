@@ -1,6 +1,6 @@
 (ns fluree.db.peer.websocket
   (:require [manifold.deferred :as d]
-            [aleph.http :as http]
+            [org.httpkit.server :as http]
             [clojure.core.async :as async]
             [clojure.tools.logging :as log]
             [manifold.stream :as s]
@@ -37,8 +37,8 @@
     (swap! ws-connections (fn [ws-state]
                             ;(when-let [send-chan (get-in ws-state [ws-id :send-chan])]
                             ;  (async/close! send-chan))
-                            (when-let [socket (get-in ws-state [ws-id :ws])]
-                              (s/close! socket))
+                            (when-let [ch (get-in ws-state [ws-id :ch])]
+                              (http/close ch))
                             (dissoc ws-state ws-id)))
     true
     (catch Exception e
@@ -68,69 +68,54 @@
 
 (defn msg-producer
   "Sends all messages to web socket."
-  [system ws-id ws producer-chan]
+  [system ws-id ch producer-chan]
   (async/go-loop []
     (let [new-msg (async/<! producer-chan)]
       (if (nil? new-msg)
-        ;; producer closed, close web socket if not already
-        (s/close! ws)
         (do
+          ;; producer closed, close web socket if not already
+          (log/debug (format "Closing websocket id %s because producer-chan is closed"
+                             ws-id))
+          (http/close ch))
+        (do
+          (log/trace "msg-producer received new msg:" (pr-str new-msg))
           (let [enc-msg (try (if (= :block (first new-msg))
                                (-> (util/<? (filter-flakes (:conn system) ws-id new-msg))
                                    json/stringify)
                                (json/stringify new-msg))
                              (catch Exception _ (log/warn "Unable to json encode outgoing message, dropping: "
                                                           (pr-str new-msg))))]
-            (when enc-msg @(s/put! ws enc-msg)))
+            (when enc-msg
+              (log/trace "msg-producer sending encoded message:" (pr-str enc-msg))
+              (http/send! ch enc-msg)))
           (recur))))))
-
-
-(defn msg-consumer
-  "Consumes all messages from web socket"
-  [system ws-id ws producer-chan]
-  (d/loop []
-          (d/chain (d/timeout! (s/take! ws) 90000 ::timeout)
-                   #(cond
-                      (nil? %)
-                      (log/info "Web socket closed: " ws-id)
-
-                      (= ::timeout %)
-                      (do
-                        (log/info "Web socket timeout - no pings received. Closing: " ws-id)
-                        (s/close! ws))
-
-                      :else
-                      (do
-                        (->> (json/parse %)
-                             (messages/message-handler system producer-chan ws-id))
-                        (d/recur))))))
 
 
 (defn handler
   [system req]
-  (d/let-flow [ws (d/catch
-                    (http/websocket-connection req {:max-frame-payload 1e8 :max-frame-size 2e8})
-                    (fn [_] nil))]
-              (if ws
-                (let [ws-id         (str (UUID/randomUUID))
-                      producer-chan (async/chan (async/sliding-buffer 20))]
-                  (log/info (str "New socket initiated with id: " ws-id))
-                  (swap! ws-connections assoc ws-id {:ws            ws
-                                                     :producer-chan producer-chan})
-                  ;; register callback for closed socket
-                  (s/on-closed ws (fn [] (close-websocket ws-id producer-chan)))
-                  ;; register message handler for requests, create a buffer to allow some processing time.
-                  ;; send back a connection message with assigned ws-id
-                  (d/chain (s/put! ws (json/stringify [:set-ws-id nil ws-id]))
-                           #(when (false? %)
-                              ;; failed, close
-                              (s/close! ws)))
-                  (msg-producer system ws-id ws producer-chan)
-                  (msg-consumer system ws-id ws producer-chan)
+  (let [ws-id (str (UUID/randomUUID))
+        producer-chan (async/chan (async/sliding-buffer 20))]
+    (http/with-channel req ch
+      (if (http/websocket? ch)
+        (do
+          (log/info "New socket initiated with id:" ws-id)
+          (swap! ws-connections assoc ws-id {:ch            ch
+                                             :producer-chan producer-chan})
+          (http/on-close ch (fn [status]
+                              (log/trace (format "Websocket id %s closed w/ status: %s"
+                                                 ws-id status))
+                              (close-websocket ws-id producer-chan)))
+          (http/send! ch (json/stringify [:set-ws-id nil ws-id]))
+          (http/on-receive ch (fn [data]
+                                (log/trace (format "Received data on websocket id %s: %s"
+                                                   ws-id (pr-str data)))
 
-                  ;(s/consume (partial message-handler system ws ws-id) (s/buffer 25 ws))
-                  {:status 200 :body ws-id})
-                ;; if it wasn't a valid websocket handshake, return an error
-                {:status  400
-                 :headers {"content-type" "application/text"}
-                 :body    "Expected a websocket request."})))
+                                (messages/message-handler system producer-chan
+                                                          ws-id (json/parse data))))
+          (msg-producer system ws-id ch producer-chan)
+          {:status 200 :body ws-id})
+        ;; if it wasn't a valid websocket handshake, return an error
+        {:status  400
+         :headers {"content-type" "application/text"}
+         :body    "Expected a websocket request"}))))
+

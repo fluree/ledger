@@ -18,6 +18,7 @@ deploy Fluree to a k8s cluster running Kubernetes 1.18+ with a default storage
 class configured by applying the YAML files in the `k8s/` directory:
 
 `kubectl apply -f k8s`
+
 ## License 
 
 Fluree Ledger source code is licensed under AGPL. What if AGPL is a problem for your organization?

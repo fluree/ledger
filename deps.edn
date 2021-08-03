@@ -18,8 +18,7 @@
         com.cognitect.aws/s3              {:mvn/version "811.2.934.0"}
 
         ;; web server
-        aleph/aleph                       {:mvn/version "0.4.7-alpha7"}
-        aleph-middleware/aleph-middleware {:mvn/version "0.2.0"}
+        http-kit/http-kit                 {:mvn/version "2.5.3"}
         ring/ring-core                    {:mvn/version "1.9.4"}
         ring-cors/ring-cors               {:mvn/version "0.1.13"}
         compojure/compojure               {:mvn/version "1.6.2"}
@@ -41,7 +40,9 @@
                "-e" "(in-ns,'user)"]}
 
   :test
-  {:extra-paths ["test"]}
+  {:extra-paths ["test"]
+   ;; TODO: Port this code to http-kit and remove this extra dep
+   :extra-deps {aleph-middleware/aleph-middleware {:mvn/version "0.2.0"}}}
 
   :runner
   {:extra-paths ["test-resources"]
