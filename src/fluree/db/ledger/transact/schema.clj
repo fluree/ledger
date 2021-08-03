@@ -436,7 +436,6 @@
 (defn generate-type
   "Generates an @type/rdf:type (Class)"
   [type-iri context idx {:keys [idents] :as tx-state}]
-  (log/warn "Generating type: " type-iri "parents: " (:rdfs/subClassOf context))
   (go-try
     (let [ctx-map      (iri-util/item-ctx type-iri context)
           parent-ids   (when-let [parents (:rdfs/subClassOf ctx-map)]
@@ -468,7 +467,6 @@
   "Attempts to resolve @type/rdf:type (Class) and caches result in the tx-state idents atom
   to speed up future lookups. If does not exist, generates types"
   [type-iri context idx {:keys [idents] :as tx-state}]
-  (log/warn "resolve-type: " type-iri)
   (go-try
     (when (nil? type-iri)
       (throw (ex-info (str "JSON-LD @type cannot be nil at position: " idx)
