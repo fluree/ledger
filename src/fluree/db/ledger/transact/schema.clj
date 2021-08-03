@@ -3,7 +3,10 @@
             [fluree.db.flake :as flake]
             [fluree.db.util.core :as util]
             [fluree.db.util.log :as log]
-            [fluree.db.dbproto :as dbproto])
+            [fluree.db.dbproto :as dbproto]
+            [fluree.db.util.iri :as iri-util]
+            [fluree.db.util.async :refer [<? <?? go-try merge-into? channel?]]
+            [fluree.db.query.range :as query-range])
   (:import (fluree.db.flake Flake)))
 
 ;; functions related to validating and working with schemas inside of transactions
@@ -213,6 +216,7 @@
           :else :other)))
     flakes))
 
+
 (defn predicate-new?
   "Returns true if the predicate is new (doesn't exist in
   the existing / db-before schema."
@@ -306,10 +310,12 @@
   [{:keys [schema-changes t] :as tx-state}]
   (reduce
     (fn [acc p-data]
-      (let [{:keys [id iri type unique multi index upsert component]} p-data
-            flakes (cond-> [(flake/->Flake id const/$iri iri t true nil)
-                            #_(flake/->Flake id const/$_predicate:name iri t true nil)
-                            (flake/->Flake id const/$_predicate:type (get type->sid type) t true nil)]
+      (let [{:keys [id iri type unique multi index upsert component name class subclassOf]} p-data
+            flakes (cond-> [(flake/->Flake id const/$iri iri t true nil)]
+                           class (conj (flake/->Flake id const/$rdf:type const/$rdfs:Class t true nil))
+                           subclassOf (into (map #(flake/->Flake id const/$rdfs:subClassOf % t true nil) subclassOf))
+                           type (conj (flake/->Flake id const/$_predicate:type (get type->sid type) t true nil))
+                           name (conj (flake/->Flake id const/$_predicate:name name t true nil))
                            unique (conj (flake/->Flake id const/$_predicate:unique true t true nil))
                            multi (conj (flake/->Flake id const/$_predicate:multi true t true nil))
                            index (conj (flake/->Flake id const/$_predicate:index true t true nil))
@@ -342,6 +348,49 @@
     (get res iri)))
 
 
+(defn schema-map
+  "For schema predicates / properties / classes that don't yet exist, we
+  will auto-generate them if enough information in the context is available.
+  This represents the complete set of properties we keep in the db's :schema
+  and should stay in sync with fluree.db.query.schema/schema-map."
+  [{:keys [name id iri class subclassOf type multi unique index upsert component
+           noHistory retractDuplicates]
+    :or   {index             true
+           unique            false
+           component         false
+           noHistory         false
+           retractDuplicates false}}]
+  (let [multi?  (if (false? multi)                          ;; we default all refs to true - many specs don't specify @container yet support multi-cardinality
+                  false
+                  (or multi (= :ref type)))
+        ref?    (= :ref type)
+        upsert? (and unique (not (false? upsert)))          ;; default to upsert: true if unique and not explicitly set false
+        idx?    (boolean (or ref? index unique))]
+    {:name               name
+     :id                 id                                 ;; may be nil, will add once created
+     :iri                iri
+     :class              class                              ;; used only for classes
+     :subclassOf         subclassOf                         ;; used only for classes
+     :equivalentProperty nil
+     :type               type
+     :ref?               ref?
+     :idx?               idx?
+     :unique             unique
+     :multi              multi?
+     :index              index
+     :upsert             upsert?
+     :component          component
+     :noHistory          noHistory
+     :restrictCollection nil
+     :retractDuplicates  retractDuplicates
+     :spec               nil
+     :specDoc            nil
+     :txSpec             nil
+     :txSpecDoc          nil
+     :restrictTag        nil
+     :fullText           nil}))
+
+
 (defn generate-property
   "When a property does not exist in the schema, but is sufficiently defined in
   the @context supplied with the transaction, we will auto-generate the property
@@ -356,36 +405,92 @@
                       {:status 400 :error :db/invalid-transaction :position idx})))
     (if-let [p-info (get @schema-changes pred)]
       (fn [property] (get p-info property))
-      (let [type    (cond
-                      (= "@id" (:type obj)) :ref
-                      (string? (:val obj)) :string
-                      :else (throw (ex-info (str "Cannot auto-generate : " pred " as its type is not "
-                                                 "supported for auto-generation. Type: " (:type obj) ".")
-                                            {:status 400 :error :db/invalid-transaction})))
-
-            ref?    (= :ref type)
-            p-data  {:name               pred
-                     :id                 nil                ;; will add once created
-                     :iri                pred
-                     :equivalentProperty nil
-                     :type               type
-                     :ref?               ref?
-                     :idx?               true
-                     :unique             false
-                     :multi              (if ref?           ;; we default all refs to true - many specs don't specify @container yet support multi-cardinality
-                                           true
-                                           multi?)
-                     :index              true
-                     :upsert             true
-                     :component          false
-                     :noHistory          false
-                     :restrictCollection nil
-                     :retractDuplicates  false
-                     :spec               nil
-                     :specDoc            nil
-                     :txSpec             nil
-                     :txSpecDoc          nil
-                     :restrictTag        nil
-                     :fullText           nil}
+      ;; TODO - make :fluree/type consistent
+      (let [type    (or (:fluree/type obj)
+                        (cond
+                          (= "@id" (:type obj)) :ref
+                          (string? (:val obj)) :string
+                          :else (throw (ex-info (str "Cannot auto-generate: " pred " as its type is not "
+                                                     "supported for auto-generation. Type: " (:type obj) ".")
+                                                {:status 400 :error :db/invalid-transaction}))))
+            ;; TODO - add restrictComponent and others
+            p-data  (schema-map {:type  type
+                                 :name  pred
+                                 :iri   (:iri obj)
+                                 :multi (or multi? (= :ref type))})
             p-data* (register-property p-data tx-state)]
         (fn [property] (get p-data* property))))))
+
+
+(defn resolve-iri
+  "Return subject id of resolved IRI, or nil if not resolved."
+  [iri {:keys [db-root] :as tx-state}]
+  (go-try
+    (some-> (<? (query-range/index-range db-root :post = [const/$iri iri]))
+            ^Flake first
+            (.-s))))
+
+
+(declare resolve-types)
+
+(defn generate-type
+  "Generates an @type/rdf:type (Class)"
+  [type-iri context idx {:keys [idents] :as tx-state}]
+  (log/warn "Generating type: " type-iri "parents: " (:rdfs/subClassOf context))
+  (go-try
+    (let [ctx-map      (iri-util/item-ctx type-iri context)
+          parent-ids   (when-let [parents (:rdfs/subClassOf ctx-map)]
+                         ;; parents with an :id can be looked up in the same context, else
+                         ;; should have an :iri which will exist outside of context
+                         (let [parent-iris (mapv #(or (:id %) (:iri %)) parents)]
+                           (<? (resolve-types parent-iris context idx tx-state))))
+          expanded-iri (:iri ctx-map)
+          p-data       (schema-map {:iri        expanded-iri
+                                    :class      true
+                                    :subclassOf parent-ids})
+          p-data*      (register-property p-data tx-state)
+          subject-id   (:id p-data*)]
+      (swap! idents assoc expanded-iri subject-id)
+      subject-id)))
+
+
+(defn resolve-cache-iri
+  "Attempts to resolve an expanded iri to current database, and if it resolves caches result
+   for future lookups within this transaction."
+  [expanded-iri {:keys [idents] :as tx-state}]
+  (go-try
+    (when-let [id (<? (resolve-iri expanded-iri tx-state))]
+      (swap! idents assoc expanded-iri id)
+      id)))
+
+
+(defn resolve-type
+  "Attempts to resolve @type/rdf:type (Class) and caches result in the tx-state idents atom
+  to speed up future lookups. If does not exist, generates types"
+  [type-iri context idx {:keys [idents] :as tx-state}]
+  (log/warn "resolve-type: " type-iri)
+  (go-try
+    (when (nil? type-iri)
+      (throw (ex-info (str "JSON-LD @type cannot be nil at position: " idx)
+                      {:status 400 :error :db/invalid-transaction})))
+    (let [expanded-iri (iri-util/expand type-iri context)]
+      (or (get @idents expanded-iri)                        ;; try cache
+          (<? (resolve-cache-iri expanded-iri tx-state))    ;; try existing db (and cache if resolves)
+          (<? (generate-type type-iri context idx tx-state)))))) ;; generate new and cache
+
+
+(defn resolve-types
+  "Resolves types. If type information is available in the context and resolvable, will
+  auto-generate a new type if it does not currently exist."
+  [types context idx tx-state]
+  (go-try
+    (when (not-empty types)
+      (let [types* (if (sequential? types) types [types])]
+        (loop [[type & r] types*
+               i   0
+               acc []]
+          (if (nil? type)
+            acc
+            (->> (<? (resolve-type type context (conj idx i) tx-state))
+                 (conj acc)
+                 (recur r (inc i)))))))))

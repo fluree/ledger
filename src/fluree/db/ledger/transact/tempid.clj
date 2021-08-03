@@ -36,12 +36,13 @@
   "explicit collection is there for IRIs. The legacy _id format always
   required a collection too be part of the string, where iris will not
   have the collection name embedded and must be inferred"
-  [tempid idx {:keys [collector] :as tx-state} explicit-collection]
+  [tempid idx explicit-collection]
   (let [[coll id] (if explicit-collection
                     [explicit-collection tempid]
                     (str/split tempid #"[^\._a-zA-Z0-9]" 2))
         key (cond
-              explicit-collection tempid
+              explicit-collection (or tempid                ;; possible we have an explicit collection but not IRI
+                                      (keyword coll (str (util/random-uuid))))
               id (keyword coll id)
               :else (keyword coll (str (util/random-uuid))))]
     (->TempId tempid coll key (boolean id))))
@@ -56,7 +57,7 @@
   update any existing subject id that might have already been mapped to the tempid."
   ([tempid idx tx-state] (construct tempid idx tx-state nil))
   ([tempid idx tx-state collection]
-   (let [TempId (construct* tempid idx tx-state collection)]
+   (let [TempId (construct* tempid idx collection)]
      (register TempId idx tx-state)
      TempId)))
 
@@ -66,7 +67,7 @@
   it already exists. If it does not exist, it means it is a tempid used as a value, but it was never used
   as a subject."
   [tempid idx {:keys [tempids] :as tx-state}]
-  (let [TempId (construct* tempid idx tx-state nil)]
+  (let [TempId (construct* tempid idx nil)]
     (if (contains? @tempids TempId)
       TempId
       (throw (ex-info (str "Tempid " tempid " used as a value, but there is no corresponding subject in the transaction")

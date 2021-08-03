@@ -20,7 +20,8 @@
             [fluree.db.ledger.transact.schema :as tx-schema]
             [fluree.db.ledger.transact.json :as tx-json]
             [fluree.db.ledger.transact.json-ld :as tx-json-ld]
-            [fluree.db.ledger.transact.identity :as identity])
+            [fluree.db.ledger.transact.identity :as identity]
+            [fluree.db.constants :as const])
   (:import (fluree.db.flake Flake)))
 
 
@@ -123,6 +124,12 @@
             id))))))
 
 
+(defn json-ld?
+  "Returns true if transaction is json-ld. Uses the :format key in tx-state"
+  [tx-state]
+  (= :json-ld (:format tx-state)))
+
+
 (defn resolve-object-item
   "Resolves object into its final state so can be used for consistent comparisons with existing data."
   [tx-state {:keys [pred-info id o iri idx context] :as smt}]
@@ -136,9 +143,12 @@
 
                  (= :ref type) (cond
                                  (tempid/TempId? o*) o*     ;; tempid, don't need to resolve yet
-                                 (and (string? o*) iri) (<? (identity/resolve-iri o* nil context idx tx-state)) ;; since this is JSON-ld, any ref should be an iri as well.
-                                 (string? o*) (tempid/use o* idx tx-state)
-                                 (int? o*) (<? (identity/resolve-ident-strict o* tx-state))
+                                 (string? o*) (if (json-ld? tx-state)
+                                                (<? (identity/resolve-iri o* nil context idx tx-state)) ;; since this is JSON-ld, any ref should be an iri as well.
+                                                (tempid/use o* idx tx-state))
+                                 (int? o*) (if (= const/$rdf:type (pred-info :id))
+                                             o*
+                                             (<? (identity/resolve-ident-strict o* tx-state)))
                                  (util/pred-ident? o*) (<? (identity/resolve-ident-strict o* tx-state)))
 
                  (= :tag type) (<? (tags/resolve o* idx pred-info tx-state))

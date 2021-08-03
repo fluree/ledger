@@ -597,9 +597,9 @@
    ; rdf:type
    {:_id                ["_predicate" const/$rdf:type]
     "@id"  "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
-    :name               "rdf:type"
-    :equivalentProperty ["@type"]
-    :doc                "rdf:type - RDF type designation."
+    :name               "@type"
+    :equivalentProperty ["a"]
+    :doc                "@type, or rdf:type - RDF type designation."
     :type               "ref"
     :multi              true}
    {:_id   ["_predicate" const/$rdfs:subClassOf]

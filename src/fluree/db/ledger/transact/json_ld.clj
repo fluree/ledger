@@ -2,31 +2,12 @@
   (:require [fluree.db.util.async :refer [<? <?? go-try merge-into? channel?]]
             [fluree.db.util.log :as log]
             [fluree.db.dbproto :as dbproto]
-            [fluree.db.query.range :as query-range]
             [fluree.db.constants :as const]
             [fluree.db.api :as fdb]
             [fluree.db.ledger.transact.identity :as identity]
             [fluree.db.ledger.transact.tempid :as tempid]
             [fluree.db.util.iri :as iri-util]
-            [fluree.db.util.core :as util]
-            [fluree.db.ledger.transact.schema :as tx-schema])
-  (:import (fluree.db.flake Flake)))
-
-
-(defn resolve-prefix
-  "Returns two-tuple of [iri prefix].
-
-  If prefix detected, but could not resolve full iri, returns: [nil prefix]
-
-  If no prefix detected, returns [iri nil]"
-  [db compact-iri]
-  (if-let [[prefix rest] (iri-util/parse-prefix compact-iri)]
-    (if-let [iri (some-> (<?? (query-range/index-range db :spot = [["_prefix/prefix" prefix] const/$_prefix:iri]))
-                         ^Flake first
-                         .-o)]
-      [(str iri rest) prefix]
-      [nil prefix])
-    [compact-iri nil]))
+            [fluree.db.ledger.transact.schema :as tx-schema]))
 
 
 (defn system-collections
@@ -62,10 +43,17 @@
                          (fn [iri]
                            (when (re-find re iri)
                              collection))))
-                     match-iris)]
+                     match-iris)
+        default    (get sys-collections "")]
     (fn [iri types]
-      (if (and types (= "http://www.w3.org/2000/01/rdf-schema#Class" (first types)) (= 1 (count types)))
+      (cond
+        (and types (= "http://www.w3.org/2000/01/rdf-schema#Class" (first types)) (= 1 (count types)))
         "_predicate"
+
+        (and (nil? iri) default)
+        default
+
+        :else
         (or (some (fn [match-fn] (match-fn iri)) match-fns)
             (throw (ex-info (str "The iri does not match any collections, and no default collection is specified: "
                                  iri
@@ -138,16 +126,17 @@
   predicate+objects to add to."
   [{:keys [collector] :as tx-state} local-context txi idx]
   (let [iri          (get-in txi ["@id" :val])
-        expanded-iri (iri-util/expand iri local-context)    ;; first expand iri with local context
+        expanded-iri (when iri
+                       (iri-util/expand iri local-context)) ;; first expand iri with local context
         types        (when-let [item-type (get-in txi ["@type" :val])]
-                       (if (sequential? item-type)
-                         (mapv #(iri-util/expand % local-context) item-type)
-                         [(iri-util/expand item-type local-context)]))
+                       (<?? (tx-schema/resolve-types item-type local-context idx tx-state)))
         collection   (collector expanded-iri types)
         _action      (get-in txi ["@action" :val])
         _meta        (get-in txi ["@meta" :val])
         action       (resolve-action _action)
-        id           (<?? (identity/resolve-iri expanded-iri collection nil idx tx-state))]
+        id           (if expanded-iri
+                       (<?? (identity/resolve-iri expanded-iri collection nil idx tx-state))
+                       (tempid/construct nil idx tx-state collection))]
     {:iri        iri
      :id         id
      :tempid?    (tempid/TempId? id)
@@ -190,10 +179,9 @@
                                          (apply merge ctx))]
                      (generate-statement tx-state obj idx* ctx*)))
         p        (pred-info :id)
-        o        (cond
-                   children (:id (first children))          ;; children may be multiple further nested, but first one is one we want
-                   ;(= const/$rdf:type p) (get-in (:context base-smt) obj )
-                   :else obj)
+        o        (if children
+                   (:id (first children))                   ;; children may be multiple further nested, but first one is one we want
+                   obj)
         smt      (assoc base-smt :pred-info pred-info
                                  :p p
                                  :o o
@@ -203,29 +191,53 @@
       [smt])))
 
 
+(defn type-statements
+  "Creates type statements. Types will already have been resolved to a subject-id
+  by this point, so no need to lookup ids, just place in"
+  [base-smt idx {:keys [db-before] :as tx-state}]
+  (let [rdf-type-pid const/$rdf:type
+        pred-info    (fn [property] (dbproto/-p-prop db-before property rdf-type-pid))]
+    (reduce
+      (fn [acc type]
+        (conj acc (assoc base-smt :pred-info pred-info
+                                  :p rdf-type-pid
+                                  :o type
+                                  :idx idx)))
+      [] (:types base-smt))))
+
+
+(defn predicate-statements
+  [p-o-pairs base-smt idx {:keys [db-before] :as tx-state}]
+  (reduce-kv (fn [acc pred obj]
+               (let [idx*       (conj idx (:as obj))
+                     pred-info  (or (predicate-details pred (:collection base-smt) db-before)
+                                    (tx-schema/generate-property pred obj idx* tx-state))
+                     multi?     (pred-info :multi)
+                     statements (if multi?
+                                  (->> (if (sequential? (:val obj)) (into #{} (:val obj)) [(:val obj)])
+                                       (map-indexed (partial statement-obj base-smt pred-info tx-state idx*))
+                                       (apply concat))
+                                  (statement-obj base-smt pred-info tx-state idx* nil (:val obj)))]
+                 (into acc statements)))
+             [] p-o-pairs))
+
+
 (defn generate-statement
-  "parent-ctx will be supplied if there are nested children -- it will alread
+  "parent-ctx will be supplied if there are nested children -- it will already
    have the tx-context merged in from the parent."
-  [{:keys [db-before tx-context] :as tx-state} txi idx parent-ctx]
-  (let [ctx       (local-context txi (or parent-ctx tx-context))
-        ;; normalize the txi with the provided context
-        txi*      (normalize-txi txi ctx)
-        p-o-pairs (dissoc txi* "@id" "@context" "@action")
-        {:keys [collection action] :as base-smt} (base-statement tx-state ctx txi* nil)]
-    (if (and (empty? p-o-pairs) (= :retract action))
-      [(assoc base-smt :action :retract-subject)]           ;; no k-v pairs to iterate over
-      (reduce-kv (fn [acc pred obj]
-                   (let [idx*       (conj idx (:as obj))
-                         pred-info  (or (predicate-details pred collection db-before)
-                                        (tx-schema/generate-property pred obj idx* tx-state))
-                         multi?     (pred-info :multi)
-                         statements (if multi?
-                                      (->> (if (sequential? (:val obj)) (into #{} (:val obj)) [(:val obj)])
-                                           (map-indexed (partial statement-obj base-smt pred-info tx-state idx*))
-                                           (apply concat))
-                                      (statement-obj base-smt pred-info tx-state idx* nil (:val obj)))]
-                     (into acc statements)))
-                 [] p-o-pairs))))
+  [{:keys [tx-context] :as tx-state} txi idx parent-ctx]
+  (let [ctx             (local-context txi (or parent-ctx tx-context))
+        txi*            (normalize-txi txi ctx)             ;; normalize the txi with the provided context
+        p-o-pairs       (not-empty (dissoc txi* "@id" "@context" "@action" "@type"))
+        base-smt        (base-statement tx-state ctx txi* nil)
+        blank?          (and (nil? p-o-pairs)
+                             (nil? (:types base-smt)))
+        delete-subject? (and blank? (= :retract (:action base-smt)))]
+    (cond-> []
+            (:types base-smt) (into (type-statements base-smt idx tx-state))
+            p-o-pairs (into (predicate-statements p-o-pairs base-smt idx tx-state))
+            blank? (conj base-smt)
+            delete-subject? (conj (assoc base-smt :action :retract-subject)))))
 
 
 (defn tx?
@@ -298,8 +310,5 @@
   (def ctx-compactor (iri-util/compact-fn context))
 
   (ctx-compactor "http://release.niem.gov/niem/niem-core/4.0/#2PersonName")
-
-
-  (resolve-prefix db "fluree:Brian")
 
   )
