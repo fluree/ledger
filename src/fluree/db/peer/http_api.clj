@@ -946,7 +946,7 @@
       (wrap-response-headers "X-Fdb-Version" (meta/version))
       params/wrap-params
       (->> (wrap-errors (:debug-mode? system)))
-      (cors/wrap-cors
+      (wrap-response-headers
         :access-control-allow-origin [#".+"]
         :access-control-expose-headers ["X-Fdb-Block" "X-Fdb-Fuel" "X-Fdb-Status" "X-Fdb-Time" "X-Fdb-Version"]
         :access-control-allow-methods [:get :put :post :delete])
