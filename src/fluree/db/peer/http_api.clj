@@ -912,10 +912,12 @@
                                      uri))))))
 
 
-(defn wrap-version-header [handler]
+(defn wrap-response-headers [handler & headers]
   (fn [request]
-    (let [response (handler request)]
-      (assoc-in response [:headers "X-Fdb-Version"] (meta/version)))))
+    (let [header-map (reduce (fn [m [k v]] (assoc m (name k) v))
+                             {} (partition 2 headers))
+          response (handler request)]
+      (update response :headers merge header-map))))
 
 
 (defn- api-routes
@@ -959,10 +961,10 @@
         ;; final 404 fallback
         (constantly not-found))
 
-      wrap-version-header
+      (wrap-response-headers "X-Fdb-Version" (meta/version))
       params/wrap-params
       (->> (wrap-errors (:debug-mode? system)))
-      (cors/wrap-cors
+      (wrap-response-headers
         :access-control-allow-origin [#".+"]
         :access-control-expose-headers ["X-Fdb-Block" "X-Fdb-Fuel" "X-Fdb-Status" "X-Fdb-Time" "X-Fdb-Version"]
         :access-control-allow-methods [:get :put :post :delete])
