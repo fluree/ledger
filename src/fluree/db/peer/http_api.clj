@@ -25,6 +25,7 @@
             [fluree.db.token-auth :as token-auth]
             [fluree.db.peer.websocket :as websocket]
             [ring.util.response :as resp]
+            [ring.middleware.cors :as cors]
             [fluree.db.util.async :refer [<?? <? go-try]]
             [fluree.db.ledger.txgroup.txgroup-proto :as txproto]
             [fluree.db.serde.protocol :as serdeproto]
@@ -964,7 +965,7 @@
       (wrap-response-headers "X-Fdb-Version" (meta/version))
       params/wrap-params
       (->> (wrap-errors (:debug-mode? system)))
-      (wrap-response-headers
+      (cors/wrap-cors
         :access-control-allow-origin [#".+"]
         :access-control-expose-headers ["X-Fdb-Block" "X-Fdb-Fuel" "X-Fdb-Status" "X-Fdb-Time" "X-Fdb-Version"]
         :access-control-allow-methods [:get :put :post :delete])
