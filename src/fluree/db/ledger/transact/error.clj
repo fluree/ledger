@@ -101,7 +101,7 @@
   but we still want to record the tx. We'll assume cmd-data is a string
   and instead of extracting a command out of it (which didn't work"
   [e db cmd-data t]
-  (try
+  (go-try
     (let [{:keys [message status error]} (decode-exception e)
           {:keys [sig cmd]} (:command cmd-data)
           txid             (crypto/sha3-256 cmd)
@@ -143,22 +143,23 @@
 
   Exception here might be because:
   - transaction dependency not met
-  - could not resolve auth/authority"
+  - could not resolve auth/authority
+
+  Returns an async channel."
   [e db cmd-data t]
-  (go-try
-    (let [{:keys [error]} (decode-exception e)]
-      (if (= error :db/command-parse-exception)               ;; error happened parsing/validating command map... need special handling as same parsing attempted below
-        (throw-validation-exception e db cmd-data t)
-        (let [tx-map   (tx-util/validate-command (:command cmd-data))
-              {:keys [txid auth authority cmd sig type]} tx-map
-              tx-state {:t            t
-                        :db-before    db
-                        :fuel         (atom {:spent 0})
-                        :txid         txid
-                        :auth-id      auth
-                        :authority-id authority
-                        :tx-string    cmd
-                        :signature    sig
-                        :tx-type      type
-                        :errors       (atom nil)}]
-          (handler e tx-state))))))
+  (let [{:keys [error]} (decode-exception e)]
+    (if (= error :db/command-parse-exception)               ;; error happened parsing/validating command map... need special handling as same parsing attempted below
+      (throw-validation-exception e db cmd-data t)
+      (let [tx-map   (tx-util/validate-command (:command cmd-data))
+            {:keys [txid auth authority cmd sig type]} tx-map
+            tx-state {:t            t
+                      :db-before    db
+                      :fuel         (atom {:spent 0})
+                      :txid         txid
+                      :auth-id      auth
+                      :authority-id authority
+                      :tx-string    cmd
+                      :signature    sig
+                      :tx-type      type
+                      :errors       (atom nil)}]
+        (handler e tx-state)))))
