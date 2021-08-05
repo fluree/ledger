@@ -1,6 +1,6 @@
 {
   "name:": "ledger",
   "dependencies": {
-    "@fluree/admin-ui": "^1.0.0-rc5"
+    "@fluree/admin-ui": "^1.0.0-rc6"
   }
 }
