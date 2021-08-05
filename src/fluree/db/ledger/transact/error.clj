@@ -145,19 +145,20 @@
   - transaction dependency not met
   - could not resolve auth/authority"
   [e db cmd-data t]
-  (let [{:keys [error]} (decode-exception e)]
-    (if (= error :db/command-parse-exception)               ;; error happened parsing/validating command map... need special handling as same parsing attempted below
-      (throw-validation-exception e db cmd-data t)
-      (let [tx-map   (tx-util/validate-command (:command cmd-data))
-            {:keys [txid auth authority cmd sig type]} tx-map
-            tx-state {:t            t
-                      :db-before    db
-                      :fuel         (atom {:spent 0})
-                      :txid         txid
-                      :auth-id      auth
-                      :authority-id authority
-                      :tx-string    cmd
-                      :signature    sig
-                      :tx-type      type
-                      :errors       (atom nil)}]
-        (handler e tx-state)))))
+  (go-try
+    (let [{:keys [error]} (decode-exception e)]
+      (if (= error :db/command-parse-exception)               ;; error happened parsing/validating command map... need special handling as same parsing attempted below
+        (throw-validation-exception e db cmd-data t)
+        (let [tx-map   (tx-util/validate-command (:command cmd-data))
+              {:keys [txid auth authority cmd sig type]} tx-map
+              tx-state {:t            t
+                        :db-before    db
+                        :fuel         (atom {:spent 0})
+                        :txid         txid
+                        :auth-id      auth
+                        :authority-id authority
+                        :tx-string    cmd
+                        :signature    sig
+                        :tx-type      type
+                        :errors       (atom nil)}]
+          (handler e tx-state))))))
