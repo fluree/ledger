@@ -1,7 +1,7 @@
 {:deps {org.clojure/clojure {:mvn/version "1.10.3"}
         org.clojure/data.xml {:mvn/version "0.2.0-alpha6"}
         com.fluree/alphabase {:mvn/version "3.2.1"}
-        com.fluree/db {:mvn/version "1.0.0-rc22"}
+        com.fluree/db {:mvn/version "1.0.0-rc23"}
         com.fluree/raft {:mvn/version "1.0.0-beta1"}
         com.fluree/crypto {:mvn/version "0.3.5"}
 
@@ -18,18 +18,18 @@
 
         ;; web server
         aleph-middleware/aleph-middleware {:mvn/version "0.2.0"}
-        ring/ring-core {:mvn/version "1.9.3"}
+        ring/ring-core {:mvn/version "1.9.4"}
         ring-cors/ring-cors {:mvn/version "0.1.13"}
         compojure/compojure {:mvn/version "1.6.2"}
 
         ;; logging
-        ch.qos.logback/logback-classic {:mvn/version "1.2.3"}}
+        ch.qos.logback/logback-classic {:mvn/version "1.2.5"}}
 
  :paths ["src" "resources"]
  :aliases
  {:mvn/group-id com.fluree
   :mvn/artifact-id ledger
-  :mvn/version "1.0.0-beta12"
+  :mvn/version "1.0.0-beta13"
 
   :dev
   {:extra-paths ["dev"]
@@ -44,7 +44,7 @@
   {:extra-paths ["test-resources"]
    :extra-deps {com.cognitect/test-runner
                 {:git/url "https://github.com/cognitect-labs/test-runner.git"
-                 :sha "f597341b6ca7bb4cf027e0a34a6710ca9cb969da"}}
+                 :sha "4e7e1c0dfd5291fa2134df052443dc29695d8cbe"}}
    :main-opts ["-m" "cognitect.test-runner"]}
 
   :jar
@@ -84,5 +84,5 @@
    :main-opts ["-m" "antq.core" "--skip=github-action"]}
 
   :clj-kondo
-  {:extra-deps {clj-kondo/clj-kondo {:mvn/version "2021.06.18"}}
+  {:extra-deps {clj-kondo/clj-kondo {:mvn/version "2021.07.28"}}
    :main-opts ["-m" "clj-kondo.main" "--lint" "src" "--config" ".clj-kondo/config.edn"]}}}
