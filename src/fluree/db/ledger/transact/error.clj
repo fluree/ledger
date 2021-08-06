@@ -101,7 +101,7 @@
   but we still want to record the tx. We'll assume cmd-data is a string
   and instead of extracting a command out of it (which didn't work"
   [e db cmd-data t]
-  (try
+  (go-try
     (let [{:keys [message status error]} (decode-exception e)
           {:keys [sig cmd]} (:command cmd-data)
           txid             (crypto/sha3-256 cmd)
@@ -143,7 +143,9 @@
 
   Exception here might be because:
   - transaction dependency not met
-  - could not resolve auth/authority"
+  - could not resolve auth/authority
+
+  Returns an async channel."
   [e db cmd-data t]
   (let [{:keys [error]} (decode-exception e)]
     (if (= error :db/command-parse-exception)               ;; error happened parsing/validating command map... need special handling as same parsing attempted below
