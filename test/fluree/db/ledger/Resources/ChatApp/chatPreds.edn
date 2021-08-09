@@ -1,5 +1,5 @@
-[{:_id "_predicate", :name "person/handle", :doc "The person's unique handle", :unique true, :type "string"}
- {:_id "_predicate", :name "person/fullName", :doc "The person's full name.", :type "string", :index true}
+[{:_id "_predicate", :name "person/handle", :doc "The person's unique handle", :unique true, :fullText true, :type "string"}
+ {:_id "_predicate", :name "person/fullName", :doc "The person's full name.", :type "string", :fullText true, :index true}
  {:_id "_predicate", :name "person/active", :doc "Whether the person is active or not", :type "boolean"}
  {:_id "_predicate", :name "person/age", :doc "The person's age in years", :type "int", :index true}
  {:_id                "_predicate",

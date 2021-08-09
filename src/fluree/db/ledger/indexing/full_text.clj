@@ -21,7 +21,7 @@
                       (map (fn [p]
                              (query-range/index-range db :psot = [p])))
                       async/merge)
-        out-chan (chan 1 (mapcat seq))]
+        out-chan (chan 1 cat)]
     (async/pipe idx-chan out-chan)))
 
 (defn updated-predicates
@@ -106,12 +106,12 @@
       stats)))
 
 (defn index-subjects
-  "Add the subjects from `subj-chan` to the index using the `writer`. Keeps track
+  "Add the subjects from `subj-chan` to the index using the `wrtr`. Keeps track
   of successfully `:indexed` subjects and `:errors` in the stats map returned."
-  [writer init-stats subj-chan]
+  [idx wrtr init-stats subj-chan]
   (process-subjects (fn [stats subj pred-map]
                       (try
-                        (full-text/put-subject writer subj pred-map)
+                        (full-text/put-subject idx wrtr subj pred-map)
                         (log/trace "Indexed full text predicates for subject "
                                    subj)
                         (update stats :indexed inc)
@@ -124,19 +124,19 @@
                     init-stats subj-chan))
 
 (defn index-flakes
-  [writer init-stats flake-chan]
+  [idx wrtr init-stats flake-chan]
   (->> flake-chan
        group-by-subject
-       (index-subjects writer init-stats)))
+       (index-subjects idx wrtr init-stats)))
 
 (defn purge-subjects
   "Remove the included predicates for each subject from `subj-chan` from the index
-  using the `writer`. Keeps track of successfully `:purged` subjects and
+  using the `wrtr`. Keeps track of successfully `:purged` subjects and
   `:errors` in the stats map returned."
-  [writer init-stats subj-chan]
+  [idx wrtr init-stats subj-chan]
   (process-subjects (fn [stats subj pred-map]
                       (try
-                        (full-text/purge-subject writer subj pred-map)
+                        (full-text/purge-subject idx wrtr subj pred-map)
                         (log/trace "Purged stale full text predicates for "
                                    "subject " subj)
                         (update stats :purged inc)
@@ -149,22 +149,22 @@
                     init-stats subj-chan))
 
 (defn purge-flakes
-  [writer init-stats flake-chan]
+  [idx wrtr init-stats flake-chan]
   (->> flake-chan
        group-by-subject
-       (purge-subjects writer init-stats)))
+       (purge-subjects idx wrtr init-stats)))
 
 (defn reset-index
-  [writer {:keys [network dbid] :as db}]
+  [idx wrtr {:keys [network dbid] :as db}]
   (log/info "Resetting full text index for ledger " network "/" dbid)
   (let [cur-idx-preds (current-index-predicates db)
         idx-queue     (predicate-flakes db cur-idx-preds)
         initial-stats {:indexed 0, :errors 0}]
-    (full-text/forget writer)
-    (index-flakes writer initial-stats idx-queue)))
+    (full-text/forget idx wrtr)
+    (index-flakes idx wrtr initial-stats idx-queue)))
 
 (defn update-index
-  [writer db {:keys [flakes]}]
+  [idx wrtr db {:keys [flakes]}]
   (go
     (let [[add-pred-ch rem-pred-ch]  (updated-predicates db flakes)
           [cur-update-ch cur-rem-ch] (updated-subjects db flakes)
@@ -173,60 +173,51 @@
           rem-queue (async/merge [rem-pred-ch cur-rem-ch])
 
           initial-stats {:indexed 0, :purged 0, :errors 0}
-          indexed-stats (<! (index-flakes writer initial-stats add-queue))
-          final-stats   (<! (purge-flakes writer indexed-stats rem-queue))]
+          indexed-stats (<! (index-flakes idx wrtr initial-stats add-queue))
+          final-stats   (<! (purge-flakes idx wrtr indexed-stats rem-queue))]
 
       final-stats)))
 
 
 (defn write-block
-  [writer {:keys [network dbid] :as db} {:keys [flakes] :as block}]
+  [idx wrtr {:keys [network dbid] :as db} {:keys [flakes] :as block}]
   (let [start-time  (Instant/now)
         coordinates {:network network, :dbid dbid, :block (:block block)}]
-
     (log/info (str "Full-Text Search Index began processing new block at: "
                    start-time)
               coordinates)
-
     (go
-
       (let [stats    (if (schema/get-language-change flakes)
-                       (<! (reset-index writer db))
-                       (<! (update-index writer db block)))
-
+                       (<! (reset-index idx wrtr db))
+                       (<! (update-index idx wrtr db block)))
             end-time (Instant/now)
             duration (- (.toEpochMilli end-time)
                         (.toEpochMilli start-time))
-
             status   (-> stats
                          (merge coordinates)
                          (assoc :duration duration))]
-
-        (full-text/register-block writer status)
-
+        (full-text/register-block idx wrtr status)
         (log/info (str "Full-Text Search Index ended processing new block at: "
                        end-time)
                   status)
-
         status))))
 
 
 (defn write-range
-  [writer db start-block end-block]
+  [idx wrtr db start-block end-block]
   (let [block-chan (-> db
                        (fdb/block-range start-block end-block)
                        (async/pipe (chan 1 (mapcat seq))))]
-
     (go-loop [results []]
       (if-let [block (<! block-chan)]
-        (let [write-status (<! (write-block writer db block))]
+        (let [write-status (<! (write-block idx wrtr db block))]
           (recur (conj results write-status)))
         results))))
 
 
 (defn sync-index
-  [writer {:keys [network dbid block] :as db}]
-  (let [last-indexed (-> writer
+  [idx wrtr {:keys [network dbid block] :as db}]
+  (let [last-indexed (-> idx
                          full-text/read-block-registry
                          :block
                          (or 0))
@@ -235,14 +226,14 @@
     (log/info (str "Syncing full text index from block: " first-block
                    " to block " last-block " for ledger " network "/"
                    dbid))
-    (write-range writer db (inc last-indexed) block)))
+    (write-range idx wrtr db first-block last-block)))
 
 (defn full-reset
-  [writer db]
+  [idx wrtr db]
   (go
-    (let [stats (<! (reset-index writer db))
+    (let [stats (<! (reset-index wrtr db))
           status (assoc stats :block (:block db))]
-      (full-text/register-block writer status)
+      (full-text/register-block idx wrtr status)
       status)))
 
 
@@ -269,31 +260,25 @@
       (go-loop []
         (if-let [[msg resp-ch] (<! write-q)]
           (let [{:keys [db]} msg
-                lang         (-> db :settings :language (or :default))]
-
-            (with-open [store  (-> base-path
-                                   (full-text/storage-path db)
-                                   full-text/storage)
-                        writer (full-text/writer store lang)]
-
+                {:keys [network dbid]} db
+                lang (-> db :settings :language (or :default))]
+            (with-open [idx  (full-text/open-storage conn network dbid lang)
+                        wrtr (full-text/writer idx)]
               (let [result  (case (:action msg)
                               :block (let [{:keys [block]} msg]
-                                       (<! (write-block writer db block)))
-                              :forget (full-text/forget writer)
+                                       (<! (write-block idx wrtr db block)))
+                              :forget (full-text/forget idx wrtr)
                               :range (let [{:keys [start end]} msg]
-                                       (<! (write-range writer db start end)))
-                              :reset (<! (full-reset writer db))
-                              :sync  (<! (sync-index writer db))
+                                       (<! (write-range idx wrtr db start end)))
+                              :reset (<! (full-reset idx wrtr db))
+                              :sync  (<! (sync-index idx wrtr db))
                               ::unrecognized-action)]
-
                 (if result
                   (async/put! resp-ch result (fn [val]
                                                (when val
                                                  (async/close! resp-ch))))
                   (async/close! resp-ch))))
-
             (recur))
-
           (log/info "Stopping Full Text Indexer")))
 
       {:close   closer
