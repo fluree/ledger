@@ -231,7 +231,7 @@
 (defn full-reset
   [idx wrtr db]
   (go
-    (let [stats (<! (reset-index wrtr db))
+    (let [stats (<! (reset-index idx wrtr db))
           status (assoc stats :block (:block db))]
       (full-text/register-block idx wrtr status)
       status)))
@@ -259,12 +259,12 @@
 
       (go-loop []
         (if-let [[msg resp-ch] (<! write-q)]
-          (let [{:keys [db]} msg
+          (let [{:keys [action db]} msg
                 {:keys [network dbid]} db
                 lang (-> db :settings :language (or :default))]
             (with-open [idx  (full-text/open-storage conn network dbid lang)
                         wrtr (full-text/writer idx)]
-              (let [result  (case (:action msg)
+              (let [result  (case action
                               :block (let [{:keys [block]} msg]
                                        (<! (write-block idx wrtr db block)))
                               :forget (full-text/forget idx wrtr)
