@@ -3,7 +3,9 @@
             [fluree.db.ledger.docs.getting-started.basic-schema :as basic]
             [fluree.db.ledger.test-helpers :as test]
             [fluree.db.api :as fdb]
-            [clojure.core.async :as async]))
+            [clojure.core.async :as async]
+            [clojure.string :as str])
+  (:import (clojure.lang ExceptionInfo)))
 
 (use-fixtures :once test/test-system)
 
@@ -111,6 +113,20 @@
     (is (not (get remaining-person "person/fullName")))
     (is (= 1 (-> remaining-person (get "person/user") (get "_user/auth") count)))))
 
+(deftest expired-transaction
+  (testing "Issue an expired transaction, expect a validation error")
+  (let [expired-txn     [{:_id "_user"  :username "Jonah"}]
+        opts            {:expire (- (System/currentTimeMillis) 100)}
+        txn-resp        (async/<!! (fdb/transact-async (get-conn) test/ledger-query+transact expired-txn opts))]
+    (is (instance? ExceptionInfo txn-resp))
+    (is (-> txn-resp
+            ex-data
+            :error
+            (= :db/invalid-command)))
+    (is (-> txn-resp
+            ex-message
+            (str/starts-with? "Transaction 'expire', when provided, must be epoch millis and be later than now.")))))
+
 
 (deftest transaction-basics
   (testing "Testing suite for the Transaction section of the docs")
@@ -119,6 +135,7 @@
   (transact-with-temp-ids)
   (nested-transaction)
   (upserting-data)
-  (deleting-data))
+  (deleting-data)
+  (expired-transaction))
 
 
