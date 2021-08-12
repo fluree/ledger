@@ -985,7 +985,8 @@
                           (log/error "FlureeDB Exiting.")
                           (System/exit 1)))
           close-fn    (fn []
-                        (@web-server :timeout 1000) ; shut down the web server but give existing connections 1s to finish
+                        ;; shut down the web server but give existing connections 1s to finish
+                        (@web-server :timeout 1000)
                         (reset! web-server nil))]
       (map->WebServer {:close close-fn}))))
 
