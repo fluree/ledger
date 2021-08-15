@@ -11,7 +11,8 @@
             [fluree.db.constants :as const]
             [fluree.db.util.async :refer [<? go-try]]
             [fluree.db.ledger.txgroup.txgroup-proto :as txproto]
-            [fluree.db.ledger.transact.json :as tx-json]))
+            [fluree.db.ledger.transact.json :as tx-json]
+            [clojure.core.async :as async]))
 
 
 (defn valid-authority?
