@@ -28,22 +28,20 @@
   [e tx-state]
   (go-try
     (let [{:keys [message status error]} (decode-exception e)
-          {:keys [db-before auth-id authority-id t txid tx-type fuel]} tx-state
+          {:keys [db-root auth-id authority-id t txid tx-type fuel]} tx-state
           flakes           (->> (tx-meta/tx-meta-flakes tx-state message)
                                 (into (flake/sorted-set-by flake/cmp-flakes-block)))
           hash-flake       (tx-meta/generate-hash-flake flakes tx-state)
           all-flakes       (conj flakes hash-flake)
-          fast-forward-db? (:tt-id db-before)
-          db-after         (->> (if fast-forward-db?
-                                  (<? (dbproto/-forward-time-travel db-before all-flakes))
-                                  (<? (dbproto/-with-t db-before all-flakes)))
-                                dbproto/-rootdb
-                                tx-util/make-candidate-db)
-          tx-bytes         (- (get-in db-after [:stats :size]) (get-in db-before [:stats :size]))]
+          fast-forward-db? (:tt-id db-root)
+          db-after         (if fast-forward-db?
+                             (<? (dbproto/-forward-time-travel db-root all-flakes))
+                             (<? (dbproto/-with-t db-root all-flakes)))
+          tx-bytes         (- (get-in db-after [:stats :size]) (get-in db-root [:stats :size]))]
       {:error        error
        :t            t
        :hash         (.-o ^Flake hash-flake)
-       :db-before    db-before
+       :db-before    db-root
        :db-after     db-after
        :flakes       all-flakes
        :tempids      nil
@@ -71,7 +69,7 @@
 
 
 (defn spec-error
-  [return-map errors {:keys [db-before] :as tx-state}]
+  [return-map errors {:keys [db-root] :as tx-state}]
   (go-try
     (let [sorted-errors    (sort error-priority-sort errors)
           reported-error   (first sorted-errors)            ;; we only report a single error in the ledger
@@ -81,13 +79,11 @@
                                 (into (flake/sorted-set-by flake/cmp-flakes-block)))
           hash-flake       (tx-meta/generate-hash-flake flakes tx-state)
           all-flakes       (conj flakes hash-flake)
-          fast-forward-db? (:tt-id db-before)
-          db-after         (->> (if fast-forward-db?
-                                  (<? (dbproto/-forward-time-travel db-before all-flakes))
-                                  (<? (dbproto/-with-t db-before all-flakes)))
-                                dbproto/-rootdb
-                                tx-util/make-candidate-db)
-          tx-bytes         (- (get-in db-after [:stats :size]) (get-in db-before [:stats :size]))]
+          fast-forward-db? (:tt-id db-root)
+          db-after         (if fast-forward-db?
+                             (<? (dbproto/-forward-time-travel db-root all-flakes))
+                             (<? (dbproto/-with-t db-root all-flakes)))
+          tx-bytes         (- (get-in db-after [:stats :size]) (get-in db-root [:stats :size]))]
       (assoc return-map :error error
                         :errors sorted-errors
                         :db-after db-after
@@ -159,6 +155,7 @@
       (let [tx-map   (tx-util/validate-command (:command cmd-data))
             {:keys [txid auth authority cmd sig type]} tx-map
             tx-state {:t            t
+                      :db-root      db
                       :db-before    db
                       :fuel         (atom {:spent 0})
                       :txid         txid
