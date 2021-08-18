@@ -99,7 +99,7 @@
   "This should not happen, but somehow the cmd-date could not be parsed.
   Because of this we don't have basic information about the transaction
   but we still want to record the tx. We'll assume cmd-data is a string
-  and instead of extracting a command out of it (which didn't work"
+  and instead of extracting a command out of it (which didn't work)"
   [e db cmd-data t]
   (go-try
     (let [{:keys [message status error]} (decode-exception e)
@@ -111,10 +111,9 @@
           hash-flake       (tx-meta/generate-hash-flake flakes tx-state)
           all-flakes       (conj flakes hash-flake)
           fast-forward-db? (:tt-id db)
-          current-db       (if fast-forward-db?
+          db-after         (if fast-forward-db?
                              (<? (dbproto/-forward-time-travel db all-flakes))
                              (<? (dbproto/-with-t db all-flakes)))
-          db-after         (-> current-db dbproto/-rootdb tx-util/make-candidate-db)
           tx-bytes         (- (get-in db-after [:stats :size]) (get-in db [:stats :size]))]
       {:error        error
        :t            t
