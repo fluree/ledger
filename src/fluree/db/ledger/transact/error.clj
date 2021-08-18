@@ -111,11 +111,10 @@
           hash-flake       (tx-meta/generate-hash-flake flakes tx-state)
           all-flakes       (conj flakes hash-flake)
           fast-forward-db? (:tt-id db)
-          db-after         (->> (if fast-forward-db?
-                                  (<? (dbproto/-forward-time-travel db all-flakes))
-                                  (<? (dbproto/-with-t db all-flakes)))
-                                dbproto/-rootdb
-                                tx-util/make-candidate-db)
+          current-db       (if fast-forward-db?
+                             (<? (dbproto/-forward-time-travel db all-flakes))
+                             (<? (dbproto/-with-t db all-flakes)))
+          db-after         (-> current-db dbproto/-rootdb tx-util/make-candidate-db)
           tx-bytes         (- (get-in db-after [:stats :size]) (get-in db [:stats :size]))]
       {:error        error
        :t            t
