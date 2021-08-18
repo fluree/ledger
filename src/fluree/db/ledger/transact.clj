@@ -11,8 +11,7 @@
             [fluree.db.constants :as const]
             [fluree.db.util.async :refer [<? go-try]]
             [fluree.db.ledger.txgroup.txgroup-proto :as txproto]
-            [fluree.db.ledger.transact.json :as tx-json]
-            [clojure.core.async :as async]))
+            [fluree.db.ledger.transact.json :as tx-json]))
 
 
 (defn valid-authority?
@@ -147,11 +146,8 @@
                                        (-> session :conn :group) (:network session)
                                        (:dbid session) (dissoc block-result :db-before :db-after)))]
               (if (true? new-block-resp)
-                (let [res (<? (indexing/index* session {:remove-preds remove-preds*}))]
-                  #_(when-not res
-                    (let [new-db-ch (async/promise-chan)]
-                      (async/put! new-db-ch (:db-after block-result))
-                      (session/cas-db! session db-before-ch new-db-ch)))
+                (do
+                  (<? (indexing/index* session {:remove-preds remove-preds*}))
                   block-result)
                 (do
                   (log/warn "Proposed block was not accepted by the network because: "
