@@ -148,7 +148,7 @@
                                        (:dbid session) (dissoc block-result :db-before :db-after)))]
               (if (true? new-block-resp)
                 (let [res (<? (indexing/index* session {:remove-preds remove-preds*}))]
-                  (when-not res
+                  #_(when-not res
                     (let [new-db-ch (async/promise-chan)]
                       (async/put! new-db-ch (:db-after block-result))
                       (session/cas-db! session db-before-ch new-db-ch)))
