@@ -147,12 +147,6 @@
                                        (:dbid session) (dissoc block-result :db-before :db-after)))]
               (if (true? new-block-resp)
                 (do
-                  ;; update cached db
-                  ;(let [new-db-ch (async/promise-chan)]
-                  ;  (async/put! new-db-ch (:db-after block-result))
-                  ;  (session/cas-db! session db-before-ch new-db-ch))
-                  ;; reindex if needed
-                  ;; to do -add opts
                   (<? (indexing/index* session {:remove-preds remove-preds*}))
                   block-result)
                 (do

@@ -223,6 +223,7 @@
 
          :subscribe (let [pw-enabled? (pw-auth/password-enabled? (:conn system))
                           open-api?   (-> system :group :open-api)
+                          transactor? (-> system :conn :transactor?)
                           _           (when (and (sequential? arg) (not (or pw-enabled? (not open-api?))))
                                         (throw (ex-info (str "Supplying an auth/jwt is not allowed.")
                                                         {:status 400 :error :db/invalid-db})))
@@ -234,7 +235,8 @@
                                                  [arg])
 
                           auth        (cond
-                                        (and (nil? auth-or-jwt) open-api?) ;; open, give root access
+                                        (and (nil? auth-or-jwt)
+                                             (or open-api? transactor?)) ;; open, give root access
                                         0
 
                                         (and (int? auth-or-jwt) open-api?) ;; open, allow them to select any auth
@@ -354,7 +356,7 @@
                                        (-> (txproto/ledger-info (:group system) network dbid)
                                            (select-keys [:indexes :block :index :status]))
                                        {})]
-                        (async/put! producer-chan [:response req-id response nil]))
+                        (success! response))
 
          :ledger-stats (let [[network dbid] (session/resolve-ledger (:conn system) arg)
                              ledger   (str network "/" dbid)
@@ -365,10 +367,11 @@
                                                           (get-in [:stats]))]
                                           (merge db-info db-stat))
                                         {})]
-                         (async/put! producer-chan [:response req-id response nil]))
+                         (success! response))
 
+         ;; TODO - change command and all internal calls to :ledger-list, deprecate :db-list
          :db-list (let [response (txproto/ledger-list (:group system))]
-                    (async/put! producer-chan [:response req-id response nil]))
+                    (success! response))
 
          ;; TODO - unsigned-cmd should cover a 'tx', remove below
          :tx (let [tx-map      arg
@@ -447,6 +450,9 @@
                               (success! jwt))))))
 
        (catch Exception e
+         (log/info "Error caught in incoming message handler: "
+                   {:error   (.getMessage e)
+                    :message msg})
          (error! e))))))
 
 
