@@ -162,7 +162,7 @@
 (defn rebalance-leaf
   "Splits leaf nodes if the combined size of it's flakes is greater than
   `*overflow-bytes*`."
-  [{:keys [flakes leftmost? ciel] :as leaf}]
+  [{:keys [flakes leftmost? rhs] :as leaf}]
   (let [target-size (/ *overflow-bytes* 2)]
     (loop [[f & r]   flakes
            cur-size  0
@@ -172,8 +172,8 @@
         (let [subrange  (flake/subrange flakes >= cur-first)
               last-leaf (-> leaf
                             (assoc :flakes subrange
-                                   :floor cur-first
-                                   :ciel ciel)
+                                   :first cur-first
+                                   :rhs rhs)
                             (dissoc :id :leftmost?))]
           (conj leaves last-leaf))
         (let [new-size (-> f flake/size-flake (+ cur-size))]
@@ -181,8 +181,8 @@
             (let [subrange (flake/subrange flakes >= cur-first < f)
                   new-leaf (-> leaf
                                (assoc :flakes subrange
-                                      :floor cur-first
-                                      :ciel f
+                                      :first cur-first
+                                      :rhs f
                                       :leftmost? (and (empty? leaves)
                                                       leftmost?))
                                (dissoc :id))]
@@ -211,19 +211,19 @@
         (let [[new-children rst-children]
               (avl/split-at target-count remaining)
 
-              floor      (-> new-children first key)
-              ciel       (-> rst-children first key)
-              new-branch (-> parent
-                             (dissoc :id)
-                             (assoc :children new-children
-                                    :floor    floor
-                                    :ciel     ciel))]
+              first-flake (-> new-children first key)
+              rhs         (-> rst-children first key)
+              new-branch  (-> parent
+                              (dissoc :id)
+                              (assoc :children new-children
+                                     :first    first-flake
+                                     :rhs      rhs))]
           (recur (conj new-branches new-branch) rst-children))
-        (let [floor      (-> remaining first key)
-              last-child (-> parent
-                             (dissoc :id)
-                             (assoc :children remaining
-                                    :floor    floor))]
+        (let [first-flake (-> remaining first key)
+              last-child  (-> parent
+                              (dissoc :id)
+                              (assoc :children remaining
+                                     :first    first-flake))]
           (conj new-branches last-child))))))
 
 (defn write-if-novel
@@ -257,19 +257,19 @@
       children)))
 
 (defn descendant?
-  [{:keys [floor ciel] :as branch} node]
+  [{:keys [rhs], first-flake :first, :as branch} node]
   (if-not (index/branch? branch)
     false
     (let [cmp (:comparator branch)
-          {node-floor :floor, node-ciel :ciel} node]
-      (and (not (pos? (cmp floor node-floor)))
-           (or (nil? ciel)
-               (and (not (nil? node-ciel))
-                    (not (pos? (cmp node-ciel ciel)))))))))
+          {node-first :first, node-rhs :rhs} node]
+      (and (not (pos? (cmp first-flake node-first)))
+           (or (nil? rhs)
+               (and (not (nil? node-rhs))
+                    (not (pos? (cmp node-rhs rhs)))))))))
 
 (defn pop-descendants
   "Pops all the descendants of `branch` off of the top of the stack `in-stack`"
-  [{:keys [floor ciel] :as branch} in-stack]
+  [branch in-stack]
   (loop [child-nodes []
          stack       in-stack]
     (let [nxt (peek stack)]
@@ -291,12 +291,12 @@
                                              ;; `node-stream` is in depth-first
                                              ;; order
 
-                children (<! (write-descendants db idx node descendants))
-                floor    (-> children first key)
-                branch   (-> node
-                             (dissoc :id)
-                             (assoc :floor    floor
-                                    :children children))]
+                children    (<! (write-descendants db idx node descendants))
+                first-flake (-> children first key)
+                branch      (-> node
+                                (dissoc :id)
+                                (assoc :first    first-flake
+                                       :children children))]
             (recur (conj stack* branch))))
         (async/pipe (write-if-novel db idx (peek stack))
                     out)))
@@ -439,8 +439,8 @@
 
 
 (defn validate-idx-continuity
-  "Checks continuity of provided index in that the 'ciel' is equal to the
-  floor of the following segment."
+  "Checks continuity of provided index in that the 'rhs' is equal to the
+  first-flake of the following segment."
   ([conn idx-root] (validate-idx-continuity idx-root false))
   ([conn idx-root throw?] (validate-idx-continuity idx-root throw? nil))
   ([conn idx-root throw? compare]
@@ -449,37 +449,37 @@
          last-i   (dec (count children))]
      (println "Idx children: " (inc last-i))
      (loop [i        0
-            last-ciel nil]
+            last-rhs nil]
        (let [child       (-> children (nth i) val)
              resolved    (async/<!! (index/resolve conn child))
-             {:keys [id ciel leftmost?]} child
-             child-floor (:floor child)
-             resv-floor  (first (:flakes resolved))
-             ;; If floor is deleted, it should STILL be the first/ciel
-             ;; for unresolved nodes to maintain continuity
-             continuous? (= last-ciel child-floor)]
+             {:keys [id rhs leftmost?]} child
+             child-first (:first child)
+             resv-first  (first (:flakes resolved))
+             ;; If first-flake is deleted, it should STILL be the first/rhs for
+             ;; unresolved nodes to maintain continuity
+             continuous? (= last-rhs child-first)]
          (println "->>" id)
-         (println "         floor: " child-floor)
-         (println "    floor-resv: " resv-floor)
-         (println "      last-ciel: " last-ciel)
+         (println "   first-flake: " child-first)
+         (println "    first-resv: " resv-first)
+         (println "      last-rhs: " last-rhs)
          (println "     leftmost?: " leftmost?)
-         (println "           ciel: " ciel)
+         (println "           rhs: " rhs)
          (when (and compare
-                    child-floor ciel)
-           (println "         comp: " (compare child-floor ciel)))
+                    child-first rhs)
+           (println "         comp: " (compare child-first rhs)))
          (when (and throw?
                     (not (zero? i))
                     (not continuous?))
            (throw (Exception. (str "NOT CONTINUOUS!!!: " (pr-str {:id             id
                                                                   :idx            i
-                                                                  :last-ciel      last-ciel
-                                                                  :floor          child-floor
-                                                                  :floor-resolved resv-floor
-                                                                  :ciel           ciel
+                                                                  :last-rhs      last-rhs
+                                                                  :first          child-first
+                                                                  :first-resolved resv-first
+                                                                  :rhs           rhs
                                                                   :leftmost?      leftmost?})))))
          (if (= i last-i)
            (println "Done validating idx-continuity")
-           (recur (inc i) (:ciel child))))))))
+           (recur (inc i) (:rhs child))))))))
 
 
 (comment
