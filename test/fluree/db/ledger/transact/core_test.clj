@@ -2,7 +2,7 @@
   (:require [clojure.test :refer :all]
             [clojure.core.async :as async]
             [fluree.db.ledger.memorydb :as memorydb]
-            [fluree.db.ledger.transact.json :as tjson]
+            [fluree.db.ledger.transact.core :as tjson]
             [fluree.db.api :as fdb]
             [fluree.db.util.json :as json])
   (:import (java.time Instant)))

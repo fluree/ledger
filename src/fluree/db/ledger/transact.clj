@@ -11,7 +11,7 @@
             [fluree.db.constants :as const]
             [fluree.db.util.async :refer [<? go-try]]
             [fluree.db.ledger.txgroup.txgroup-proto :as txproto]
-            [fluree.db.ledger.transact.json :as tx-json]
+            [fluree.db.ledger.transact.core :as tx-core]
             [fluree.db.query.range :as query-range]))
 
 
@@ -57,7 +57,7 @@
              txns             {}
              remove-preds-acc #{}]
         (let [start-time    (util/current-time-millis)
-              tx-result     (<? (tx-json/transact db-root cmd-data next-t block-instant))
+              tx-result     (<? (tx-core/transact db-root cmd-data next-t block-instant))
               {:keys [db-after bytes fuel flakes tempids auth authority status error errors
                       hash remove-preds]} tx-result
               block-bytes*  (+ block-bytes bytes)
