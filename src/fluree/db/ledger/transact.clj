@@ -38,7 +38,10 @@
           block         (inc (:block db-current))
           block-instant (util/current-time-millis)
           before-t      (:t db-current)
-          prev-hash     (first (<? (query-range/index-range db-current :spot = [before-t const/$_block:hash])))
+          prev-hash     (some-> (query-range/index-range db-current :spot = [before-t const/$_block:hash])
+                                <?
+                                first
+                                .-o) ; get hash (object) from flake
           _             (when-not prev-hash
                           (throw (ex-info (str "Unable to retrieve previous block hash. Unexpected error.")
                                           {:status 500
