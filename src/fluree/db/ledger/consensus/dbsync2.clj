@@ -1,5 +1,6 @@
 (ns fluree.db.ledger.consensus.dbsync2
   (:require [fluree.db.storage.core :as storage]
+            [fluree.db.ledger.storage :as ledger-storage]
             [clojure.core.async :as async :refer [go <! >!]]
             [clojure.tools.logging :as log]
             [fluree.db.ledger.storage.filestore :as filestore]
@@ -229,27 +230,15 @@
   Puts block file keys (filenames) onto provided port if they are missing."
   [conn network dbid check-through port]
   (go-try
-    (let [file-path    (storage/block-storage-path network dbid)
-          _            (log/debug "check-all-blocks-consistency block-storage-path:" file-path)
-          storage-list (:storage-list conn)
-          all-files    (<? (storage-list file-path))
-          last-element (fn [path] (-> path (str/split #"/") last))
-          block-files  (filter #(->> % :name last-element (re-matches #"^[0-9]+\.fdbd"))
-                               all-files)
-          blocks       (reduce (fn [acc block-file]
-                                 (let [block (some->> (:name block-file)
-                                                      last-element
-                                                      ^String (re-find #"^[0-9]+")
-                                                      Long/parseLong)]
-                                   (if (> (:size block-file) 0)
-                                     (conj acc block)
-                                     acc)))
-                               #{} block-files)]
+    (log/debug (str "check-all-blocks-consistency for: " network "/" dbid "."))
+    (let [blocks (into #{} (<? (ledger-storage/blocks conn network dbid)))]
       (loop [block-n check-through]
         (if (< block-n 1)
           ::finished
           (do
             (when-not (contains? blocks block-n)
+              (log/info (str "Block " block-n " missing for ledger: " network "/" dbid
+                             ". Attempting to retrieve from other ledger server"))
               ;; block is missing, or file is empty... add to files we need to sync
               (>! port (storage/ledger-block-key network dbid block-n)))
             (recur (dec block-n))))))))
