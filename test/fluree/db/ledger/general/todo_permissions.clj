@@ -129,7 +129,20 @@
     ;; there should be 4 tempids
     (is (= 4 (count (:tempids td-resp))))))
 
-(deftest query-root-auth
+(deftest query-auth
+  (testing "Verify auth records exist")
+  (test/print-banner "starting query-auth")
+  (let [id-list (-> (basic/get-db test/ledger-todo)
+                    (fdb/query-async {:select ["*"] :from "_auth" :opts {:meta true}})
+                    async/<!!
+                    (as-> res (reduce-kv
+                                (fn [z _ v]
+                                  (into z [(-> v (get "todo/auth") (get "_id"))]))
+                                []
+                                res)))]
+    (is (= 5 (count id-list)))))
+
+(deftest query-todo-root-auth
   (testing "testing root auth sees all to-dos")
   (let [id-list (-> (basic/get-db test/ledger-todo {:auth ["_auth/id" (:auth sys-admin)]})
                     (fdb/query-async {:select ["*"] :from "todo"})
@@ -155,8 +168,8 @@
 
 (deftest retract-todo-auth-failure
   (testing "testing that non-system admin cannot delete someone else's to-do")
-  (let [txn [{:_id ["todo/id" "Scott"], :_action "delete"}]
-        opts {:auth (:auth kevin) :private-key (:private kevin) :txid-only false}
+  (let [txn [{:_id ["todo/id" "Kevin"], :_action "delete"}]
+        opts {:auth (:auth scott) :private-key (:private scott) :txid-only false}
         resp (async/<!! (fdb/transact-async (basic/get-conn) test/ledger-todo txn opts))]
     (is (= clojure.lang.ExceptionInfo (type resp)))
     (is (str/includes? resp "Insufficient permissions"))))
@@ -180,8 +193,9 @@
   (add-smart-functions)
   (add-user-auth)
   (add-todos)
-  (query-root-auth)
+  (query-todo-root-auth)
   (query-own-todo)
   (retract-todo-auth-failure)
+  (query-auth) ;; verify db cache
   (retract-todo-own)
   (retract-todo-system-admin))

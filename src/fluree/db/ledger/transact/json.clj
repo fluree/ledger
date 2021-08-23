@@ -612,7 +612,7 @@
 
 
 (defn transact
-  [db cmd-data t block-instant]
+  [db-root cmd-data t block-instant]
   (async/go
     (try
       (let [tx-map   (try (tx-util/validate-command (:command cmd-data))
@@ -624,12 +624,12 @@
                                              :cmd-data cmd-data}
                                             e))))
             _        (when (not-empty (:deps tx-map))       ;; transaction has dependencies listed, verify they are satisfied
-                       (<? (tx-validate/tx-deps-check db tx-map)))
-            tx-map*  (<? (tx-auth/add-auth-ids-permissions db tx-map))
-            tx-state (->tx-state db t block-instant tx-map*)
+                       (<? (tx-validate/tx-deps-check db-root tx-map)))
+            tx-map*  (<? (tx-auth/add-auth-ids-permissions db-root tx-map))
+            tx-state (->tx-state db-root t block-instant tx-map*)
             result   (async/<! (build-transaction tx-state))]
         (if (util/exception? result)
           (<? (tx-error/handler result tx-state))
           result))
       (catch Exception e
-        (async/<! (tx-error/pre-processing-handler e db cmd-data t))))))
+        (async/<! (tx-error/pre-processing-handler e db-root cmd-data t))))))

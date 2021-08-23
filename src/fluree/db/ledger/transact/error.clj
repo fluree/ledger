@@ -28,20 +28,20 @@
   [e tx-state]
   (go-try
     (let [{:keys [message status error]} (decode-exception e)
-          {:keys [db-before auth-id authority-id t txid tx-type fuel]} tx-state
+          {:keys [db-root auth-id authority-id t txid tx-type fuel]} tx-state
           flakes           (->> (tx-meta/tx-meta-flakes tx-state message)
                                 (into (flake/sorted-set-by flake/cmp-flakes-block)))
           hash-flake       (tx-meta/generate-hash-flake flakes tx-state)
           all-flakes       (conj flakes hash-flake)
-          fast-forward-db? (:tt-id db-before)
+          fast-forward-db? (:tt-id db-root)
           db-after         (if fast-forward-db?
-                             (<? (dbproto/-forward-time-travel db-before all-flakes))
-                             (<? (dbproto/-with-t db-before all-flakes)))
-          tx-bytes         (- (get-in db-after [:stats :size]) (get-in db-before [:stats :size]))]
+                             (<? (dbproto/-forward-time-travel db-root all-flakes))
+                             (<? (dbproto/-with-t db-root all-flakes)))
+          tx-bytes         (- (get-in db-after [:stats :size]) (get-in db-root [:stats :size]))]
       {:error        error
        :t            t
        :hash         (.-o ^Flake hash-flake)
-       :db-before    db-before
+       :db-before    db-root
        :db-after     db-after
        :flakes       all-flakes
        :tempids      nil
@@ -69,7 +69,7 @@
 
 
 (defn spec-error
-  [return-map errors {:keys [db-before] :as tx-state}]
+  [return-map errors {:keys [db-root] :as tx-state}]
   (go-try
     (let [sorted-errors    (sort error-priority-sort errors)
           reported-error   (first sorted-errors)            ;; we only report a single error in the ledger
@@ -79,11 +79,11 @@
                                 (into (flake/sorted-set-by flake/cmp-flakes-block)))
           hash-flake       (tx-meta/generate-hash-flake flakes tx-state)
           all-flakes       (conj flakes hash-flake)
-          fast-forward-db? (:tt-id db-before)
+          fast-forward-db? (:tt-id db-root)
           db-after         (if fast-forward-db?
-                             (<? (dbproto/-forward-time-travel db-before all-flakes))
-                             (<? (dbproto/-with-t db-before all-flakes)))
-          tx-bytes         (- (get-in db-after [:stats :size]) (get-in db-before [:stats :size]))]
+                             (<? (dbproto/-forward-time-travel db-root all-flakes))
+                             (<? (dbproto/-with-t db-root all-flakes)))
+          tx-bytes         (- (get-in db-after [:stats :size]) (get-in db-root [:stats :size]))]
       (assoc return-map :error error
                         :errors sorted-errors
                         :db-after db-after
@@ -100,7 +100,7 @@
   Because of this we don't have basic information about the transaction
   but we still want to record the tx. We'll assume cmd-data is a string
   and instead of extracting a command out of it (which didn't work"
-  [e db cmd-data t]
+  [e db-root cmd-data t]
   (go-try
     (let [{:keys [message status error]} (decode-exception e)
           {:keys [sig cmd]} (:command cmd-data)
@@ -110,15 +110,15 @@
                                 (into (flake/sorted-set-by flake/cmp-flakes-block)))
           hash-flake       (tx-meta/generate-hash-flake flakes tx-state)
           all-flakes       (conj flakes hash-flake)
-          fast-forward-db? (:tt-id db)
+          fast-forward-db? (:tt-id db-root)
           db-after         (if fast-forward-db?
-                             (<? (dbproto/-forward-time-travel db all-flakes))
-                             (<? (dbproto/-with-t db all-flakes)))
-          tx-bytes         (- (get-in db-after [:stats :size]) (get-in db [:stats :size]))]
+                             (<? (dbproto/-forward-time-travel db-root all-flakes))
+                             (<? (dbproto/-with-t db-root all-flakes)))
+          tx-bytes         (- (get-in db-after [:stats :size]) (get-in db-root [:stats :size]))]
       {:error        error
        :t            t
        :hash         (.-o ^Flake hash-flake)
-       :db-before    db
+       :db-before    db-root
        :db-after     db-after
        :flakes       all-flakes
        :tempids      nil
@@ -146,14 +146,15 @@
   - could not resolve auth/authority
 
   Returns an async channel."
-  [e db cmd-data t]
+  [e db-root cmd-data t]
   (let [{:keys [error]} (decode-exception e)]
     (if (= error :db/command-parse-exception)               ;; error happened parsing/validating command map... need special handling as same parsing attempted below
-      (throw-validation-exception e db cmd-data t)
+      (throw-validation-exception e db-root cmd-data t)
       (let [tx-map   (tx-util/validate-command (:command cmd-data))
             {:keys [txid auth authority cmd sig type]} tx-map
             tx-state {:t            t
-                      :db-before    db
+                      :db-root      db-root
+                      :db-before    db-root
                       :fuel         (atom {:spent 0})
                       :txid         txid
                       :auth-id      auth

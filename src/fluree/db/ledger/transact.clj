@@ -11,7 +11,8 @@
             [fluree.db.constants :as const]
             [fluree.db.util.async :refer [<? go-try]]
             [fluree.db.ledger.txgroup.txgroup-proto :as txproto]
-            [fluree.db.ledger.transact.json :as tx-json]))
+            [fluree.db.ledger.transact.json :as tx-json]
+            [fluree.db.query.range :as query-range]))
 
 
 (defn valid-authority?
@@ -27,28 +28,28 @@
   [session transactions]
   (go-try
     (let [private-key   (:tx-private-key (:conn session))
-          db-before-ch  (session/current-db session)
-          db-before     (<? db-before-ch)
-          _             (when (nil? db-before)
+          db-current    (<? (session/current-db session))
+          _             (when (nil? db-current)
                           ;; TODO - think about this error, if it is possible, and what to do with any pending transactions
                           (log/warn "Unable to find a current db. Db transaction processor closing for db: %s/%s." (:network session) (:dbid session))
                           (session/close session)
                           (throw (ex-info (format "Unable to find a current db for: %s/%s." (:network session) (:dbid session))
                                           {:status 400 :error :db/invalid-transaction})))
-          block         (inc (:block db-before))
+          block         (inc (:block db-current))
           block-instant (util/current-time-millis)
-          prev-hash     (<? (fql/query db-before {:selectOne "?hash"
-                                                  :where     [["?t" "_block/number" (:block db-before)]
-                                                              ["?t" "_block/hash" "?hash"]]}))
+          before-t      (:t db-current)
+          prev-hash     (some-> (query-range/index-range db-current :spot = [before-t const/$_block:hash])
+                                <?
+                                first
+                                .-o) ; get hash (object) from flake
           _             (when-not prev-hash
                           (throw (ex-info (str "Unable to retrieve previous block hash. Unexpected error.")
                                           {:status 500
-                                           :error  :db/unexpected-error})))
-          before-t      (:t db-before)]
+                                           :error  :db/unexpected-error})))]
       ;; perform each transaction in order
       (loop [[cmd-data & r] transactions
              next-t           (dec before-t)
-             db               db-before
+             db-root          db-current
              block-bytes      0
              block-fuel       0
              block-flakes     (flake/sorted-set-by flake/cmp-flakes-block)
@@ -56,7 +57,7 @@
              txns             {}
              remove-preds-acc #{}]
         (let [start-time    (util/current-time-millis)
-              tx-result     (<? (tx-json/transact db cmd-data next-t block-instant))
+              tx-result     (<? (tx-json/transact db-root cmd-data next-t block-instant))
               {:keys [db-after bytes fuel flakes tempids auth authority status error errors
                       hash remove-preds]} tx-result
               block-bytes*  (+ block-bytes bytes)
@@ -101,7 +102,7 @@
                                              acc []]
                                         (if-not sig
                                           acc
-                                          (let [auth-sid (<? (dbproto/-subid db-before ["_auth/id" (crypto/account-id-from-message hash sig)]))
+                                          (let [auth-sid (<? (dbproto/-subid db-current ["_auth/id" (crypto/account-id-from-message hash sig)]))
                                                 acc*     (if auth-sid
                                                            (-> acc
                                                                (conj (flake/->Flake block-t const/$_block:ledgers auth-sid block-t true nil))
@@ -115,12 +116,12 @@
                   latest-db           (<? (session/current-db session))
                   ;; if db was indexing and is now complete, add all flakes to newly indexed db... else just add new block flakes to latest db.
                   db-after*           (cond
-                                        (not= (:block latest-db) (:block db-before))
+                                        (not= (:block latest-db) (:block db-current))
                                         (throw (ex-info "While performing transactions, latest db became newer. Cancelling."
                                                         {:status 500 :error :db/unexpected-error}))
 
                                         ;; nothing has changed, just add block flakes to latest db
-                                        (= (get-in db-before [:stats :indexed]) (get-in latest-db [:stats :indexed]))
+                                        (= (get-in db-current [:stats :indexed]) (get-in latest-db [:stats :indexed]))
                                         (<? (dbproto/-with db-after block (sort flake/cmp-flakes-spot-novelty new-flakes*)))
 
                                         ;; database has been re-indexed while we were transacting. Use latest indexed
@@ -128,9 +129,9 @@
                                         :else
                                         (do
                                           (log/info "---> While transacting, database has been reindexed. Reapplying all block flakes to latest."
-                                                    {:original-index (get-in db-before [:stats :indexed]) :latest-index (get-in latest-db [:stats :indexed])})
+                                                    {:original-index (get-in db-current [:stats :indexed]) :latest-index (get-in latest-db [:stats :indexed])})
                                           (<? (dbproto/-with latest-db block all-flakes))))
-                  block-result        {:db-before   db-before
+                  block-result        {:db-before   db-current
                                        :db-after    db-after*
                                        :cmd-types   cmd-types*
                                        :block       block
@@ -139,20 +140,14 @@
                                        :sigs        sigs
                                        :instant     block-instant
                                        :flakes      (into [] all-flakes)
-                                       :block-bytes (- (get-in db-after* [:stats :size]) (get-in db-before [:stats :size]))
+                                       :block-bytes (- (get-in db-after* [:stats :size]) (get-in db-current [:stats :size]))
                                        :txns        txns*}
                   ;; update db status for tx group
-                  new-block-resp (<? (txproto/propose-new-block-async
-                                       (-> session :conn :group) (:network session)
-                                       (:dbid session) (dissoc block-result :db-before :db-after)))]
+                  new-block-resp      (<? (txproto/propose-new-block-async
+                                            (-> session :conn :group) (:network session)
+                                            (:dbid session) (dissoc block-result :db-before :db-after)))]
               (if (true? new-block-resp)
                 (do
-                  ;; update cached db
-                  ;(let [new-db-ch (async/promise-chan)]
-                  ;  (async/put! new-db-ch (:db-after block-result))
-                  ;  (session/cas-db! session db-before-ch new-db-ch))
-                  ;; reindex if needed
-                  ;; to do -add opts
                   (<? (indexing/index* session {:remove-preds remove-preds*}))
                   block-result)
                 (do
