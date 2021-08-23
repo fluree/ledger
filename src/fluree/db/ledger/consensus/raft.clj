@@ -9,12 +9,14 @@
             [fluree.db.serde.avro :as avro]
             [fluree.db.event-bus :as event-bus]
             [fluree.db.ledger.consensus.tcp :as ftcp]
-            [fluree.db.util.async :refer [go-try <??]]
+            [fluree.db.util.async :refer [go-try <? <??]]
             [fluree.db.ledger.txgroup.txgroup-proto :as txproto :refer [TxGroup]]
             [fluree.db.ledger.consensus.update-state :as update-state]
             [fluree.db.ledger.txgroup.monitor :as group-monitor]
             [fluree.db.ledger.consensus.dbsync2 :as dbsync2]
-            [fluree.crypto :as crypto])
+            [fluree.crypto :as crypto]
+            [fluree.db.ledger.storage :as ledger-storage]
+            [fluree.db.constants :as const])
   (:import (java.util UUID)))
 
 
@@ -708,6 +710,37 @@
     (acquire-lease-async raft [:leases :servers this-server] this-server expire-ms)))
 
 
+(defn check-if-newer-blocks-on-disk
+  "In the case of startup as a leader, but possibly old raft state, we check to see
+  if there are newer blocks on disk that were added after the raft state we started with.
+
+  If so, it will broadcast those blocks out."
+  [{:keys [group] :as conn}]
+  (go-try
+    (let [current-state @(:state-atom group)]
+      (when-let [ledgers (not-empty (txproto/ledger-list* current-state))]
+        (doseq [[network dbid] ledgers]
+          (let [latest-block (txproto/block-height* current-state network dbid)]
+
+            (log/debug "Raft startup - latest block: " [network dbid] latest-block)
+            (loop [next-block (inc latest-block)]
+              (when (<? (ledger-storage/block-exists? conn network dbid next-block))
+                (let [block-data  (<? (storage/read-block conn network dbid next-block))
+                      ;; incoming raft event expects a map of txns in block, with txid being keys. and :cmd-types
+                      ;; would error in raft if these are not included, recreate from block data
+                      block-data* (assoc block-data :cmd-types #{:tx}
+                                                    :txns (->> (:flakes block-data)
+                                                               (keep #(when (= const/$_tx:id (.-p %))
+                                                                        [(.-o %) nil]))
+                                                               (into {})))]
+
+                  (log/info (str "Ledger " network "/" dbid
+                                 " has block file(s) beyond raft known block height of "
+                                 latest-block ". Found block: " next-block))
+                  (<? (txproto/propose-new-block-async group network dbid block-data*)))
+                (recur (inc next-block))))))))))
+
+
 (defn raft-start-up
   [group conn system* shutdown _]
   (async/go
@@ -737,12 +770,18 @@
 
 
            (when (async/<! (is-leader?-async group))
-             (when (empty? (txproto/get-shared-private-key group))
-               (log/info "Brand new Fluree instance, establishing default shared private key.")
-               ;; TODO - check environment to see if a private key was supplied
-               (let [private-key (or (:tx-private-key conn)
-                                     (:private (crypto/generate-key-pair)))]
-                 (txproto/set-shared-private-key (:group conn) private-key))))
+             (let [new-instance? (empty? (txproto/get-shared-private-key group))]
+               (if new-instance?
+                 (do
+                   (log/info "Brand new Fluree instance, establishing default shared private key.")
+                   ;; TODO - check environment to see if a private key was supplied
+                   (let [private-key (or (:tx-private-key conn)
+                                         (:private (crypto/generate-key-pair)))]
+                     (txproto/set-shared-private-key (:group conn) private-key)))
+                 ;; not a new instance, but just started as leader - could have old
+                 ;; raft files that don't have latest blocks. Check, and potentially add latest block
+                 ;; files to network.
+                 (<? (check-if-newer-blocks-on-disk conn)))))
 
 
            ;; monitor state changes to kick of transactions for any queues
