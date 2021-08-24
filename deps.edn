@@ -17,6 +17,7 @@
         com.cognitect.aws/s3 {:mvn/version "811.2.934.0"}
 
         ;; web server
+        aleph/aleph {:mvn/version "0.4.7-alpha7"}
         aleph-middleware/aleph-middleware {:mvn/version "0.2.0"}
         ring/ring-core {:mvn/version "1.9.4"}
         ring-cors/ring-cors {:mvn/version "0.1.13"}
