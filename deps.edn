@@ -44,9 +44,7 @@
    :extra-deps  {org.clojure/tools.namespace {:mvn/version "1.1.0"}}}
 
   :test
-  {:extra-paths ["test"]
-   ;; TODO: Port this code to http-kit and remove this extra dep
-   :extra-deps {aleph-middleware/aleph-middleware {:mvn/version "0.2.0"}}}
+  {:extra-paths ["test"]}
 
   :runner
   {:extra-paths ["test-resources"]
