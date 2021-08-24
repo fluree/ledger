@@ -7,7 +7,8 @@
             [fluree.db.ledger.docs.getting-started.basic-schema :as basic]
             [fluree.db.ledger.test-helpers :as test]
             [fluree.db.query.http-signatures :as http-signatures]
-            [aleph.http :as http]
+            [org.httpkit.client :as http]
+            #_[aleph.http :as http]
             [byte-streams :as bs]
             [fluree.db.util.json :as json]))
 
@@ -37,13 +38,16 @@
         my-request   {:headers {"content-type" "application/json"}
                       :body    (json/stringify query)}
         q-endpoint   (str endpoint "multi-query")
-        level-1-req  (-> (http-signatures/sign-request :post q-endpoint my-request (:private-key jdoe))
-                         (assoc :content-type :json))
-        level-2-req  (-> (http-signatures/sign-request :post q-endpoint my-request (:private-key zsmith))
-                         (assoc :content-type :json))
-        level-1-resp (-> @(http/post q-endpoint level-1-req) :body bs/to-string json/parse)
-        level-2-resp (-> @(http/post q-endpoint level-2-req) :body bs/to-string json/parse)]
+        ;; TODO: verify sign-request works with new request structure
+        level-1-req  (http-signatures/sign-request :post q-endpoint my-request (:private-key jdoe))
+        level-2-req  (http-signatures/sign-request :post q-endpoint my-request (:private-key zsmith))
+        l1-resp @(http/post q-endpoint level-1-req)
+        l2-resp @(http/post q-endpoint level-2-req)
+        level-1-resp (-> l1-resp :body bs/to-string json/parse)
+        level-2-resp (-> l2-resp :body bs/to-string json/parse)]
 
+    (is (= {} l1-resp))
+    (is (= {} l2-resp))
     ;; Level 1 should not be able to view chat/comments
     (is (= #{} (->> level-1-resp :chat (map :chat/comments) flatten (remove nil?) set)))
 

@@ -1,7 +1,8 @@
 (ns fluree.db.ledger.load.load
   (:require [clojure.test :refer :all]
-            [aleph.http :as http]
-            ;[clj-gatling.core :as gatling]
+            [org.httpkit.client :as http]
+            #_[aleph.http :as http]
+            ;; [clj-gatling.core :as gatling]
             [criterium.core :as criterium]
             [fluree.db.util.json :as json]))
 

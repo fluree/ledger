@@ -41,9 +41,7 @@
 
   :dev
   {:extra-paths ["dev"]
-   :extra-deps {org.clojure/tools.namespace {:mvn/version "1.1.0"}}
-   :main-opts ["-e" "(require,'user)"
-               "-e" "(in-ns,'user)"]}
+   :extra-deps  {org.clojure/tools.namespace {:mvn/version "1.1.0"}}}
 
   :test
   {:extra-paths ["test"]
@@ -70,7 +68,7 @@
   {:replace-deps {com.github.seancorfield/depstar {:mvn/version "2.1.278"}}
    :exec-fn hf.depstar/uberjar
    :exec-args {:jar "target/fluree-ledger.standalone.jar"
-               :aot true
+               :aot [fluree.db.server]
                :main-class fluree.db.server
                :group-id :mvn/group-id
                :artifact-id :mvn/artifact-id
