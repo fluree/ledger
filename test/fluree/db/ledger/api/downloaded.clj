@@ -552,10 +552,28 @@
 
     (is (= 64 (count body)))))
 
+(deftest command-add-person-verbose
+  (testing "Issue a signed command to add a person.")
+  (let [privKey  (slurp "default-private-key.txt")
+        cmd-map  (fdb/tx->command test/ledger-endpoints
+                                  [{:_id "person" :stringNotUnique "Sally"}]
+                                  privKey)
+        cmd-map* (assoc cmd-map :txid-only false)
+        res      @(http/post (str endpoint-url "command") (standard-request cmd-map*))
+        body     (-> res :body bs/to-string json/parse)]
+
+    (is (= 200 (:status res)))
+
+    (is (map? body))
+
+    (is (test/contains-many? body :tempids :block :hash :instant
+                             :type :duration :fuel :auth :status :id
+                             :bytes :t :flakes))))
 
 (deftest standalone-add-person-command*
   (add-schema*)
-  (command-add-person))
+  (command-add-person)
+  (command-add-person-verbose))
 
 
 ;; TODO - can't test this with other tests - fails. Can't have any txns processed between gen-flakes and query-with. Not sure how to make sure of that. Running the independent version succeeds.
@@ -607,6 +625,7 @@
   (new-keys*)
   (add-a-person-graphql)
   (command-add-person)
+  (command-add-person-verbose)
   (get-all-dbs)
   (health-check))
 
