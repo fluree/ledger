@@ -6,7 +6,8 @@
             [clojure.core.async :as async :refer [<! chan go go-loop]]
             [clojure.tools.logging :as log])
   (:import (fluree.db.flake Flake)
-           (java.time Instant)))
+           (java.time Instant)
+           (java.io Closeable)))
 
 (set! *warn-on-reflection* true)
 
@@ -249,7 +250,7 @@
   channel that will eventually contain the result of the index operation. The
   recognized actions are `:block`, `:range`, and `:reset`."
   [conn]
-  (when-let [base-path (-> conn :meta :file-storage-path)]
+  (when (-> conn :meta :file-storage-path)
     (let [write-q (chan)
           closer  (fn []
                     (async/close! write-q))
@@ -264,8 +265,8 @@
           (let [{:keys [action db]} msg
                 {:keys [network dbid]} db
                 lang (-> db :settings :language (or :default))]
-            (with-open [idx  (full-text/open-storage conn network dbid lang)
-                        wrtr (full-text/writer idx)]
+            (with-open [^Closeable idx (full-text/open-storage conn network dbid lang)
+                        ^Closeable wrtr (full-text/writer idx)]
               (let [result  (case action
                               :block (let [{:keys [block]} msg]
                                        (<! (write-block idx wrtr db block)))
