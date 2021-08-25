@@ -5,7 +5,7 @@
                                            :sha     "9debad6a99c03a91f1f678bdee05385c5fa269e4"}
         com.fluree/raft                   {:mvn/version "1.0.0-beta1"}
         com.fluree/crypto                 {:git/url "https://github.com/fluree/fluree.crypto.git"
-                                           :sha     "7d5503bcddf012d0c6b08b9a26fa6a41a760b468"}
+                                           :sha     "4b7d65534ce6a0198d63da98661a1cf7e02dbd91"}
 
         ;; network comm
         net.async/async                   {:mvn/version "0.1.0"}
@@ -15,8 +15,8 @@
 
         ;; AWS S3 API
         com.cognitect.aws/api             {:mvn/version "0.8.515"}
-        com.cognitect.aws/endpoints       {:mvn/version "1.1.12.13"}
-        com.cognitect.aws/s3              {:mvn/version "811.2.934.0"}
+        com.cognitect.aws/endpoints       {:mvn/version "1.1.12.51"}
+        com.cognitect.aws/s3              {:mvn/version "813.2.972.0"}
 
         ;; web server
         http-kit/http-kit                 {:mvn/version "2.5.3"}
@@ -54,11 +54,11 @@
   {:extra-paths ["test-resources"]
    :extra-deps {com.cognitect/test-runner
                 {:git/url "https://github.com/cognitect-labs/test-runner.git"
-                 :sha "4e7e1c0dfd5291fa2134df052443dc29695d8cbe"}}
+                 :sha "e7660458ce25bc4acb4ccc3e2415aae0a4907198"}}
    :main-opts ["-m" "cognitect.test-runner"]}
 
   :jar
-  {:replace-deps {com.github.seancorfield/depstar {:mvn/version "2.1.267"}}
+  {:replace-deps {com.github.seancorfield/depstar {:mvn/version "2.1.278"}}
    :exec-fn hf.depstar/jar
    :exec-args {:jar "target/fluree-ledger.jar"
                :group-id :mvn/group-id
@@ -67,7 +67,7 @@
                :sync-pom true}}
 
   :uberjar
-  {:replace-deps {com.github.seancorfield/depstar {:mvn/version "2.1.267"}}
+  {:replace-deps {com.github.seancorfield/depstar {:mvn/version "2.1.278"}}
    :exec-fn hf.depstar/uberjar
    :exec-args {:jar "target/fluree-ledger.standalone.jar"
                :aot true
@@ -121,5 +121,5 @@
    :main-opts ["-m" "antq.core" "--skip=github-action"]}
 
   :clj-kondo
-  {:extra-deps {clj-kondo/clj-kondo {:mvn/version "2021.07.28"}}
+  {:extra-deps {clj-kondo/clj-kondo {:mvn/version "2021.08.06"}}
    :main-opts ["-m" "clj-kondo.main" "--lint" "src" "--config" ".clj-kondo/config.edn"]}}}
