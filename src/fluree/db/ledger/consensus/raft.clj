@@ -22,6 +22,8 @@
 
 (set! *warn-on-reflection* true)
 
+(set! *warn-on-reflection* true)
+
 
 (defn snapshot-xfer
   "Transfers snapshot from this server as leader, to a follower.
