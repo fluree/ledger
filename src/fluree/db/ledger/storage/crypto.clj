@@ -5,6 +5,8 @@
            (java.security SecureRandom)
            (javax.crypto BadPaddingException)))
 
+(set! *warn-on-reflection* true)
+
 (defn decrypt-bytes
   [ba enc-key]
   (let [bb             (ByteBuffer/wrap ba)
@@ -37,10 +39,10 @@
 
 (defn encrypt-bytes
   [ba enc-key]
-  (let [iv       (random-bytes 16)
-        enc      (crypto/aes-encrypt ba iv enc-key :none)
-        bb       (ByteBuffer/allocate (+ (count enc) 18))
-        f-format (byte-array [2 1])]
+  (let [^bytes iv  (random-bytes 16)
+        ^bytes enc (crypto/aes-encrypt ba iv enc-key :none)
+        bb         (ByteBuffer/allocate (+ (count enc) 18))
+        f-format   (byte-array [2 1])]
     (doto bb
       (.put f-format)
       (.put iv)

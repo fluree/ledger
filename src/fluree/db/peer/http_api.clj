@@ -36,12 +36,13 @@
             [fluree.db.storage.core :as storage-core]
             [fluree.db.ledger.transact.core :as tx-core]
             [fluree.db.util.tx :as tx-util])
-  (:import (java.io Closeable)
-           (java.time Instant)
+  (:import (java.time Instant)
            (java.net BindException)
            (fluree.db.flake Flake)
            (clojure.lang ExceptionInfo)
-           (clojure.core.async.impl.channels ManyToManyChannel)))
+           (org.httpkit BytesInputStream)))
+
+(set! *warn-on-reflection* true)
 
 (defn s
   [^Flake f]
@@ -71,11 +72,11 @@
 
 (defn- collect-errors
   [e debug-mode?]
-  (let [base-resp (merge (ex-data e) {:message (.getMessage e)})
+  (let [base-resp (merge (ex-data e) {:message (ex-message e)})
         error     (cond->
                     base-resp
-                    debug-mode? (assoc :stack (mapv str (.getStackTrace e))))]
-    (if-let [cause (.getCause e)]
+                    debug-mode? (assoc :stack (mapv str (.getStackTrace ^Throwable e))))]
+    (if-let [cause (ex-cause e)]
       (assoc error :cause (collect-errors cause debug-mode?))
       error)))
 
@@ -112,7 +113,8 @@
 (defn decode-body
   [body type]
   (case type
-    :json (-> body .bytes (String. "UTF-8") json/parse)))
+    :json (let [^bytes body' (.bytes ^BytesInputStream body)]
+            (-> body' (String. "UTF-8") json/parse))))
 
 
 (defn- return-token
@@ -880,7 +882,7 @@
   (fn [request]
     (let [uri (:uri request)]
       (handler (assoc request :uri (if (and (not (= "/" uri))
-                                            (.endsWith uri "/"))
+                                            (str/ends-with? uri "/"))
                                      (subs uri 0 (dec (count uri)))
                                      uri))))))
 
@@ -962,7 +964,7 @@
           system*     (assoc system :clients clients
                                     :debug-mode? debug-mode?
                                     :open-api open-api)
-          server-proc (try
+          _           (try
                         (json/encode-BigDecimal-as-string json-bigdec-string)
                         (reset! web-server (http/run-server
                                              (make-handler system*)
@@ -976,7 +978,6 @@
                           (log/error "FlureeDB Exiting.")
                           (System/exit 1)))
           close-fn    (fn []
-                        (.close ^Closeable server-proc)
                         (@web-server :timeout 1000) ; shut down the web server but give existing connections 1s to finish
                         (reset! web-server nil))]
       (map->WebServer {:close close-fn}))))

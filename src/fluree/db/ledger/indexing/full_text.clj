@@ -5,8 +5,10 @@
             [fluree.db.util.schema :as schema]
             [clojure.core.async :as async :refer [<! chan go go-loop]]
             [clojure.tools.logging :as log])
-  (:import fluree.db.flake.Flake
-           java.time.Instant))
+  (:import (fluree.db.flake Flake)
+           (java.time Instant)))
+
+(set! *warn-on-reflection* true)
 
 (defn separate-by-op
   [flakes]

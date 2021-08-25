@@ -17,6 +17,7 @@
             [fluree.db.ledger.consensus.raft :as raft]
             [fluree.db.dbproto :as dbproto]))
 
+(set! *warn-on-reflection* true)
 
 (defn- throw-invalid-command
   [message]
@@ -192,7 +193,7 @@
                     (let [exdata     (ex-data e)
                           status     (or (:status exdata) 500)
                           error      (or (:error exdata) :db/unexpected-error)
-                          error-resp {:message (.getMessage e)
+                          error-resp {:message (ex-message e)
                                       :status  status
                                       :error   error}]
                       ;; log any unexpected errors locally
@@ -216,7 +217,7 @@
                      (cond-> {:open-api?          open-api?
                               :password-enabled?  (-> system :conn pw-auth/password-enabled?)}
                              (or open-api? has-auth?) (assoc :jwt-secret (-> system :conn :meta :password-auth :secret
-                                                                         (ab-core/byte-array-to-base :hex)))
+                                                                             (ab-core/byte-array-to-base :hex)))
                              true success!))
 
          :cmd (success! (process-command system arg))

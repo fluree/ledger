@@ -5,6 +5,8 @@
             [fluree.db.dbproto :as dbproto])
   (:import (fluree.db.flake Flake)))
 
+(set! *warn-on-reflection* true)
+
 ;; functions related to validating and working with schemas inside of transactions
 
 (def ^:const collection-name-regex #"^[a-zA-Z0-9_][a-zA-Z0-9\.\-_]{0,254}$")
@@ -77,8 +79,8 @@
     (throw (ex-info (str "Somehow there are more than two type flakes for a predicate, provided: " type-flakes)
                     {:status 400
                      :error  :db/invalid-tx})))
-  (let [old-type          (some #(when (false? (.-op %)) (.-o %)) type-flakes)
-        new-type          (some #(when (true? (.-op %)) (.-o %)) type-flakes)
+  (let [old-type          (some #(let [^Flake f %] (when (false? (.-op f)) (.-o f))) type-flakes)
+        new-type          (some #(let [^Flake f %] (when (true? (.-op f)) (.-o f))) type-flakes)
         allowed-old-types (get valid-type-changes new-type (constantly nil))]
     (cond
       ;; new predicate (not a modification), allow
@@ -114,8 +116,8 @@
   (when (>= 1 (count multi-flakes) 2)
     (throw (ex-info (str "At most there should be a predicate multi retraction and new assertion, provided: " multi-flakes)
                     {:status 400 :error :db/invalid-tx})))
-  (let [old-multi-val (some #(when (false? (.-op %)) (.-o %)) multi-flakes)
-        new-multi-val (some #(when (true? (.-op %)) (.-o %)) multi-flakes)]
+  (let [old-multi-val (some #(let [^Flake f %] (when (false? (.-op f)) (.-o f))) multi-flakes)
+        new-multi-val (some #(let [^Flake f %] (when (true? (.-op f)) (.-o f))) multi-flakes)]
     (if (and (true? old-multi-val) (false? new-multi-val))
       (throw (ex-info (str "A multi-cardinality value cannot be set to single-cardinality.")
                       {:status 400
@@ -129,7 +131,7 @@
   (when (>= 1 (count component-flakes) 2)
     (throw (ex-info (str "At most there should be a predicate component retraction and new assertion, provided: " component-flakes)
                     {:status 400 :error :db/invalid-tx})))
-  (let [new-component-val (some #(when (true? (.-op %)) (.-o %)) component-flakes)]
+  (let [new-component-val (some #(let [^Flake f %] (when (true? (.-op f)) (.-o f))) component-flakes)]
     (cond
       ;; make sure for any new predicate with :component true, that type is ref.
       (and new? (true? new-component-val))
@@ -160,13 +162,14 @@
   (when (>= 1 (count unique-flakes) 2)
     (throw (ex-info (str "At most there should be a predicate unique retraction and new assertion, provided: " unique-flakes)
                     {:status 400 :error :db/invalid-tx})))
-  (let [new-unique-val (some #(when (true? (.-op %)) (.-o %)) unique-flakes)
+  (let [new-unique-val (some #(let [^Flake f %] (when (true? (.-op f)) (.-o f))) unique-flakes)
         on?            (true? new-unique-val)
         turning-on?    (and on? (not new?))                 ;; unique was false, but now becoming true.
         bool-type?     (or (= :boolean (get-in existing-schema [:pred pred-sid :type]))
-                           (some #(and (= (.-p %) const/$_predicate:type)
-                                       (= (:boolean type->sid) (.-o %))
-                                       (true? (.-op %)))
+                           (some #(let [^Flake f %]
+                                    (and (= (.-p f) const/$_predicate:type)
+                                         (= (:boolean type->sid) (.-o f))
+                                         (true? (.-op f))))
                                  pred-flakes))]
     (cond
       (true? bool-type?)
@@ -220,8 +223,9 @@
   remove-from-post atom in tx-state."
   [flakes index-flakes {:keys [remove-from-post]}]
   (when-let [remove-post-sids (->> index-flakes
-                                   (keep #(when (and (true? (.-op %)) (false? (.-o %)))
-                                            (.-s %)))
+                                   (keep #(let [^Flake f %]
+                                            (when (and (true? (.-op f)) (false? (.-o f))))
+                                            (.-s f)))
                                    (not-empty))]
     (swap! remove-from-post into remove-post-sids))
   flakes)
@@ -233,7 +237,7 @@
   (when (>= 1 (count pred-name-flakes) 2)
     (throw (ex-info (str "At most there should be a predicate name retraction and new assertion, provided: " pred-name-flakes)
                     {:status 400 :error :db/invalid-predicate})))
-  (when-let [new-pred-name (some #(when (true? (.-op %)) (.-o %)) pred-name-flakes)]
+  (when-let [new-pred-name (some #(let [^Flake f %] (when (true? (.-op f)) (.-o f))) pred-name-flakes)]
     (when (or (not (re-matches predicate-name-regex new-pred-name))
               (re-matches predicate-contains-via-regex new-pred-name)
               (re-matches predicate-contains-__-regex new-pred-name))

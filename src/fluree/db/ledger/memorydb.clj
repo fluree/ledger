@@ -6,6 +6,8 @@
             [fluree.db.dbproto :as dbproto]
             [fluree.db.flake :as flake]))
 
+(set! *warn-on-reflection* true)
+
 ;; One-off in-memory dbs, eventually move to fluree/db repository so local in-memory dbs can be launched
 ;; inside application servers, web browsers, ?? - to maintain local state but have all of the other benefits
 

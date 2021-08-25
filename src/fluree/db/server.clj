@@ -25,6 +25,8 @@
             [clojure.pprint :as pprint]
             [fluree.db.conn-events :as conn-events]))
 
+(set! *warn-on-reflection* true)
+
 ;; instantiates server operations
 
 (defn local-message-process

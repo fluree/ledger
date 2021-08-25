@@ -6,6 +6,8 @@
             [fluree.db.util.async :refer [go-try <?]]
             [fluree.db.ledger.txgroup.txgroup-proto :as txproto]))
 
+(set! *warn-on-reflection* true)
+
 ;; for deleting a current db
 
 (defn delete-all-index-children

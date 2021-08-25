@@ -11,6 +11,8 @@
             [fluree.db.ledger.util :as util])
   (:import (java.util UUID)))
 
+(set! *warn-on-reflection* true)
+
 ;; map of current websocket connections
 (def ^:private ws-connections (atom {}))
 

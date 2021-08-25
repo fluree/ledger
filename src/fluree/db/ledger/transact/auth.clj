@@ -8,6 +8,8 @@
             [fluree.db.permissions :as permissions]
             [fluree.db.util.log :as log]))
 
+(set! *warn-on-reflection* true)
+
 (defn- valid-authority?
   [db auth authority]
   (async/go

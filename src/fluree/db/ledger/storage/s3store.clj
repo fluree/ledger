@@ -7,8 +7,9 @@
             [fluree.db.ledger.storage :refer [key->unix-path]]
             [fluree.db.ledger.storage.crypto :as crypto]
             [clojure.tools.logging :as log])
-  (:import (java.io ByteArrayOutputStream)))
+  (:import (java.io ByteArrayOutputStream Closeable)))
 
+(set! *warn-on-reflection* true)
 
 (defn bucket->url [bucket]
   (str "https://" bucket ".s3.amazonaws.com/"))
@@ -43,7 +44,7 @@
         (let [{in :Body} resp]
           (when in
             (io/copy in out)
-            (.close in)
+            (.close ^Closeable in)
             (.toByteArray out)))))))
 
 

@@ -3,6 +3,8 @@
             [fluree.db.util.core :as util]
             [clojure.core.async :as async]))
 
+(set! *warn-on-reflection* true)
+
 
 ;; To allow for pluggable consensus, we have a TxGroup protocol.
 ;; In order to allow for a new consensus type, we need to create a record with all of the following methods.

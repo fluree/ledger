@@ -15,6 +15,8 @@
             [clojure.core.async :as async])
   (:import (fluree.db.flake Flake)))
 
+(set! *warn-on-reflection* true)
+
 
 (defn valid-authority?
   [db auth authority]

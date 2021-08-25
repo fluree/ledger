@@ -6,6 +6,8 @@
             [fluree.db.util.tx :as tx-util])
   (:import (fluree.db.flake Flake)))
 
+(set! *warn-on-reflection* true)
+
 ;; to handle transaction-related flakes
 
 (def ^:const system-predicates
@@ -59,19 +61,19 @@
   "If an error occurs, returns a set of flakes for the 't' that represents error."
   [db t tx-map command error-str]
   (go-try
-    (let [db         (dbproto/-rootdb db)
+    (let [db                (dbproto/-rootdb db)
           {:keys [auth authority nonce txid]} tx-map
-          tx-state   {:txid      txid
-                      :auth      (<? (dbproto/-subid db ["_auth/id" auth] false))
-                      :authority (when authority (<? (dbproto/-subid db ["_auth/id" authority] false)))
-                      :tx-string (:cmd command)
-                      :signature (:sig command)
-                      :nonce     nonce
-                      :t         t}
+          tx-state          {:txid      txid
+                             :auth      (<? (dbproto/-subid db ["_auth/id" auth] false))
+                             :authority (when authority (<? (dbproto/-subid db ["_auth/id" authority] false)))
+                             :tx-string (:cmd command)
+                             :signature (:sig command)
+                             :nonce     nonce
+                             :t         t}
 
-          flakes     (->> (tx-meta-flakes tx-state error-str)
-                          (flake/sorted-set-by flake/cmp-flakes-block))
-          hash-flake (generate-hash-flake flakes tx-state)]
+          flakes            (->> (tx-meta-flakes tx-state error-str)
+                                 (flake/sorted-set-by flake/cmp-flakes-block))
+          ^Flake hash-flake (generate-hash-flake flakes tx-state)]
       {:t      t
        :hash   (.-o hash-flake)
        :flakes (conj flakes hash-flake)})))

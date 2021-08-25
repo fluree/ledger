@@ -10,8 +10,11 @@
             [fluree.db.util.core :as util]
             [fluree.db.ledger.txgroup.txgroup-proto :as txproto])
   (:import (fluree.db.flake Flake)
-           (java.time Instant)))
+           (java.time Instant)
+           (clojure.lang Sorted)))
 
+
+(set! *warn-on-reflection* true)
 
 ;;; run an indexing processing a database
 
@@ -113,20 +116,21 @@
    (index-leaf conn network dbid node block t idx-novelty rhs old-children new-children leaf-i #{}))
   ([conn network dbid node block t idx-novelty rhs old-children new-children leaf-i remove-preds]
    (go-try
-     (let [resolved-ch (dbproto/-resolve-to-t node t idx-novelty false remove-preds) ;; pull history and node in parallel
-           history-ch  (dbproto/-resolve-history-range node nil t idx-novelty)
+     (let [resolved-ch     (dbproto/-resolve-to-t node t idx-novelty false remove-preds) ;; pull history and node in parallel
+           history-ch      (dbproto/-resolve-history-range node nil t idx-novelty)
            {:keys [config leftmost?]} node
-           fflake      (:first node)
-           idx-type    (:index-type config)
-           resolved    (<? resolved-ch)
-           node-bytes  (flake/size-bytes (:flakes resolved))
-           overflow?   (overflow? node-bytes)
-           underflow?  (and (underflow? node-bytes) (not= 1 (count old-children)))
-           history     (<? history-ch)]
+           fflake          (:first node)
+           idx-type        (:index-type config)
+           resolved        (<? resolved-ch)
+           resolved-flakes (:flakes resolved)
+           node-bytes      (flake/size-bytes resolved-flakes)
+           overflow?       (overflow? node-bytes)
+           underflow?      (and (underflow? node-bytes) (not= 1 (count old-children)))
+           history         (<? history-ch)]
        (cond
          overflow?
-         (let [splits     (split-flakes (:flakes resolved) node-bytes)
-               comparator (.comparator (:flakes resolved))]
+         (let [splits     (split-flakes resolved-flakes node-bytes)
+               comparator (.comparator ^Sorted resolved-flakes)]
            (loop [split-i (dec (count splits))
                   rhs'    rhs
                   acc     (list)]
@@ -175,7 +179,7 @@
                                              [:next next-n next-leaf next-bytes next-combine-his]
                                              [:previous prev-n prev-leaf prev-bytes prev-combine-his])))
                base-id          (str (util/random-uuid))
-               comparator       (.comparator (:flakes resolved))
+               comparator       (.comparator ^Sorted resolved-flakes)
                current-node-his (get-history-in-range history fflake rhs comparator)
                his-in-range     (into current-node-his combine-his)
                flakes           (into (:flakes resolved) (:flakes combine-leaf))
@@ -267,35 +271,35 @@
                              children* (empty children)]
                         (if (< child-i 0)                   ;; at end of result set
                           children*
-                          (let [child         (val (nth children child-i))
-                                child-rhs     (:rhs child)
-                                _             (when-not (or (= (dec child-i) child-n) (= child-rhs rhs))
-                                                (throw (ex-info (str "Something went wrong. Child-rhs does not equal rhs: " {:child-rhs child-rhs :rhs rhs})
-                                                                {:status 500
-                                                                 :error  :db/unexpected-error})))
-                                child-first   (:first child)
-                                novelty       (novelty-subrange idx-novelty child-first child-rhs (:leftmost? child))
-                                remove-preds? (if remove-preds
-                                                (let [child-first-pred (.-p child-first)
-                                                      child-rhs-pred   (when child-rhs (.-p child-rhs))]
-                                                  (reduce #(if (and (>= %2 child-first-pred)
-                                                                    (if child-rhs-pred
-                                                                      (<= %2 child-rhs-pred) true))
-                                                             (conj %1 %2) %1) #{} remove-preds))
-                                                #{})
-                                dirty?        (or (seq novelty) (seq remove-preds?))
+                          (let [child              (val (nth children child-i))
+                                child-rhs          (:rhs child)
+                                _                  (when-not (or (= (dec child-i) child-n) (= child-rhs rhs))
+                                                     (throw (ex-info (str "Something went wrong. Child-rhs does not equal rhs: " {:child-rhs child-rhs :rhs rhs})
+                                                                     {:status 500
+                                                                      :error  :db/unexpected-error})))
+                                ^Flake child-first (:first child)
+                                novelty            (novelty-subrange idx-novelty child-first child-rhs (:leftmost? child))
+                                remove-preds?      (if remove-preds
+                                                     (let [child-first-pred (.-p child-first)
+                                                           child-rhs-pred   (when child-rhs (.-p child-rhs))]
+                                                       (reduce #(if (and (>= %2 child-first-pred)
+                                                                         (if child-rhs-pred
+                                                                           (<= %2 child-rhs-pred) true))
+                                                                  (conj %1 %2) %1) #{} remove-preds))
+                                                     #{})
+                                dirty?             (or (seq novelty) (seq remove-preds?))
                                 [new-nodes skip n] (if dirty?
                                                      (if at-leaf?
                                                        (<? (index-leaf conn network dbid child block t idx-novelty child-rhs children children* child-i remove-preds?))
                                                        [(<? (index-branch conn network dbid child idx-novelty block t child-rhs progress remove-preds?)) nil nil])
                                                      [[child] nil nil])
-                                new-rhs       (:first (first new-nodes))
-                                next-i        (if (= :next skip)
-                                                (- child-i (inc n)) ;; already combined with at least the next left node, so skip
-                                                (dec child-i))
-                                acc*          (cond-> (reduce #(assoc %1 (:first %2) %2) children* new-nodes)
-                                                      ;; if we had underflow and went right/:previous, we have to remove the previous node from children*
-                                                      (= :previous skip) (dissoc (key (first children*))))]
+                                new-rhs            (:first (first new-nodes))
+                                next-i             (if (= :next skip)
+                                                     (- child-i (inc n)) ;; already combined with at least the next left node, so skip
+                                                     (dec child-i))
+                                acc*               (cond-> (reduce #(assoc %1 (:first %2) %2) children* new-nodes)
+                                                           ;; if we had underflow and went right/:previous, we have to remove the previous node from children*
+                                                           (= :previous skip) (dissoc (key (first children*))))]
 
                             ;; add dirty node indexes to garbage
                             (when dirty?
@@ -352,13 +356,13 @@
   ([db {:keys [ecount remove-preds]}]
    (go-try
      (let [{:keys [novelty block t network dbid]} db
-           db-dirty?    (or (some #(not-empty (get novelty %)) [:spot :psot :post :opst])
-                            remove-preds)
-           novelty-size (:size novelty)
-           progress     (atom {:garbage   []                ;; hold keys of old index segments we can garbage collect
-                               :size      novelty-size
-                               :completed 0})
-           start-time   (Instant/now)]
+           db-dirty?           (or (some #(not-empty (get novelty %)) [:spot :psot :post :opst])
+                                   remove-preds)
+           novelty-size        (:size novelty)
+           progress            (atom {:garbage   []                ;; hold keys of old index segments we can garbage collect
+                                      :size      novelty-size
+                                      :completed 0})
+           ^Instant start-time (Instant/now)]
        (log/info (str "Index Update begin at: " start-time) {:network      network
                                                              :dbid         dbid
                                                              :t            t
@@ -385,12 +389,13 @@
            ;; TODO - ideally issue garbage/root writes to RAFT together as a tx, currently requires waiting for both through raft sync
            (<? (storage/write-garbage indexed-db @progress))
            (<? (storage/write-db-root indexed-db ecount))
-           (log/info (str "Index Update end at: " (Instant/now)) {:network      network
-                                                                  :dbid         dbid
-                                                                  :block        block
-                                                                  :t            t
-                                                                  :idx-duration (- (.toEpochMilli (Instant/now))
-                                                                                   (.toEpochMilli start-time))})
+           (log/info (str "Index Update end at: " (Instant/now))
+                     {:network      network
+                      :dbid         dbid
+                      :block        block
+                      :t            t
+                      :idx-duration (- (.toEpochMilli ^Instant (Instant/now))
+                                       (.toEpochMilli start-time))})
            indexed-db))))))
 
 

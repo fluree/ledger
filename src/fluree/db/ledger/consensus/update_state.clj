@@ -8,6 +8,8 @@
             [clojure.set :as set])
   (:import (fluree.db.flake Flake)))
 
+(set! *warn-on-reflection* true)
+
 (defn dissoc-ks
   "Dissoc, but with a key sequence."
   [map ks]
@@ -150,10 +152,10 @@
   [command state-atom]
   (let [[_ old-network old-db] command
         ;; dissoc all other values, set status to :deleted
-        _ (swap! state-atom assoc-in [:networks old-network :dbs old-db] {:status :delete})
+        _ (swap! state-atom assoc-in [:networks old-network :dbs old-db] {:status :delete})]
         ;; If we eventually decide to allow renaming dbs, we should ensure evenly distributed
         ;; networks after migration. For now, we don't delete network
-        ]
+
     true))
 
 (defn rename-keys-in-state

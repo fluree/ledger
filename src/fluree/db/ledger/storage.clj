@@ -6,6 +6,8 @@
             [fluree.db.storage.core :as storage])
   (:import (java.io File)))
 
+(set! *warn-on-reflection* true)
+
 (defn key->unix-path
   "Given an optional base-path and our key, returns the storage path as a
   UNIX-style `/`-separated path.

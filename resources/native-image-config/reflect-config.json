@@ -1,0 +1,32 @@
+[
+  {
+    "name": "fluree.db.flake.Flake",
+    "allPublicMethods": true,
+    "allPublicFields": true,
+    "allPublicConstructors": true
+  },
+  {
+    "name": "net.jpountz.lz4.LZ4JavaSafeCompressor",
+    "allPublicMethods": true,
+    "allPublicFields": true,
+    "allPublicConstructors": true
+  },
+  {
+    "name": "net.jpountz.lz4.LZ4JavaSafeFastDecompressor",
+    "allPublicMethods": true,
+    "allPublicFields": true,
+    "allPublicConstructors": true
+  },
+  {
+    "name": "net.jpountz.lz4.LZ4JavaSafeSafeDecompressor",
+    "allPublicMethods": true,
+    "allPublicFields": true,
+    "allPublicConstructors": true
+  },
+  {
+    "allPublicConstructors": true,
+    "name": "net.jpountz.lz4.LZ4HCJavaSafeCompressor",
+    "allDeclaredConstructors": true,
+    "allPublicFields": true
+  }
+]

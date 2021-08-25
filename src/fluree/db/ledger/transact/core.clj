@@ -21,6 +21,8 @@
             [fluree.db.ledger.transact.schema :as tx-schema])
   (:import (fluree.db.flake Flake)))
 
+(set! *warn-on-reflection* true)
+
 
 (def ^:const parallelism
   "Processes this many transaction items in parallel."

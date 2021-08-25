@@ -16,6 +16,8 @@
            (java.lang.management ManagementFactory)
            (java.io Reader)))
 
+(set! *warn-on-reflection* true)
+
 
 ;; note every environment variable must be placed in this default map for it to be picked up.
 ;; THIS IS THE MASTER LIST!  nil as a value means there is no default

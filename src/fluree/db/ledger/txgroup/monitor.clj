@@ -10,6 +10,8 @@
             [fluree.db.ledger.txgroup.txgroup-proto :as txproto]
             [fluree.db.api :as fdb]))
 
+(set! *warn-on-reflection* true)
+
 ;; For now, just use this as a lock to ensure multiple processes are not trying to redistribute work simultaneously.
 (def ^:private redistribute-workers-lock (atom nil))
 

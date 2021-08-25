@@ -19,6 +19,8 @@
             [fluree.db.constants :as const])
   (:import (java.util UUID)))
 
+(set! *warn-on-reflection* true)
+
 
 (defn snapshot-xfer
   "Transfers snapshot from this server as leader, to a follower.

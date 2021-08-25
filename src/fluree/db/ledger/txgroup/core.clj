@@ -4,6 +4,8 @@
             [clojure.tools.logging :as log]
             [fluree.db.ledger.txgroup.txgroup-proto :as txproto]))
 
+(set! *warn-on-reflection* true)
+
 ;; ledger group consensus
 
 {:keys         {"DEF345" "private-key"}                     ;; keys used across tx group

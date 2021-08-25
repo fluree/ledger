@@ -7,6 +7,8 @@
             [fluree.db.constants :as const]
             [clojure.string :as str]))
 
+(set! *warn-on-reflection* true)
+
 ;; operations related to resolving and creating new tags
 
 (defn- temp-flake->flake
