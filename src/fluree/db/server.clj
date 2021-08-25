@@ -110,7 +110,7 @@
 
 
 (defn startup
-  ([] (startup (settings/build-env environ/env)))
+  ([] (startup (settings/build-env @environ/runtime-env)))
   ([settings]
    (log/info (str "Starting Fluree in mode: " (:fdb-mode settings)))
    (log/info "Starting with config:\n" (with-out-str

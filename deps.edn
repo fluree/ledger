@@ -2,9 +2,10 @@
         org.clojure/data.xml              {:mvn/version "0.2.0-alpha6"}
         com.fluree/alphabase              {:mvn/version "3.2.1"}
         com.fluree/db                     {:git/url "https://github.com/fluree/db.git"
-                                           :sha "9debad6a99c03a91f1f678bdee05385c5fa269e4"}
+                                           :sha     "9debad6a99c03a91f1f678bdee05385c5fa269e4"}
         com.fluree/raft                   {:mvn/version "1.0.0-beta1"}
-        com.fluree/crypto                 {:mvn/version "0.3.5"}
+        com.fluree/crypto                 {:git/url "https://github.com/fluree/fluree.crypto.git"
+                                           :sha     "7d5503bcddf012d0c6b08b9a26fa6a41a760b468"}
 
         ;; network comm
         net.async/async                   {:mvn/version "0.1.0"}
@@ -24,7 +25,12 @@
         compojure/compojure               {:mvn/version "1.6.2"}
 
         ;; logging
-        ch.qos.logback/logback-classic    {:mvn/version "1.2.5"}}
+        ch.qos.logback/logback-classic    {:mvn/version "1.2.5"}
+
+        ;; config
+        environ/environ                   {:git/url   "https://github.com/cap10morgan/environ.git"
+                                           :sha       "32682e865e8248d9df09643d6321ca4259fdbc19"
+                                           :deps/root "environ"}}
 
  :paths ["src" "resources"]
 
@@ -70,6 +76,33 @@
                :artifact-id :mvn/artifact-id
                :version :mvn/version
                :sync-pom true}}
+
+  :native-image
+  {:main-opts ["-m" "clj.native-image" "fluree.db.server"
+               "-H:Name=fluree-ledger" "--no-fallback"
+               "-H:+ReportExceptionStackTraces"
+               ;; IncludeResources is pretty finicky. Lots of regexes I've tried don't
+               ;; work and the logging the docs say you can turn on doesn't work.
+               ;; So I'm just including everything for now. - WSM 2021/08/20
+               "-H:IncludeResources=.*"
+               "--enable-url-protocols=http,https"
+               "--report-unsupported-elements-at-runtime"
+               "--initialize-at-build-time"
+               "--allow-incomplete-classpath"
+               "--install-exit-handlers"
+
+               ;; Most of these initialize-at-run-time classes are from https://github.com/oracle/graal/issues/2050#issuecomment-797689154
+               "--initialize-at-run-time=org.asynchttpclient.RequestBuilderBase,org.asynchttpclient.ntlm.NtlmEngine,io.netty.channel.kqueue.KQueue,io.netty.channel.kqueue.Native,io.netty.channel.kqueue.KQueueEventLoop,io.netty.channel.kqueue.KQueueEventArray,io.netty.util.internal.logging.Log4JLogger,io.netty.channel.epoll.Epoll,io.netty.channel.epoll.Native,io.netty.channel.epoll.EpollEventLoop,io.netty.channel.epoll.EpollEventArray,io.netty.channel.unix.Errors,io.netty.channel.unix.IovArray,io.netty.channel.unix.Limits,io.netty.channel.DefaultFileRegion,io.netty.handler.ssl.ReferenceCountedOpenSslContext,io.netty.handler.ssl.ReferenceCountedOpenSslEngine,io.netty.handler.ssl.JdkNpnApplicationProtocolNegotiator,io.netty.handler.ssl.JettyNpnSslEngine,io.netty.handler.ssl.ConscryptAlpnSslEngine,io.netty.handler.ssl.JettyAlpnSslEngine$ServerEngine,io.netty.handler.ssl.JettyAlpnSslEngine$ClientEngine,org.httpkit.client.ClientSslEngineFactory$SSLHolder,abracad.avro.ClojureData$Vars,org.apache.lucene.analysis.ja.dict.UnknownDictionary$SingletonHolder,org.apache.lucene.analysis.ja.dict.TokenInfoDictionary$SingletonHolder"
+
+               ;; In theory this shouldn't be necessary w/ sufficient type hinting, but there's a bug in the go macro (I think)
+               ;; that causes type hinting to not always work correctly inside them and you can't access fields of Java
+               ;; types like fluree.db.flake.Flake b/c it will resort to reflection and that has to be configured under
+               ;; graalvm native-images. I haven't figured out a minimal reproduction yet though. In the meantime, this fixes it.
+               "-H:ReflectionConfigurationFiles=resources/native-image-config/reflect-config.json"]
+   :jvm-opts   ["-Dclojure.compiler.direct-linking=true"]
+   :extra-deps {clj.native-image/clj.native-image
+                {:git/url "https://github.com/taylorwood/clj.native-image.git"
+                 :sha     "4604ae76855e09cdabc0a2ecc5a7de2cc5b775d6"}}}
 
   :meta
   {:main-opts ["-m" "fluree.db.meta"]}

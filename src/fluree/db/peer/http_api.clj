@@ -918,6 +918,13 @@
     ;; fallback 404 for unknown API paths
     (compojure/ANY "/fdb/*" [] not-found)))
 
+;; Teach ring how to handle resources under GraalVM
+;; From https://github.com/ring-clojure/ring/issues/370
+(defmethod resp/resource-data :resource
+  [^URL url]
+  (let [conn (.openConnection url)]
+    {:content        (.getInputStream conn)
+     :content-length (let [len (.getContentLength conn)] (when-not (pos? len) len))}))
 
 (defroutes admin-ui-routes
            (compojure/GET "/" [] (resp/resource-response "index.html" {:root "adminUI"}))
