@@ -4,7 +4,6 @@
             [fluree.db.util.log :as log]
             [clojure.tools.reader.edn :as edn]
             [clojure.java.io :as io]
-            #_[aleph.http :as http]
             [org.httpkit.client :as http]
             [fluree.db.util.json :as json]
             [byte-streams :as bs]
@@ -45,30 +44,26 @@
   (testing "Add schema"
     (let [filename      "../test/fluree/db/ledger/Resources/ChatAltVersion/schema.edn"
           tx            (edn/read-string (slurp (io/resource filename)))
-          db-list       @(http/post (str endpoint-url-short "dbs"))
           schema-res    @(http/post (str endpoint-url "transact") (standard-request tx))
           response-keys (keys schema-res)
           status        (:status schema-res)
           body          (-> schema-res :body bs/to-string json/parse)
-          bodyKeys      (keys body)]
+          body-keys     (keys body)]
 
-      ;; Status = 200 for the response
       (is (= 200 status))
 
-      ;; The keys in the response are -> :request-time :aleph/keep-alive? :headers :status :connection-time :body
-      (is (= #{:request-time :aleph/keep-alive? :headers :status :connection-time :body}
-             (set response-keys)))
-      ;; The keys in the body are :tempids :block :hash :time :status :block-bytes :timestamp :flakes
-      (is (= #{:tx-subid :tx :txid :authority :auth :signature :tempids :block :hash :fuel-remaining :time :fuel :status :block-bytes :timestamp :flakes}
-             (set bodyKeys)))
+      (is (map #(#{:headers :status :opts :body} %)
+               response-keys))
 
-      ;; block should be 2
+      (is (map #(#{:tx-subid :tx :txid :authority :auth :signature :tempids
+                   :block :hash :fuel-remaining :time :fuel :status :block-bytes
+                   :timestamp :flakes})
+               body-keys))
+
       (is (= 2 (:block body)))
 
-      ;; should have added 59 predicates
       (= 59 (-> body :tempids (test/get-tempid-count :_predicate)))
 
-      ;; should have added 4 new collections
       (= 4 (-> body :tempids (test/get-tempid-count :_collection))))))
 
 
