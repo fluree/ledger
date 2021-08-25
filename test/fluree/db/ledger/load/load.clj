@@ -1,7 +1,6 @@
 (ns fluree.db.ledger.load.load
   (:require [clojure.test :refer :all]
             [org.httpkit.client :as http]
-            #_[aleph.http :as http]
             ;; [clj-gatling.core :as gatling]
             [criterium.core :as criterium]
             [fluree.db.util.json :as json]))
@@ -20,7 +19,8 @@
 
 
 (defn localhost-request []
-  (let [{:keys [status]} @(http/post "http://localhost:8090/fdb/plane/demo/query" (standard-request {:select ["*"] :from "_collection"}))]
+  (let [{:keys [status]} @(http/post "http://localhost:8090/fdb/plane/demo/query"
+                                     (standard-request {:select ["*"] :from "_collection"}))]
     (= status 200)))
 
 (comment

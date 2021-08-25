@@ -8,7 +8,6 @@
             [fluree.db.ledger.test-helpers :as test]
             [fluree.db.query.http-signatures :as http-signatures]
             [org.httpkit.client :as http]
-            #_[aleph.http :as http]
             [byte-streams :as bs]
             [fluree.db.util.json :as json]))
 
@@ -24,12 +23,12 @@
 
 (deftest add-permission-scheme
   []
-  (let [personAuth     [{:_id  "_predicate", :name "person/auth", :doc "Reference to a database auth.",
-                         :type "ref", :restrictCollection "_auth"}]
-        personAuthResp (async/<!! (fdb/transact-async (basic/get-conn) test/ledger-chat personAuth))
-        filename       "../test/fluree/db/ledger/Resources/ChatApp/ruleExample.edn"
-        txn            (edn/read-string (slurp (io/resource filename)))
-        resp           (async/<!! (fdb/transact-async (basic/get-conn) test/ledger-chat txn))]
+  (let [person-auth [{:_id  "_predicate", :name "person/auth", :doc "Reference to a database auth.",
+                      :type "ref", :restrictCollection "_auth"}]
+        _           (async/<!! (fdb/transact-async (basic/get-conn) test/ledger-chat person-auth))
+        filename    "../test/fluree/db/ledger/Resources/ChatApp/ruleExample.edn"
+        txn         (-> filename io/resource slurp edn/read-string)
+        resp        (async/<!! (fdb/transact-async (basic/get-conn) test/ledger-chat txn))]
     (is (= 200 (:status resp)))))
 
 (deftest permissioned-query
@@ -38,7 +37,6 @@
         my-request   {:headers {"content-type" "application/json"}
                       :body    (json/stringify query)}
         q-endpoint   (str endpoint "multi-query")
-        ;; TODO: verify sign-request works with new request structure
         level-1-req  (http-signatures/sign-request :post q-endpoint my-request (:private-key jdoe))
         level-2-req  (http-signatures/sign-request :post q-endpoint my-request (:private-key zsmith))
         l1-resp @(http/post q-endpoint level-1-req)
@@ -46,8 +44,6 @@
         level-1-resp (-> l1-resp :body bs/to-string json/parse)
         level-2-resp (-> l2-resp :body bs/to-string json/parse)]
 
-    (is (= {} l1-resp))
-    (is (= {} l2-resp))
     ;; Level 1 should not be able to view chat/comments
     (is (= #{} (->> level-1-resp :chat (map :chat/comments) flatten (remove nil?) set)))
 

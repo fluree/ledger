@@ -5,7 +5,6 @@
             [fluree.db.ledger.api.downloaded :as downloaded]
             [fluree.db.api :as fdb]
             [org.httpkit.client :as http]
-            #_[aleph.http :as http]
             [clojure.core.async :as async]
             [fluree.db.util.json :as json]
             [fluree.db.query.http-signatures :as http-signatures]

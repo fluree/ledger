@@ -57,13 +57,13 @@
   ([f opts]
    (try
      (do (start opts)
+         @(fdb/new-ledger (:conn system) ledger-endpoints)
          @(fdb/new-ledger (:conn system) ledger-query+transact)
          @(fdb/new-ledger (:conn system) ledger-chat)
          @(fdb/new-ledger (:conn system) ledger-crypto)
          @(fdb/new-ledger (:conn system) ledger-voting)
          @(fdb/new-ledger (:conn system) ledger-supplychain)
          @(fdb/new-ledger (:conn system) ledger-todo)
-         @(fdb/new-ledger (:conn system) ledger-endpoints)
          (async/<!! (async/timeout 15000))
          (f))
      :success
