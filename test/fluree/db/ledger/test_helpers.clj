@@ -99,3 +99,6 @@
                        :collection collection})))
     (let [[start-sid end-sid] collection-tempids]
       (inc (- end-sid start-sid)))))
+
+(defn contains-many? [m & ks]
+  (every? #(contains? m %) ks))

@@ -131,7 +131,6 @@
 
 (deftest query-auth
   (testing "Verify auth records exist")
-  (test/print-banner "starting query-auth")
   (let [id-list (-> (basic/get-db test/ledger-todo)
                     (fdb/query-async {:select ["*"] :from "_auth" :opts {:meta true}})
                     async/<!!

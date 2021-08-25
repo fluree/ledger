@@ -261,14 +261,18 @@
 
 
 (defmethod action-handler :command
-  [_ system param _ _ _]
+  [_ system param _ ledger timeout]
   (go-try
     (let [_      (when-not (and (map? param) (:cmd param))
                    (throw (ex-info (str "Api endpoint for 'command' must contain a map/object with cmd keys.")
                                    {:status 400 :error :db/invalid-command})))
           conn   (:conn system)
           result (cond (and (:cmd param) (:sig param))
-                       (<? (fdb/submit-command-async conn param))
+                       (let [persist-resp (<? (fdb/submit-command-async conn param))
+                             result       (if (and (string? persist-resp) (-> param :txid-only false?))
+                                            (<? (fdb/monitor-tx-async conn ledger persist-resp timeout))
+                                            persist-resp)]
+                         result)
 
                        (not (open-api? system))
                        (throw (ex-info (str "Api endpoint for 'command' must contain a map/object with cmd and sig keys when using a closed Api.")
