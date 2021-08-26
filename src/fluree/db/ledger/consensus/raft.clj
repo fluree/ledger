@@ -17,7 +17,8 @@
             [fluree.crypto :as crypto]
             [fluree.db.ledger.storage :as ledger-storage]
             [fluree.db.constants :as const])
-  (:import (java.util UUID)))
+  (:import (java.util UUID)
+           (fluree.db.flake Flake)))
 
 (set! *warn-on-reflection* true)
 
@@ -742,8 +743,9 @@
                       ;; would error in raft if these are not included, recreate from block data
                       block-data* (assoc block-data :cmd-types #{:tx}
                                                     :txns (->> (:flakes block-data)
-                                                               (keep #(when (= const/$_tx:id (.-p %))
-                                                                        [(.-o %) nil]))
+                                                               (keep #(let [^Flake f %]
+                                                                        (when (= const/$_tx:id (.-p f))
+                                                                          [(.-o f) nil])))
                                                                (into {})))]
 
                   (log/info (str "Ledger " network "/" dbid

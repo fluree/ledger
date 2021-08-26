@@ -185,24 +185,24 @@
               (nil? existing-flake) (recur r)
 
               ;; lookup subject matches subject, will end up ignoring insert downstream unless :retractDuplicates is true
-              (= (.-s ^Flake existing-flake) _id) (recur r)
+              (= (:s existing-flake) _id) (recur r)
 
               ;; found existing subject and tempid, so set tempid value (or throw if already set to different subject)
               (and (tempid/TempId? _id) (pred-info :upsert))
               (do
-                (tempid/set _id (.-s ^Flake existing-flake) tx-state) ;; will throw if tempid was already set to a different subject
+                (tempid/set _id (:s existing-flake) tx-state) ;; will throw if tempid was already set to a different subject
                 (recur r))
 
               ;; tempid, but not upsert - throw
               (tempid/TempId? _id)
               (throw (ex-info (str "Unique predicate " (pred-info :name) " with value: "
-                                   object " matched an existing subject: " (.-s ^Flake existing-flake) ".")
+                                   object " matched an existing subject: " (:s existing-flake) ".")
                               {:status 400 :error :db/invalid-tx :tempid _id}))
 
               ;; not a tempid, but subjects don't match
               ;; this can be OK assuming a different txi is retracting the existing flake
               ;; register a validating fn for post-processing to check this and throw if not the case
-              (not= (.-s ^Flake existing-flake) _id)
+              (not= (:s existing-flake) _id)
               (do
                 (tx-validate/queue-check-unique-match-retracted existing-flake _id pred-info object tx-state)
                 (recur r)))))))))
@@ -489,14 +489,14 @@
            flakes []]
       (if (nil? tf)
         flakes
-        (let [s             (.-s tf)
-              o             (.-o tf)
+        (let [s             (:s tf)
+              o             (:o tf)
               ^Flake flake  (cond-> tf
                                     (tempid/TempId? s) (assoc :s (get @tempids s))
                                     (tempid/TempId? o) (assoc :o (get @tempids o)))
               retract-flake (when (contains? @upserts s)    ;; if was an upsert resolved, could be an existing flake that needs to get retracted
-                              (first (<? (tx-retract/flake (.-s flake) (.-p tf) (if multi? (.-o flake) nil) tx-state))))
-              pred-info     (fn [property] (dbproto/-p-prop db-before property (.-p flake)))
+                              (first (<? (tx-retract/flake (:s flake) (:p tf) (if multi? (:o flake) nil) tx-state))))
+              pred-info     (fn [property] (dbproto/-p-prop db-before property (:p flake)))
               flakes*       (add-singleton-flake flakes flake retract-flake pred-info tx-state)]
           (recur r flakes*))))))
 

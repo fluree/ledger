@@ -13,7 +13,6 @@
            (java.time Instant)
            (clojure.lang Sorted)))
 
-
 (set! *warn-on-reflection* true)
 
 ;;; run an indexing processing a database
@@ -50,7 +49,7 @@
              curr-size 0
              segments  []]
         (let [f-size     (flake/size-flake f)
-              curr-size* (+ curr-size f-size)
+              curr-size* (long (+ curr-size f-size)) ; long keeps the recur value primitive
               curr*      (conj curr f)
               full?      (> curr-size* seg-bytes)
               segments*  (if full?
@@ -277,11 +276,11 @@
                                                      (throw (ex-info (str "Something went wrong. Child-rhs does not equal rhs: " {:child-rhs child-rhs :rhs rhs})
                                                                      {:status 500
                                                                       :error  :db/unexpected-error})))
-                                ^Flake child-first (:first child)
+                                child-first        (:first child)
                                 novelty            (novelty-subrange idx-novelty child-first child-rhs (:leftmost? child))
                                 remove-preds?      (if remove-preds
-                                                     (let [child-first-pred (.-p child-first)
-                                                           child-rhs-pred   (when child-rhs (.-p child-rhs))]
+                                                     (let [child-first-pred (:p child-first)
+                                                           child-rhs-pred   (when child-rhs (:p child-rhs))]
                                                        (reduce #(if (and (>= %2 child-first-pred)
                                                                          (if child-rhs-pred
                                                                            (<= %2 child-rhs-pred) true))

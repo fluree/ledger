@@ -243,7 +243,7 @@
             total-size* (if (> size max-size)
                           ;; if command is larger than max-size, we will automatically reject - include tx to process error.
                           total-size
-                          (+ total-size size))
+                          (long (+ total-size size))) ; long keeps the recur arg primitive
             queued*     (if (or (> total-size* max-size) (nil? next-cmds))
                           queued
                           (concat queued next-cmds))]

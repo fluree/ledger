@@ -142,7 +142,7 @@
                                   (time-travel/as-of-block 1)
                                   <?)
                   setting-res (<? (query-range/collection db-1 "_setting"))
-                  setting-id  (.-s ^Flake (first setting-res))
+                  setting-id  (:s (first setting-res))
                   setting-txn [{:_id setting-id
                                 :id  "root"}]]
               (<? (fdb/transact-async conn db-ident update-txn))
