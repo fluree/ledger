@@ -364,7 +364,7 @@
     (try
       (let [subject-flakes (get-in @validate-fn [:c-spec sid])
             has-adds?      (some (fn [^Flake flake] (when (true? (.-op flake)) true)) subject-flakes) ;; stop at first `true` .-op
-            deleted?       (or (not has-adds?)
+            deleted?       (or (false? has-adds?)  ; has-adds? is nil when not found
                                (empty? (<? (query-range/index-range @db-after :spot = [sid]))))]
         (if deleted?
           true
