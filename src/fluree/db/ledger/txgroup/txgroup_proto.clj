@@ -304,7 +304,12 @@ or this server is not responsible for this ledger, will return false. Else true 
 (defn queue-command-async
   "Writes a new tx to the queue"
   [group network ledger-id command-id command]
-  (kv-assoc-in-async group [:cmd-queue network command-id] {:command command :size (count (:cmd command)) :id command-id :network network :dbid ledger-id :instant (System/currentTimeMillis)}))
+  (kv-assoc-in-async group [:cmd-queue network command-id] {:command command
+                                                            :size (count (:cmd command))
+                                                            :id command-id
+                                                            :network network
+                                                            :dbid ledger-id
+                                                            :instant (System/currentTimeMillis)}))
 
 
 ;; Block commands
