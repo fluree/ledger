@@ -44,6 +44,8 @@ jobs:
           VERSION=none
           if [[ "${{ github.event_name }}" == "schedule" ]]; then
             VERSION=nightly
+          elif [[ $GITHUB_REF =~ ^refs/tags/v[[:digit:]]+ ]]; then
+            VERSION=${GITHUB_REF#refs/tags/v}
           elif [[ $GITHUB_REF == refs/tags/* ]]; then
             VERSION=${GITHUB_REF#refs/tags/}
           elif [[ $GITHUB_REF == refs/heads/* ]]; then
