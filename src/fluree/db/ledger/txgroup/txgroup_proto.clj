@@ -319,6 +319,11 @@ or this server is not responsible for this ledger, will return false. Else true 
   (let [command [:new-block network ledger-id block-data (this-server group)]]
     (-new-entry-async group command)))
 
+(defn remove-command-from-queue
+  "Removes a command that is in the queue so it will no longer attempt to be processed."
+  [group network command-id]
+  (kv-dissoc-in-async group [:cmd-queue network command-id]))
+
 ;; TODO - this should use a CAS, to ensure DB does not currently exist.
 (defn register-genesis-block-async
   "Only for use by bootstrap or copy. Registers a new genesis block.
