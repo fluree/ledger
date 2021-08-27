@@ -283,12 +283,12 @@ or this server is not responsible for this ledger, will return false. Else true 
   "Returns command queue as a list of maps.
    Queued commands are stored in state machine with key-seq of [:cmd-queue network txid].
     Map keys are:
-    1. txid
-    2. data    - map of actual tx data
+    1. id
+    2. command    - command data (map)
     3. size    - size of command in bytes
     4. network
     5. dbid
-    6.instant - instant we put this tx into our state machine"
+    6. instant - instant we put this tx into our state machine"
   ([group]
    (->> (get-in (-local-state group) [:cmd-queue])
         (vals)
