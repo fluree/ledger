@@ -327,7 +327,7 @@
                    :get-in (update-state/get-in* command state-atom)
 
                    ;; Returns true if there was an existing value removed, else false.
-                   :dissoc-in (update-state/assoc-in* command state-atom)
+                   :dissoc-in (update-state/dissoc-in* command state-atom)
 
                    ;; acquires lease, stored at specified ks (a more elaborate cas). Uses local clock
                    ;; to help combat clock skew. Will only allow a single lease at specified ks.

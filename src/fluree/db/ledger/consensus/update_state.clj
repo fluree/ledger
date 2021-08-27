@@ -16,6 +16,8 @@
     (update-in map (butlast ks) dissoc (last ks))))
 
 (defn assoc-in*
+  "Handles assoc-in commands. If assoc-in is called without a value to associate into,
+  treats operation as a dissoc-in operation."
   [command state-atom]
   (let [[_ ks v] command]
     (if (nil? v)
@@ -29,12 +31,22 @@
     (get-in @state-atom ks)))
 
 (defn dissoc-in
+  "Like Clojure's dissoc, but takes a key sequence to enable dissoc within a nested map."
   [map ks]
   (let [ks*        (butlast ks)
         dissoc-key (last ks)]
     (if ks*
       (update-in map ks* dissoc dissoc-key)
       (dissoc map dissoc-key))))
+
+(defn dissoc-in*
+  "Executes incoming :dissoc-in command against state atom.
+  Like Clojure's dissoc, but takes a key sequence to enable
+  dissoc within a nested map."
+  [command state-atom]
+  (let [[_ ks] command]
+    (let [res (swap! state-atom dissoc-in ks)]
+      res)))
 
 (defn cas-in
   [command state-atom]
