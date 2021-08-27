@@ -120,7 +120,8 @@
   (let [f (fn [{:keys [flakes t]}]
             (let [check-flake (flake/flip-flake existing-flake t)
                   retracted?  (contains? flakes check-flake)]
-              (when-not retracted?
+              (if retracted?
+                true
                 (throw (ex-info (str "Unique predicate " (pred-info :name) " with value: "
                                      object " matched an existing subject.")
                                 {:status   400
