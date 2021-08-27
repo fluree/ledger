@@ -404,12 +404,24 @@
   by updating the nested txis with their respective tempids. Will recursively check all nested txis for
   children."
   [txi tx-state]
-  (let [[updated-txi found-txis] (extract-children* txi tx-state)]
-    (if found-txis
-      ;; recur on children (nested transactions) for possibly additional children
-      (let [found-nested (mapcat #(extract-children % tx-state) found-txis)]
-        (conj found-nested updated-txi))
-      [updated-txi])))
+  (cond
+    (empty? txi)
+    (throw (ex-info (str "Empty or nil transaction item found in transaction.")
+                    {:status 400
+                     :error :db/invalid-transaction}))
+
+    (not (map? txi))
+    (throw (ex-info (str "All transaction items must be maps/objects, at least one is not.")
+                    {:status 400
+                     :error :db/invalid-transaction}))
+
+    :else
+    (let [[updated-txi found-txis] (extract-children* txi tx-state)]
+      (if found-txis
+        ;; recur on children (nested transactions) for possibly additional children
+        (let [found-nested (mapcat #(extract-children % tx-state) found-txis)]
+          (conj found-nested updated-txi))
+        [updated-txi]))))
 
 
 (defn ->tx-state
