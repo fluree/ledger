@@ -1,13 +1,11 @@
 (ns fluree.db.ledger.transact.error
   (:require [fluree.db.util.async :refer [<? go-try]]
-            [fluree.db.util.tx :as tx-util]
             [fluree.db.ledger.transact.tx-meta :as tx-meta]
             [fluree.db.dbproto :as dbproto]
             [fluree.db.util.log :as log]
             [fluree.db.util.core :as util]
             [clojure.string :as str]
-            [fluree.db.flake :as flake]
-            [fluree.crypto :as crypto])
+            [fluree.db.flake :as flake])
   (:import (fluree.db.flake Flake)))
 
 ;; transaction error responses
@@ -95,48 +93,6 @@
                         :remove-preds nil))))
 
 
-(defn throw-validation-exception
-  "This should not happen, but somehow the cmd-date could not be parsed.
-  Because of this we don't have basic information about the transaction
-  but we still want to record the tx. We'll assume cmd-data is a string
-  and instead of extracting a command out of it (which didn't work"
-  [e db-root cmd-data t]
-  (go-try
-    (let [{:keys [message status error]} (decode-exception e)
-          {:keys [sig cmd]} (:command cmd-data)
-          txid             (crypto/sha3-256 cmd)
-          tx-state         {:tx-string cmd :signature sig :t t :txid txid :fuel (atom {:spent 0})}
-          flakes           (->> (tx-meta/tx-meta-flakes tx-state message)
-                                (into (flake/sorted-set-by flake/cmp-flakes-block)))
-          hash-flake       (tx-meta/generate-hash-flake flakes tx-state)
-          all-flakes       (conj flakes hash-flake)
-          fast-forward-db? (:tt-id db-root)
-          db-after         (if fast-forward-db?
-                             (<? (dbproto/-forward-time-travel db-root all-flakes))
-                             (<? (dbproto/-with-t db-root all-flakes)))
-          tx-bytes         (- (get-in db-after [:stats :size]) (get-in db-root [:stats :size]))]
-      {:error        error
-       :t            t
-       :hash         (.-o ^Flake hash-flake)
-       :db-before    db-root
-       :db-after     db-after
-       :flakes       all-flakes
-       :tempids      nil
-       :bytes        tx-bytes
-       :fuel         (+ (:spent @(:fuel tx-state)) tx-bytes (count flakes) 1)
-       :status       status
-       :txid         txid
-       :auth         nil
-       :authority    nil
-       :type         nil
-       :remove-preds nil})
-    (catch Exception e
-      (log/error e "Exiting!! Fatal exception trying to process command validation. Unable to extract anything useful"
-                 {:cmd-data cmd-data
-                  :t        t})
-      (System/exit 1))))
-
-
 (defn pre-processing-handler
   "Called when there is an exception before the transaction started, therefore
   we don't yet have a tx-state so we must make a synthetic one here.
@@ -146,21 +102,17 @@
   - could not resolve auth/authority
 
   Returns an async channel."
-  [e db-root cmd-data t]
-  (let [{:keys [error]} (decode-exception e)]
-    (if (= error :db/command-parse-exception)               ;; error happened parsing/validating command map... need special handling as same parsing attempted below
-      (throw-validation-exception e db-root cmd-data t)
-      (let [tx-map   (tx-util/validate-command (:command cmd-data))
-            {:keys [txid auth authority cmd sig type]} tx-map
-            tx-state {:t            t
-                      :db-root      db-root
-                      :db-before    db-root
-                      :fuel         (atom {:spent 0})
-                      :txid         txid
-                      :auth-id      auth
-                      :authority-id authority
-                      :tx-string    cmd
-                      :signature    sig
-                      :tx-type      type
-                      :errors       (atom nil)}]
-        (handler e tx-state)))))
+  [e db-root tx-map]
+  (let [{:keys [txid auth authority cmd sig type]} tx-map
+        tx-state {:t            (dec (:t db-root))
+                  :db-root      db-root
+                  :db-before    db-root
+                  :fuel         (atom {:spent 0})
+                  :txid         txid
+                  :auth-id      auth
+                  :authority-id authority
+                  :tx-string    cmd
+                  :signature    sig
+                  :tx-type      type
+                  :errors       (atom nil)}]
+    (handler e tx-state)))
