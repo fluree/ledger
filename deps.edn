@@ -109,7 +109,7 @@
 
   :eastwood
   {:extra-deps {jonase/eastwood {:mvn/version "RELEASE"}}
-   :main-opts ["-m" "eastwood.lint" {:source-paths ["src"] :out "scanning_results/eastwood.out"}]}
+   :main-opts ["-m" "eastwood.lint" {:source-paths ["src"]}]}
 
   :ancient
   {:extra-deps {com.github.liquidz/antq {:mvn/version "RELEASE"}}

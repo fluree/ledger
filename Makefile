@@ -100,12 +100,8 @@ jar: target/fluree-ledger.jar
 test:
 	clojure -X:test:runner
 
-scanning_results:
-	mkdir scanning_results
-
-eastwood: scanning_results
+eastwood:
 	clojure -M:eastwood
-	cat scanning_results/eastwood.out
 
 ci: test eastwood
 
