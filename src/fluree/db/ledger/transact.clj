@@ -203,8 +203,7 @@
 (defn- error-propose-new-block
   "Error handler for unexpected exception when proposing a new block."
   [conn network block-result new-block-resp-ex]
-  (log/error new-block-resp-ex (str "Unexpected consensus error proposing new block: "
-                                    (.getMessage new-block-resp-ex)))
+  (log/error new-block-resp-ex (str "Unexpected consensus error proposing new block"))
   (remove-all-txids conn network block-result))
 
 
