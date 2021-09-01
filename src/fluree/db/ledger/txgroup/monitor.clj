@@ -306,11 +306,11 @@
                                            (log/warn (format "Ledger skipping new transactions because our last processed 't' is %s, but the latest db we can retrieve is at %s" last-t (:t db))))))))
                                  (catch Exception e
                                    (log/error e "Error processing new block. Exiting tx monitor loop.")))]
-              (when new-block
-                ;; in case we still have a queue to process, kick again until finished
+              (when (not-empty queue)                       ;; in case we still have a queue to process, kick again until finished
                 (async/put! chan ::kick))
-
-              (recur (or (:t new-block) last-t)))))))))
+              (recur (if new-block
+                       (:t new-block)
+                       last-t)))))))))
 
 
 (defn db-queue

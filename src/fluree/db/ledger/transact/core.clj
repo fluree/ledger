@@ -1,4 +1,4 @@
-(ns fluree.db.ledger.transact.json
+(ns fluree.db.ledger.transact.core
   (:require [fluree.db.util.async :refer [<? go-try]]
             [fluree.db.util.core :as util]
             [fluree.db.util.log :as log]
@@ -404,16 +404,28 @@
   by updating the nested txis with their respective tempids. Will recursively check all nested txis for
   children."
   [txi tx-state]
-  (let [[updated-txi found-txis] (extract-children* txi tx-state)]
-    (if found-txis
-      ;; recur on children (nested transactions) for possibly additional children
-      (let [found-nested (mapcat #(extract-children % tx-state) found-txis)]
-        (conj found-nested updated-txi))
-      [updated-txi])))
+  (cond
+    (empty? txi)
+    (throw (ex-info (str "Empty or nil transaction item found in transaction.")
+                    {:status 400
+                     :error :db/invalid-transaction}))
+
+    (not (map? txi))
+    (throw (ex-info (str "All transaction items must be maps/objects, at least one is not.")
+                    {:status 400
+                     :error :db/invalid-transaction}))
+
+    :else
+    (let [[updated-txi found-txis] (extract-children* txi tx-state)]
+      (if found-txis
+        ;; recur on children (nested transactions) for possibly additional children
+        (let [found-nested (mapcat #(extract-children % tx-state) found-txis)]
+          (conj found-nested updated-txi))
+        [updated-txi]))))
 
 
 (defn ->tx-state
-  [db t block-instant {:keys [auth auth-sid authority authority-sid tx-permissions txid cmd sig nonce type] :as tx-map}]
+  [db block-instant {:keys [auth auth-sid authority authority-sid tx-permissions txid cmd sig nonce type] :as tx-map}]
   (let [tx        (case (keyword (:type tx-map))            ;; command type is either :tx or :new-db
                     :tx (:tx tx-map)
                     :new-db (tx-util/create-new-db-tx tx-map))
@@ -428,7 +440,7 @@
      :auth             auth-sid                             ;; auth subject-id integer
      :authority-id     authority                            ;; authority id string as per _auth/id (or nil if no authority)
      :authority        authority-sid                        ;; authority subject-id integer (or nil if no authority)
-     :t                t
+     :t                (dec (:t db))
      :instant          block-instant
      :txid             txid
      :tx-type          type
@@ -616,24 +628,18 @@
 
 
 (defn transact
-  [db-root cmd-data t block-instant]
+  [{:keys [db-before instant]} tx-map]
   (async/go
     (try
-      (let [tx-map   (try (tx-util/validate-command (:command cmd-data))
-                          (catch Exception e
-                            (log/error e "Unexpected error parsing command: " (pr-str cmd-data))
-                            (throw (ex-info "Unexpected error parsing command."
-                                            {:status   500
-                                             :error    :db/command-parse-exception
-                                             :cmd-data cmd-data}
-                                            e))))
-            _        (when (not-empty (:deps tx-map))       ;; transaction has dependencies listed, verify they are satisfied
-                       (<? (tx-validate/tx-deps-check db-root tx-map)))
-            tx-map*  (<? (tx-auth/add-auth-ids-permissions db-root tx-map))
-            tx-state (->tx-state db-root t block-instant tx-map*)
-            result   (async/<! (build-transaction tx-state))]
-        (if (util/exception? result)
-          (<? (tx-error/handler result tx-state))
-          result))
+      (when (not-empty (:deps tx-map))                      ;; transaction has dependencies listed, verify they are satisfied
+        (<? (tx-validate/tx-deps-check db-before tx-map)))
+      (let [start-time (util/current-time-millis)
+            tx-map*    (<? (tx-auth/add-auth-ids-permissions db-before tx-map))
+            tx-state   (->tx-state db-before instant tx-map*)
+            result     (async/<! (build-transaction tx-state))
+            result* (if (util/exception? result)
+                         (<? (tx-error/handler result tx-state))
+                         result)]
+        (assoc result* :duration (str (- (util/current-time-millis) start-time) "ms")))
       (catch Exception e
-        (async/<! (tx-error/pre-processing-handler e db-root cmd-data t))))))
+        (async/<! (tx-error/pre-processing-handler e db-before tx-map))))))

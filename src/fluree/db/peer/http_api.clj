@@ -36,7 +36,7 @@
             [fluree.db.ledger.delete :as delete]
             [fluree.db.meta :as meta]
             [fluree.db.storage.core :as storage-core]
-            [fluree.db.ledger.transact.json :as tx-json])
+            [fluree.db.ledger.transact.core :as tx-core])
   (:import (java.io Closeable)
            (java.time Instant)
            (java.net BindException)
@@ -307,7 +307,7 @@
           db-with       (<? (dbproto/-forward-time-travel db flakes'))
           next-t        (- (:t db-with) 1)
           session       (session/session conn ledger)
-          res           (<? (tx-json/transact db-with {:command cmd-data} next-t block-instant))
+          res           (<? (tx-core/transact db-with {:command cmd-data} next-t block-instant))
           {:keys [flakes fuel status error]} res
           _             (session/close session)]
       [{:status status}
@@ -334,7 +334,7 @@
         (let [cmd-data      (fdb/tx->command ledger txn private-key)
               next-t        (dec (:t db))
               block-instant (Instant/now)
-              res           (<? (tx-json/transact db {:command cmd-data} next-t block-instant))
+              res           (<? (tx-core/transact db {:command cmd-data} next-t block-instant))
               {:keys [flakes fuel status error db-after]} res
               fuel-tot      (+ fuel-tot fuel)
               _             (when (not= status 200)

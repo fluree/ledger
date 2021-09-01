@@ -527,23 +527,21 @@
   is an error.
 
   Exceptions here should throw: catch by go-try."
-  [db tx-map]
-  (let [deps (:deps tx-map)]
-    (go-try
-      (if (empty? deps)
+  [db {:keys [deps] :as tx-map}]
+  (go-try
+    (let [res (->> deps
+                   (reduce-kv (fn [query-acc key dep]
+                                (-> query-acc
+                                    (update :selectOne conj (str "?error" key))
+                                    (update :where conj [(str "?tx" key) "_tx/id" dep])
+                                    (update :optional conj [(str "?tx" key) "_tx/error" (str "?error" key)])))
+                              {:selectOne [] :where [] :optional []})
+                   (fdb/query-async (go-try db))
+                   <?)]
+      (if (and (seq res) (every? nil? res))
         true
-        (let [res (->> (reduce-kv (fn [query-acc key dep]
-                                    (-> query-acc
-                                        (update :selectOne conj (str "?error" key))
-                                        (update :where conj [(str "?tx" key) "_tx/id" dep])
-                                        (update :optional conj [(str "?tx" key) "_tx/error" (str "?error" key)])))
-                                  {:selectOne [] :where [] :optional []} deps)
-                       (fdb/query-async (go-try db))
-                       <?)]
-          (if (and (seq res) (every? nil? res))
-            true
-            (throw (ex-info (str "One or more of the dependencies for this transaction failed: " deps)
-                            {:status 403 :error :db/invalid-auth}))))))))
+        (throw (ex-info (str "One or more of the dependencies for this transaction failed: " deps)
+                        {:status 400 :error :db/invalid-dependency}))))))
 
 
 ;; Runtime

@@ -105,7 +105,7 @@
 
                    :get-in (update-state/get-in* entry state-atom)
 
-                   :dissoc-in (update-state/assoc-in* entry state-atom)
+                   :dissoc-in (update-state/dissoc-in* entry state-atom)
 
                    ;; Will replace current val at key sequence only if existing val is = compare value at
                    ;; compare key sequence.
