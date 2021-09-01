@@ -224,8 +224,8 @@
   [flakes index-flakes {:keys [remove-from-post]}]
   (when-let [remove-post-sids (->> index-flakes
                                    (keep #(let [^Flake f %]
-                                            (when (and (true? (.-op f)) (false? (.-o f))))
-                                            (.-s f)))
+                                            (when (and (true? (.-op f)) (false? (.-o f)))
+                                              (.-s f))))
                                    (not-empty))]
     (swap! remove-from-post into remove-post-sids))
   flakes)
