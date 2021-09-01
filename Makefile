@@ -13,7 +13,7 @@ else
   SHACMD := sha256sum
 endif
 
-.PHONY: deps test jar uberjar stage-release run check-release-jdk-version prep-release print-version release release-stable release-latest release-version-latest docker-image install clean
+.PHONY: deps test eastwood ci jar uberjar stage-release run check-release-jdk-version prep-release print-version release release-stable release-latest release-version-latest docker-image install clean
 
 SOURCES := $(shell find src)
 RESOURCES := $(shell find resources)
@@ -100,6 +100,15 @@ jar: target/fluree-ledger.jar
 test:
 	clojure -X:test:runner
 
+scanning_results:
+	mkdir scanning_results
+
+eastwood: scanning_results
+	clojure -M:eastwood
+	cat scanning_results/eastwood.out
+
+ci: test eastwood
+
 target/fluree-ledger.standalone.jar: resources/adminUI $(SOURCES) $(RESOURCES)
 	clojure -X:uberjar
 
@@ -152,3 +161,4 @@ clean:
 	rm -f resources/adminUI
 	rm -rf node_modules
 	rm -f pom.xml
+	rm -rf scanning_results
