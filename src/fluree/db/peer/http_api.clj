@@ -37,7 +37,7 @@
             [fluree.db.ledger.transact.core :as tx-core]
             [fluree.db.util.tx :as tx-util])
   (:import (java.time Instant)
-           (java.net BindException)
+           (java.net BindException URL)
            (fluree.db.flake Flake)
            (clojure.lang ExceptionInfo)
            (org.httpkit BytesInputStream)))
