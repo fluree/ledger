@@ -2,7 +2,7 @@
         org.clojure/data.xml              {:mvn/version "0.2.0-alpha6"}
         com.fluree/alphabase              {:mvn/version "3.2.1"}
         com.fluree/db                     {:git/url "https://github.com/fluree/db.git"
-                                           :sha     "9debad6a99c03a91f1f678bdee05385c5fa269e4"}
+                                           :sha     "4da542980d81a154cde5f03de39257787c9d3db3"}
         com.fluree/raft                   {:mvn/version "1.0.0-beta1"}
         com.fluree/crypto                 {:git/url "https://github.com/fluree/fluree.crypto.git"
                                            :sha     "4b7d65534ce6a0198d63da98661a1cf7e02dbd91"}
@@ -15,8 +15,8 @@
 
         ;; AWS S3 API
         com.cognitect.aws/api             {:mvn/version "0.8.515"}
-        com.cognitect.aws/endpoints       {:mvn/version "1.1.12.51"}
-        com.cognitect.aws/s3              {:mvn/version "813.2.972.0"}
+        com.cognitect.aws/endpoints       {:mvn/version "1.1.12.57"}
+        com.cognitect.aws/s3              {:mvn/version "814.2.978.0"}
 
         ;; web server
         http-kit/http-kit                 {:mvn/version "2.5.3"}
@@ -50,7 +50,7 @@
   {:extra-paths ["test-resources"]
    :extra-deps  {com.cognitect/test-runner
                  {:git/url "https://github.com/cognitect-labs/test-runner.git"
-                  :sha "4e7e1c0dfd5291fa2134df052443dc29695d8cbe"}}
+                  :sha "e7660458ce25bc4acb4ccc3e2415aae0a4907198"}}
    :exec-fn     cognitect.test-runner.api/test}
 
   :jar
