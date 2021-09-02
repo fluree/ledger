@@ -36,7 +36,8 @@
             [fluree.db.ledger.delete :as delete]
             [fluree.db.meta :as meta]
             [fluree.db.storage.core :as storage-core]
-            [fluree.db.ledger.transact.core :as tx-core])
+            [fluree.db.ledger.transact.core :as tx-core]
+            [fluree.db.util.tx :as tx-util])
   (:import (java.io Closeable)
            (java.time Instant)
            (java.net BindException)
@@ -294,22 +295,24 @@
   (go-try
     (require-authentication system auth-map)
     (let [{:keys [tx flakes auth]} param
-          conn          (:conn system)
-          auth-id       (:auth auth-map)
-          db            (fdb/db conn ledger {:auth (when auth-id ["_auth/id" auth-id])})
-          private-key   (or (txproto/get-shared-private-key (:group system))
-                            (throw (ex-info (str "There is no shared private key in this group. The test-transact-with endpoint is not currently supported in databases where fdb-api-open is false")
-                                            {:status 400})))
+          conn         (:conn system)
+          auth-id      (:auth auth-map)
+          db           (fdb/db conn ledger {:auth (when auth-id ["_auth/id" auth-id])})
+          private-key  (or (txproto/get-shared-private-key (:group system))
+                           (throw (ex-info (str "There is no shared private key in this group. The test-transact-with endpoint is not currently supported in databases where fdb-api-open is false")
+                                           {:status 400})))
 
-          cmd-data      (fdb/tx->command ledger tx private-key {:auth auth})
-          flakes'       (map flake/parts->Flake flakes)
-          block-instant (Instant/now)
-          db-with       (<? (dbproto/-forward-time-travel db flakes'))
-          next-t        (- (:t db-with) 1)
-          session       (session/session conn ledger)
-          res           (<? (tx-core/transact db-with {:command cmd-data} next-t block-instant))
+          cmd-data     (fdb/tx->command ledger tx private-key {:auth auth})
+          internal-cmd {:command cmd-data
+                        :id      (:id cmd-data)}
+          flakes'      (map flake/parts->Flake flakes)
+          db-with      (<? (dbproto/-forward-time-travel db flakes'))
+          session      (session/session conn ledger)
+          res          (->> (tx-util/validate-command internal-cmd)
+                            (tx-core/transact {:db-before db-with :instant (Instant/now)})
+                            <?)
           {:keys [flakes fuel status error]} res
-          _             (session/close session)]
+          _            (session/close session)]
       [{:status status}
        (if error {:error error} {:flakes flakes :fuel fuel})])))
 
@@ -331,18 +334,20 @@
              txs        (rest param)
              db         (<? db)
              flakes-all []]
-        (let [cmd-data      (fdb/tx->command ledger txn private-key)
-              next-t        (dec (:t db))
-              block-instant (Instant/now)
-              res           (<? (tx-core/transact db {:command cmd-data} next-t block-instant))
+        (let [cmd-data     (fdb/tx->command ledger txn private-key)
+              internal-cmd {:command cmd-data
+                            :id      (:id cmd-data)}
+              res          (->> (tx-util/validate-command internal-cmd)
+                                (tx-core/transact {:db-before db :instant (Instant/now)})
+                                <?)
               {:keys [flakes fuel status error db-after]} res
-              fuel-tot      (+ fuel-tot fuel)
-              _             (when (not= status 200)
-                              (throw (ex-info error
-                                              {:status status
-                                               :error  error
-                                               :fuel   fuel-tot})))
-              flakes'       (concat flakes-all flakes)]
+              fuel-tot     (+ fuel-tot fuel)
+              _            (when (not= status 200)
+                             (throw (ex-info error
+                                             {:status status
+                                              :error  error
+                                              :fuel   fuel-tot})))
+              flakes'      (concat flakes-all flakes)]
           (if (empty? txs)
             (let [_                 (session/close session)
                   flakes-by-subject (group-by s flakes')
