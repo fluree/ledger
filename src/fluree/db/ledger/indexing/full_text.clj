@@ -194,8 +194,8 @@
                        (<! (reset-index idx wrtr db))
                        (<! (update-index idx wrtr db block)))
             end-time (Instant/now)
-            duration (- (.toEpochMilli end-time)
-                        (.toEpochMilli start-time))
+            duration (- (.toEpochMilli ^Instant end-time)
+                        (.toEpochMilli ^Instant start-time))
             status   (-> stats
                          (merge coordinates)
                          (assoc :duration duration))]
