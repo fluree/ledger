@@ -13,6 +13,12 @@
 
 (set! *warn-on-reflection* true)
 
+
+(def websocket-timeout
+  "Timeout in milliseconds to close websocket if no message received"
+  900000)
+
+
 ;; map of current websocket connections
 (def ^:private ws-connections (atom {}))
 
@@ -93,10 +99,33 @@
           (recur))))))
 
 
+(defn start-msg-consumer-loop!
+  "Takes a websocket-id, a core.async channel to take incoming websocket
+  messages from, and a msg-handler fn to pass parsed incoming messages to.
+  Starts a loop to take messages from the consumer chan and pass them to the
+  msg-handler. Handles timeouts if no message received. If the consumer-chan
+  gets closed, the caller should close the websocket."
+  [ws-id consumer-chan msg-handler]
+  (async/go-loop []
+    (let [[new-msg ch] (async/alts! [consumer-chan (async/timeout websocket-timeout)])]
+      (if (= ch consumer-chan)
+        (if (nil? new-msg)
+          (log/error "Web socket consumer channel closed for websocket id:" ws-id)
+          (do
+            (-> new-msg json/parse msg-handler)
+            (recur)))
+        (do
+          (async/close! consumer-chan))))))
+
+
 (defn handler
   [system req]
   (let [ws-id (str (UUID/randomUUID))
-        producer-chan (async/chan (async/sliding-buffer 20))]
+        producer-chan (async/chan (async/sliding-buffer 20))
+        consumer-chan (async/chan (async/sliding-buffer 20))
+        msg-handler #(future
+                       (messages/message-handler system producer-chan ws-id %))]
+    (start-msg-consumer-loop! ws-id consumer-chan msg-handler)
     (http/with-channel req ch
       (if (http/websocket? ch)
         (do
@@ -111,9 +140,10 @@
           (http/on-receive ch (fn [data]
                                 (log/trace (format "Received data on websocket id %s: %s"
                                                    ws-id (pr-str data)))
+                                (when-not (async/put! consumer-chan data)
+                                  (log/info "Web socket timeout - no pings received. Closing websocket id:" ws-id)
+                                  (close-websocket ws-id producer-chan))))
 
-                                (messages/message-handler system producer-chan
-                                                          ws-id (json/parse data))))
           (msg-producer system ws-id ch producer-chan)
           {:status 200 :body ws-id})
         ;; if it wasn't a valid websocket handshake, return an error
