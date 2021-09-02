@@ -737,7 +737,7 @@
   [{:keys [conn] :as system} {:keys [body remote-addr] :as request}]
   (let [body         (when body (decode-body body :json))
         ledger-ident (:db/id body)
-        [nw db] (str/split ledger-ident #"/")
+        [nw db]      (str/split ledger-ident #"/")
         ledger       (keyword nw db)
         auth-map     (auth-map system ledger request body)
         session      (session/session conn [nw db])
@@ -863,7 +863,7 @@
                     {:status  status
                      :headers headers
                      :body    body}))]
-    (let [[resp ch] (async/alts!! attempt (async/timeout storage-timeout))]
+    (let [[resp ch] (async/alts!! [attempt (async/timeout storage-timeout)])]
       (if (= ch attempt)
         resp
         {:status  504
