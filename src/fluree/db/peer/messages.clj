@@ -203,7 +203,7 @@
      (log/trace "Incoming message: " (pr-str msg))
      (try
        (case (keyword operation)
-         :close (do                                         ;; close will trigger the on-closed callback and clean up all session info.
+         :close (do ;; close will trigger the on-closed callback and clean up all session info.
                   ;; send a confirmation message first
                   (success! true)
                   ;(s/put! ws (json/write [(assoc header :status 200) true]))
@@ -268,9 +268,9 @@
                       (success! true))
 
          :unsubscribe (let [ledger (if (sequential? (first arg))
-                                            ;; Expect [ [network, dbid], auth ] or [network, dbid] or network/dbid
-                                            (first arg)
-                                            arg)
+                                     ;; Expect [ [network, dbid], auth ] or [network, dbid] or network/dbid
+                                     (first arg)
+                                     arg)
                             dbv (session/resolve-ledger (:conn system) ledger)
                             [network dbid] dbv
                             _   (when-not (txproto/ledger-exists? (:group system) network dbid)
@@ -452,7 +452,7 @@
 
        (catch Exception e
          (log/info "Error caught in incoming message handler: "
-                   {:error   (.getMessage e)
+                   {:error   (ex-message e)
                     :message msg})
          (error! e))))))
 
