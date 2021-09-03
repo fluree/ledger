@@ -1,6 +1,8 @@
 (ns fluree.db.ledger.util
   (:require [clojure.core.async :refer [go <! <!!]]))
 
+(set! *warn-on-reflection* true)
+
 
 ;; core async helpers
 
@@ -10,7 +12,7 @@
   to maintain a full stack trace when jumping between multiple contexts."
   [x]
   (if (and (not (nil? x)) (instance? Exception x))
-    (throw (ex-info (or (.getMessage x) (str x))
+    (throw (ex-info (or (ex-message x) (str x))
                     (or (ex-data x) {})
                     x))
     x))

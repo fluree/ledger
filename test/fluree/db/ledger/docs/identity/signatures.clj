@@ -4,7 +4,7 @@
             [fluree.db.ledger.docs.getting-started.basic-schema :as basic]
             [fluree.db.ledger.api.downloaded :as downloaded]
             [fluree.db.api :as fdb]
-            [aleph.http :as http]
+            [org.httpkit.client :as http]
             [clojure.core.async :as async]
             [fluree.db.util.json :as json]
             [fluree.db.query.http-signatures :as http-signatures]
@@ -128,7 +128,7 @@
 (deftest transact-endpoint
   (testing "The /transact endpoint should not work.")
   (let [addPerson [{ :_id "person" :handle "anna"}]
-        resp (-> @(http/post (str endpoint "transact") (downloaded/standard-request addPerson {:throw-exceptions false})) :body bs/to-string json/parse)]
+        resp (-> @(http/post (str endpoint "transact") (downloaded/standard-request addPerson)) :body bs/to-string json/parse)]
 
     (is (= 401 (:status resp)))))
 
@@ -170,4 +170,3 @@
 
 (deftest Signatures-export
   (closed-api Signatures))
-

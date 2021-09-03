@@ -6,7 +6,10 @@
             [fluree.db.storage.core :as storage]
             [fluree.db.constants :as const]
             [fluree.db.util.log :as log]
-            [fluree.db.ledger.reindex :as reindex]))
+            [fluree.db.ledger.reindex :as reindex])
+  (:import (fluree.db.flake Flake)))
+
+(set! *warn-on-reflection* true)
 
 (defn next-version
   [conn storage-block-key]
@@ -18,11 +21,12 @@
 
 (defn filter-flakes-from-block
   [block flakes]
-  (let [ts (-> (map #(.-t %) flakes) set)]
+  (let [ts (-> (map #(.-t ^Flake %) flakes) set)]
     (assoc block
-      :flakes (filterv #(and (not ((set flakes) %))
-                             (not (and (= const/$_tx:tx (.-p %))
-                                       (ts (.-t %)))))
+      :flakes (filterv #(let [^Flake f %]
+                          (and (not ((set flakes) f))
+                               (not (and (= const/$_tx:tx (.-p f))
+                                         (ts (.-t f))))))
                        (:flakes block)))))
 
 (defn hide-block
@@ -64,7 +68,7 @@
                 to-t      (if block-end
                             (:t (<? (time-travel/as-of-block db block-end))) (:t db))
                 flakes    (<? (query-range/time-range db idx = pattern {:from-t from-t :to-t to-t}))
-                block-map (<? (go-try (loop [[flake & r] flakes
+                block-map (<? (go-try (loop [[^Flake flake & r] flakes
                                              t-map     {}
                                              block-map {}]
                                         (if flake
@@ -127,8 +131,8 @@
   (<?? (purge-flakes conn "fluree" "test" {:purge [422212465065991]}))
 
   (->> (<?? (storage/storage-read conn "fluree_test_block_000000000000004:v2"))
-       (serdeproto/-deserialize-block (:serializer conn)))
+       (serdeproto/-deserialize-block (:serializer conn))))
 
-  )
+
 
 

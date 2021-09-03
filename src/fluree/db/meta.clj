@@ -5,6 +5,7 @@
   (:import (java.io PushbackReader))
   (:gen-class))
 
+(set! *warn-on-reflection* true)
 
 (defn find-pom-xml []
   (let [root-file (io/file "pom.xml")]

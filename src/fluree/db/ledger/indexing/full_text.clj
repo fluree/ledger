@@ -5,8 +5,11 @@
             [fluree.db.util.schema :as schema]
             [clojure.core.async :as async :refer [<! chan go go-loop]]
             [clojure.tools.logging :as log])
-  (:import fluree.db.flake.Flake
-           java.time.Instant))
+  (:import (fluree.db.flake Flake)
+           (java.time Instant)
+           (java.io Closeable)))
+
+(set! *warn-on-reflection* true)
 
 (defn separate-by-op
   [flakes]
@@ -191,8 +194,8 @@
                        (<! (reset-index idx wrtr db))
                        (<! (update-index idx wrtr db block)))
             end-time (Instant/now)
-            duration (- (.toEpochMilli end-time)
-                        (.toEpochMilli start-time))
+            duration (- (.toEpochMilli ^Instant end-time)
+                        (.toEpochMilli ^Instant start-time))
             status   (-> stats
                          (merge coordinates)
                          (assoc :duration duration))]
@@ -247,7 +250,7 @@
   channel that will eventually contain the result of the index operation. The
   recognized actions are `:block`, `:range`, and `:reset`."
   [conn]
-  (when-let [base-path (-> conn :meta :file-storage-path)]
+  (when (-> conn :meta :file-storage-path)
     (let [write-q (chan)
           closer  (fn []
                     (async/close! write-q))
@@ -262,8 +265,8 @@
           (let [{:keys [action db]} msg
                 {:keys [network dbid]} db
                 lang (-> db :settings :language (or :default))]
-            (with-open [idx  (full-text/open-storage conn network dbid lang)
-                        wrtr (full-text/writer idx)]
+            (with-open [^Closeable idx (full-text/open-storage conn network dbid lang)
+                        ^Closeable wrtr (full-text/writer idx)]
               (let [result  (case action
                               :block (let [{:keys [block]} msg]
                                        (<! (write-block idx wrtr db block)))

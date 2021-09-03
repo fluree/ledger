@@ -8,13 +8,15 @@
             [fluree.db.flake :as flake])
   (:import (fluree.db.flake Flake)))
 
+(set! *warn-on-reflection* true)
+
 ;; transaction error responses
 (defn decode-exception
   [e]
   (let [exd     (ex-data e)
         status  (or (:status exd) 500)
         error   (or (:error exd) :db/unexpected-error)
-        message (str/join " " [status (util/keyword->str error) (.getMessage e)])]
+        message (str/join " " [status (util/keyword->str error) (ex-message e)])]
     (when (= 500 status)
       (log/error e (str "Unexpected Error, please contact support with exception details: " message)))
     {:message message

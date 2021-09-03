@@ -9,6 +9,8 @@
             [clojure.string :as str]
             [fluree.db.api :as fdb]))
 
+(set! *warn-on-reflection* true)
+
 
 (defn terminate!
   "Shuts down entire server.

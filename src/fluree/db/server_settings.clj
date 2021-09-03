@@ -16,6 +16,8 @@
            (java.lang.management ManagementFactory)
            (java.io Reader)))
 
+(set! *warn-on-reflection* true)
+
 
 ;; note every environment variable must be placed in this default map for it to be picked up.
 ;; THIS IS THE MASTER LIST!  nil as a value means there is no default
@@ -116,21 +118,21 @@
   Uses either/both FDB_MODE and FDB_SETTINGS variables to apply
   a set of default values if not otherwise specified."
   [environment]
-  (let [properties      (when-let [prop-file (:fdb-properties-file environment)]
-                          (read-properties-file prop-file))
-        java-prop-flags (-> (stats/jvm-arguments) :input stats/jvm-args->map)
-        _               (if properties
-                          (log/info (format "Properties file %s successfully loaded."
-                                            (:fdb-properties-file environment)))
-                          (log/info "Properties file does not exist, skipping."))
-        propEnvFlag     (merge properties java-prop-flags environment)
-        propEnvFlagDef  (reduce
-                          (fn [acc [k v]] (assoc acc k (or (get propEnvFlag k) v)))
-                          {}
-                          default-env)]
-    (assert (#{"query" "ledger" "dev"} (-> propEnvFlagDef :fdb-mode str/lower-case))
+  (let [properties        (when-let [prop-file (:fdb-properties-file environment)]
+                            (read-properties-file prop-file))
+        java-prop-flags   (-> (stats/jvm-arguments) :input stats/jvm-args->map)
+        _                 (if properties
+                            (log/info (format "Properties file %s successfully loaded."
+                                              (:fdb-properties-file environment)))
+                            (log/info "Properties file does not exist, skipping."))
+        prop-env-flag     (merge properties java-prop-flags environment)
+        prop-env-flag-def (reduce
+                            (fn [acc [k v]] (assoc acc k (or (get prop-env-flag k) v)))
+                            {}
+                            default-env)]
+    (assert (#{"query" "ledger" "dev"} (-> prop-env-flag-def :fdb-mode str/lower-case))
             "Invalid FDB_MODE, must be dev, query or ledger.")
-    propEnvFlagDef))
+    prop-env-flag-def))
 
 
 (defn env-boolean
@@ -299,7 +301,8 @@
                       {:status 400 :error :db/invalid-configuration}))
       (System/exit 1))
 
-    (when (< max-memory (* 1.2 mem-cache-bytes))
+    ;; On GraalVM native-image max memory is reported as -1
+    (when (and (not= -1 max-memory) (< max-memory (* 1.2 mem-cache-bytes)))
       (throw (ex-info (str "Unable to start, JVM max memory must be at least 20% larger than fdb-memory-cache size (ideally more). Cache size: "
                            (:fdb-memory-cache env) ". JVM max memory:" (format "%.1f GB" (/ max-memory 1073741824.0)))
                       {:status 400 :error :db/invalid-configuration}))

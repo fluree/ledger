@@ -7,7 +7,11 @@
             [fluree.db.dbproto :as dbproto]
             [clojure.string :as str]
             [clojure.data.xml :as xml]
-            [fluree.db.util.core :as util]))
+            [fluree.db.util.core :as util])
+  (:import (java.io FileWriter)
+           (fluree.db.flake Flake)))
+
+(set! *warn-on-reflection* true)
 
 (defn sid->cname
   [db sid]
@@ -63,14 +67,14 @@
 ;; I/O
 
 (defn write-to-file
-  [file-path text]
+  [file-path ^String text]
   (with-open [w (io/writer file-path :append true)]
     (.write w text)))
 
 
 (defn write-xml-to-file
-  [xml-data file-path]
-  (with-open [out-file (java.io.FileWriter. file-path)]
+  [xml-data ^String file-path]
+  (with-open [out-file (FileWriter. file-path)]
     (xml/emit xml-data out-file)))
 
 (defn rdf-type->xml
@@ -79,14 +83,15 @@
 
 (defn subject->xml
   [db flakes fdb-pfx]
-  (let [s               (-> flakes first .-s)
+  (let [^Flake fflake   (first flakes)
+        s               (.-s fflake)
         s'              (format-subject s)
         wrap-subject-fn (wrap-xml-fn :rdf:Description {:rdf:about (str fdb-pfx s')})
         rdf-type        (if (neg-int? s)
                           [(rdf-type->xml fdb-pfx "_tx")
                            (rdf-type->xml fdb-pfx "_block")]
                           [(rdf-type->xml fdb-pfx (sid->cname db s))])
-        pred-objs       (loop [[flake & r] flakes
+        pred-objs       (loop [[^Flake flake & r] flakes
                                acc rdf-type]
                           (if (not flake)
                             acc
@@ -101,7 +106,7 @@
 (defn xml->export
   [db network dbid block file-path spot]
   (let [fdb-pfx          (fdb-prefix network dbid block)
-        subject-xmls     (loop [[flake & r] spot
+        subject-xmls     (loop [[^Flake flake & r] spot
                                 subject        nil
                                 subject-flakes []
                                 acc            []]
@@ -135,7 +140,7 @@
   [db network dbid block file-path spot]
   (let [prefixes (get-prefixes-ttl network dbid block)
         _        (write-to-file file-path prefixes)]
-    (loop [[flake & r] spot
+    (loop [[^Flake flake & r] spot
            current-subject   nil
            current-predicate nil
            acc               ""
@@ -201,6 +206,6 @@
   (async/<!! (db->export db :xml))
 
   (:conn user/system)
-  (:group (:conn user/system))
+  (:group (:conn user/system)))
 
-  )
+

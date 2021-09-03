@@ -10,6 +10,8 @@
             [fluree.db.ledger.txgroup.txgroup-proto :as txproto]
             [fluree.db.api :as fdb]))
 
+(set! *warn-on-reflection* true)
+
 ;; For now, just use this as a lock to ensure multiple processes are not trying to redistribute work simultaneously.
 (def ^:private redistribute-workers-lock (atom nil))
 
@@ -241,7 +243,7 @@
             total-size* (if (> size max-size)
                           ;; if command is larger than max-size, we will automatically reject - include tx to process error.
                           total-size
-                          (+ total-size size))
+                          (long (+ total-size size))) ; long keeps the recur arg primitive
             queued*     (if (or (> total-size* max-size) (nil? next-cmds))
                           queued
                           (concat queued next-cmds))]

@@ -5,6 +5,8 @@
             [fluree.db.util.async :refer [go-try <?]]
             [fluree.db.ledger.txgroup.txgroup-proto :as txproto]))
 
+(set! *warn-on-reflection* true)
+
 ;; takes care of garbage collection for a db.
 
 (defn delete-file-raft

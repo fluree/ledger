@@ -6,6 +6,8 @@
             [fluree.db.dbproto :as dbproto])
   (:import (fluree.db.flake Flake)))
 
+(set! *warn-on-reflection* true)
+
 ;;; functions to retract existing flakes from the ledger
 
 (declare subject)
@@ -15,7 +17,7 @@
   :component true, meaning its value points to subject that
   directly a 'component' of this subject and would need to be
   deleted if this flake."
-  [db flake]
+  [db ^Flake flake]
   (true? (dbproto/-p-prop db :component (.-p flake))))
 
 

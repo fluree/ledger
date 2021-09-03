@@ -6,6 +6,8 @@
             [clojure.tools.logging :as log])
   (:import (java.net BindException)))
 
+(set! *warn-on-reflection* true)
+
 
 (defn start-tcp-server
   "Starts a tcp server.

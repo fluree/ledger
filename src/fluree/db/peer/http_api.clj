@@ -2,14 +2,11 @@
   (:require [clojure.tools.logging :as log]
             [clojure.walk :as walk]
             [clojure.string :as str]
-            [clojure.core.async :as async]
-            [aleph.http :as http]
-            [aleph.netty :as netty]
+            [clojure.core.async :as async :refer [<!!]]
+            [org.httpkit.server :as http]
             [compojure.core :as compojure :refer [defroutes]]
             [compojure.route :as route]
-            [manifold.deferred :as d]
             [ring.middleware.params :as params]
-            [aleph.middleware.cors :as cors]
             [fluree.db.util.core :as util]
             [fluree.db.util.json :as json]
             [fluree.crypto :as crypto]
@@ -25,6 +22,7 @@
             [fluree.db.token-auth :as token-auth]
             [fluree.db.peer.websocket :as websocket]
             [ring.util.response :as resp]
+            [ring.middleware.cors :as cors]
             [fluree.db.util.async :refer [<?? <? go-try]]
             [fluree.db.ledger.txgroup.txgroup-proto :as txproto]
             [fluree.db.serde.protocol :as serdeproto]
@@ -38,11 +36,13 @@
             [fluree.db.storage.core :as storage-core]
             [fluree.db.ledger.transact.core :as tx-core]
             [fluree.db.util.tx :as tx-util])
-  (:import (java.io Closeable)
-           (java.time Instant)
-           (java.net BindException)
+  (:import (java.time Instant)
+           (java.net BindException URL)
            (fluree.db.flake Flake)
-           (clojure.lang ExceptionInfo)))
+           (clojure.lang ExceptionInfo)
+           (org.httpkit BytesInputStream)))
+
+(set! *warn-on-reflection* true)
 
 (defn s
   [^Flake f]
@@ -72,11 +72,11 @@
 
 (defn- collect-errors
   [e debug-mode?]
-  (let [base-resp (merge (ex-data e) {:message (.getMessage e)})
+  (let [base-resp (merge (ex-data e) {:message (ex-message e)})
         error     (cond->
                     base-resp
-                    debug-mode? (assoc :stack (mapv str (.getStackTrace e))))]
-    (if-let [cause (.getCause e)]
+                    debug-mode? (assoc :stack (mapv str (.getStackTrace ^Throwable e))))]
+    (if-let [cause (ex-cause e)]
       (assoc error :cause (collect-errors cause debug-mode?))
       error)))
 
@@ -84,26 +84,24 @@
 (defn- wrap-errors
   [debug-mode? handler]
   (fn [req]
-    (->
-      (d/future
-        (handler req))
-      (d/catch
-        (fn [e]
-          (let [{:keys [status headers body]} (ex-data e)
-                body         (if (instance? java.lang.AssertionError e)
-                               {:status  400
-                                :message (.getMessage e)
-                                :error   :db/assert-failed}
-                               (or body (collect-errors e debug-mode?)))
-                status       (or status (:status body) 500)
-                json-encode? (or (map? body) (sequential? body) (boolean? body) (number? body))]
-            (if (>= status 500)
-              (log/error e "Server exception:" body)
-              (log/info "Request exception:" body))
-            (cond-> {:status status :headers headers :body body}
-                    json-encode?
-                    (assoc :headers (merge headers {"content-type" "application/json; charset=UTF-8"})
-                           :body (json/stringify-UTF8 (select-keys body [:status :message :error]))))))))))
+    (try
+      (handler req)
+      (catch Exception e
+        (let [{:keys [status headers body]} (ex-data e)
+              body         (if (instance? AssertionError e)
+                             {:status  400
+                              :message (.getMessage e)
+                              :error   :db/assert-failed}
+                             (or body (collect-errors e debug-mode?)))
+              status       (or status (:status body) 500)
+              json-encode? (or (map? body) (sequential? body) (boolean? body) (number? body))]
+          (if (>= status 500)
+            (log/error e "Server exception:" body)
+            (log/info "Request exception:" body))
+          (cond-> {:status status :headers headers :body body}
+                  json-encode?
+                  (assoc :headers (merge headers {"content-type" "application/json; charset=UTF-8"})
+                         :body (json/stringify-UTF8 (select-keys body [:status :message :error])))))))))
 
 
 (def not-found
@@ -115,7 +113,8 @@
 (defn decode-body
   [body type]
   (case type
-    :json (json/parse body)))
+    :json (let [^bytes body' (.bytes ^BytesInputStream body)]
+            (-> body' (String. "UTF-8") json/parse))))
 
 
 (defn- return-token
@@ -133,19 +132,20 @@
 
 (defn verify-auth
   [db auth authority]
-  (go-try (if (or (not auth) (= auth authority))
-            auth
-            (let [auth_id      (<? (dbproto/-subid db ["_auth/id" auth] true))
-                  _            (when (util/exception? auth_id)
-                                 (throw (ex-info (str "Auth id for transaction does not exist
+  (go-try
+    (if (or (not auth) (= auth authority))
+      auth
+      (let [auth_id      (<? (dbproto/-subid db ["_auth/id" auth] true))
+            _            (when (util/exception? auth_id)
+                           (throw (ex-info (str "Auth id for transaction does not exist
                                                     in the database: " auth) {:status 403 :error
                                                                                       :db/invalid-auth})))
-                  authority_id (<? (dbproto/-subid db ["_auth/id" authority] true))
-                  _            (when (util/exception? authority_id)
-                                 (throw (ex-info (str "Authority " authority " does not exist.")
-                                                 {:status 403 :error :db/invalid-auth})))
-                  _            (<? (transact/valid-authority? db auth_id authority_id))]
-              auth))))
+            authority_id (<? (dbproto/-subid db ["_auth/id" authority] true))
+            _            (when (util/exception? authority_id)
+                           (throw (ex-info (str "Authority " authority " does not exist.")
+                                           {:status 403 :error :db/invalid-auth})))
+            _            (<? (transact/valid-authority? db auth_id authority_id))]
+        auth))))
 
 
 (defn- auth-map
@@ -268,23 +268,24 @@
                    (throw (ex-info (str "Api endpoint for 'command' must contain a map/object with cmd keys.")
                                    {:status 400 :error :db/invalid-command})))
           conn   (:conn system)
-          result (cond (and (:cmd param) (:sig param))
-                       (let [persist-resp (<? (fdb/submit-command-async conn param))
-                             result       (if (and (string? persist-resp) (-> param :txid-only false?))
-                                            (<? (fdb/monitor-tx-async conn ledger persist-resp timeout))
-                                            persist-resp)]
-                         result)
+          result (cond
+                   (and (:cmd param) (:sig param))
+                   (let [persist-resp (<? (fdb/submit-command-async conn param))
+                         result       (if (and (string? persist-resp) (-> param :txid-only false?))
+                                        (<? (fdb/monitor-tx-async conn ledger persist-resp timeout))
+                                        persist-resp)]
+                     result)
 
-                       (not (open-api? system))
-                       (throw (ex-info (str "Api endpoint for 'command' must contain a map/object with cmd and sig keys when using a closed Api.")
-                                       {:status 400 :error :db/invalid-command}))
+                   (not (open-api? system))
+                   (throw (ex-info (str "Api endpoint for 'command' must contain a map/object with cmd and sig keys when using a closed Api.")
+                                   {:status 400 :error :db/invalid-command}))
 
-                       :else
-                       (let [cmd  (-> param :cmd json/parse)
-                             opts (-> (dissoc cmd :tx)
-                                      (assoc :txid-only false))
-                             {:keys [tx db]} cmd]
-                         (<? (fdb/transact-async conn db tx opts))))]
+                   :else
+                   (let [cmd  (-> param :cmd json/parse)
+                         opts (-> (dissoc cmd :tx)
+                                  (assoc :txid-only false))
+                         {:keys [tx db]} cmd]
+                     (<? (fdb/transact-async conn db tx opts))))]
       [{:status (or (:status result) 200)
         :fuel   (or (:fuel result) 0)}
        result])))
@@ -480,36 +481,30 @@
 (defn wrap-action-handler
   "Wraps a db request to facilitate proper response format"
   [system {:keys [headers body params remote-addr] :as request}]
-  (let [deferred (d/deferred)]
-    (async/go
-      (try
-        (let [{:keys [action network db]} params
-              start           (System/nanoTime)
-              ledger          (keyword network db)
-              action*         (keyword action)
-              action-param    (when body (decode-body body :json))
-              auth-map        (auth-map system ledger request action-param)
-              request-timeout (if-let [timeout (:request-timeout headers)]
-                                (try (Integer/parseInt timeout)
-                                     (catch Exception _ 60000))
-                                60000)
-              [header body] (<? (action-handler action* system action-param auth-map ledger request-timeout))
-              request-time    (- (System/nanoTime) start)
-              resp-body       (json/stringify-UTF8 body)
-              resp-headers    (reduce-kv (fn [acc k v]
-                                           (assoc acc (str "x-fdb-" (util/keyword->str k)) v))
-                                         {"Content-Type" "application/json; charset=utf-8"
-                                          "x-fdb-time"   (format "%.2fms" (float (/ request-time 1000000)))
-                                          "x-fdb-fuel"   (or (get header :fuel) (get body :fuel) 0)}
-                                         header)
-              resp            {:status  (or (:status header) 200)
-                               :headers resp-headers
-                               :body    resp-body}]
-          (log/info (str ledger ":" action " [" (:status header) "] " remote-addr) header)
-          (d/success! deferred resp))
-        (catch Exception e
-          (d/error! deferred e))))
-    deferred))
+  (let [{:keys [action network db]} params
+        start           (System/nanoTime)
+        ledger          (keyword network db)
+        action*         (keyword action)
+        action-param    (when body (decode-body body :json))
+        auth-map        (auth-map system ledger request action-param)
+        request-timeout (if-let [timeout (:request-timeout headers)]
+                          (try (Integer/parseInt timeout)
+                               (catch Exception _ 60000))
+                          60000)
+        [header body]   (<?? (action-handler action* system action-param auth-map ledger request-timeout))
+        request-time    (- (System/nanoTime) start)
+        resp-body       (json/stringify-UTF8 body)
+        resp-headers    (reduce-kv (fn [acc k v]
+                                     (assoc acc (str "x-fdb-" (util/keyword->str k)) v))
+                                   {"Content-Type" "application/json; charset=utf-8"
+                                    "x-fdb-time"   (format "%.2fms" (float (/ request-time 1000000)))
+                                    "x-fdb-fuel"   (or (get header :fuel) (get body :fuel) 0)}
+                                   header)
+        resp            {:status  (or (:status header) 200)
+                         :headers resp-headers
+                         :body    resp-body}]
+    (log/info (str ledger ":" action " [" (:status header) "] " remote-addr) header)
+    resp))
 
 
 ;; TODO - need to include some good logging here of activity
@@ -523,58 +518,44 @@
   - auth     - _auth/id (TODO: should allow any _auth ident in the future)
   - expire   - requested time to expire in milliseconds"
   [system ledger {:keys [body]}]
-  (let [deferred (d/deferred)]
-    (async/go
-      (try
-        (let [{:keys [password user auth expire]} (decode-body body :json)
-              _       (when-not password
-                        (throw (ex-info "A password must be supplied in the provided JSON."
-                                        {:status 400
-                                         :error  :db/invalid-request})))
-              _       (when-not (or user auth)
-                        (throw (ex-info "A user identity or auth identity must be supplied."
-                                        {:status 400
-                                         :error  :db/invalid-request})))
+  (let [{:keys [password user auth expire]} (decode-body body :json)
+        _       (when-not password
+                  (throw (ex-info "A password must be supplied in the provided JSON."
+                                  {:status 400
+                                   :error  :db/invalid-request})))
+        _       (when-not (or user auth)
+                  (throw (ex-info "A user identity or auth identity must be supplied."
+                                  {:status 400
+                                   :error  :db/invalid-request})))
 
-              options (util/without-nils {:expire expire})
+        options (util/without-nils {:expire expire})
 
-              jwt     (<? (pw-auth/fluree-login-user (:conn system) ledger password user auth options))]
-          (d/success! deferred
-                      {:headers {"Content-Type" "application/json"}
-                       :status  200
-                       :body    (json/stringify-UTF8 jwt)}))
-        (catch Exception e
-          (d/error! deferred e))))
-    deferred))
+        jwt     (<?? (pw-auth/fluree-login-user (:conn system) ledger password user auth options))]
+    {:headers {"Content-Type" "application/json"}
+     :status  200
+     :body    (json/stringify-UTF8 jwt)}))
 
 
 ;; TODO - ensure 'expire' is epoch ms, or coerce if a string
 (defn password-generate
   [system ledger {:keys [body]}]
-  (let [deferred (d/deferred)]
-    (async/go
-      (try
-        (let [{:keys [password user roles expire create-user?]} (decode-body body :json)
-              _       (when-not password
-                        (throw (ex-info "A password must be supplied in the provided JSON."
-                                        {:status 400
-                                         :error  :db/invalid-request})))
-              conn    (:conn system)
-              {:keys [signing-key]} (-> conn :meta :password-auth)
-              options (util/without-nils
-                        {:private-key  signing-key
-                         :create-user? create-user?
-                         :expire       expire
-                         :user         user
-                         :roles        roles})
-              {:keys [jwt]} (<? (pw-auth/fluree-new-pw-auth conn ledger password options))]
-          (d/success! deferred
-                      {:headers {"Content-Type" "application/json"}
-                       :status  200
-                       :body    (json/stringify-UTF8 jwt)}))
-        (catch Exception e
-          (d/error! deferred e))))
-    deferred))
+  (let [{:keys [password user roles expire create-user?]} (decode-body body :json)
+        _       (when-not password
+                  (throw (ex-info "A password must be supplied in the provided JSON."
+                                  {:status 400
+                                   :error  :db/invalid-request})))
+        conn    (:conn system)
+        {:keys [signing-key]} (-> conn :meta :password-auth)
+        options (util/without-nils
+                  {:private-key  signing-key
+                   :create-user? create-user?
+                   :expire       expire
+                   :user         user
+                   :roles        roles})
+        {:keys [jwt]} (<?? (pw-auth/fluree-new-pw-auth conn ledger password options))]
+    {:headers {"Content-Type" "application/json"}
+     :status  200
+     :body    (json/stringify-UTF8 jwt)}))
 
 
 (defn password-renew
@@ -630,66 +611,62 @@
                              node))
                 data))
 
+
 (defn nw-state-handler
   [system _]
-  (let [deferred (d/deferred)]
-    (async/go
-      (try
-        (let [open-api? (open-api? system)
-              raft      (-> system :group :state-atom deref (dissoc :private-key))
-              {:keys [cmd-queue new-db-queue networks leases]} raft
-              instant   (System/currentTimeMillis)
-              cmd-q     (loop [[cq & r] cmd-queue
-                               acc []]
-                          (if cq
-                            (let [[k v] cq
-                                  acc* (into acc [{(keyword k) (count v)}])]
-                              (recur r acc*))
-                            acc))
-              new-db-q  (loop [[nq & r] new-db-queue
-                               acc []]
-                          (if nq
-                            (let [[k v] nq
-                                  acc* (into acc [{(keyword k) (count v)}])]
-                              (recur r acc*))
-                            acc))
-              nw-data   (->> networks (remove-deep [:private-key]) vector)
-              svr-state (when-let [servers (into [] (:servers leases))]
-                          (loop [[server & r] servers
-                                 acc []]
-                            (if-let [item (second server)]
-                              (recur r (into acc [{:id      (:id item)
-                                                   :active? (> (:expire item) instant)}]))
-                              acc)))
-              raft'     (-> raft
-                            (assoc :cmd-queue cmd-q
-                                   :new-db-queue new-db-q
-                                   :networks nw-data))
-              state     (-> (txproto/-state (:group system))
-                            (select-keys [:snapshot-term
-                                          :latest-index
-                                          :snapshot-index
-                                          :other-servers
-                                          :index
-                                          :snapshot-pending
-                                          :term
-                                          :leader
-                                          :timeout-at
-                                          :this-server
-                                          :status
-                                          :id
-                                          :commit
-                                          :servers
-                                          :voted-for
-                                          :timeout-ms])
-                            (assoc :open-api open-api?)
-                            (assoc :raft raft')
-                            (assoc :svr-state svr-state))]
-          (d/success! deferred {:status  200
-                                :headers {"Content-Type" "application/json; charset=utf-8"}
-                                :body    (json/stringify-UTF8 state)}))
-        (catch Exception e
-          (d/error! deferred e)))) deferred))
+  (let [open-api? (open-api? system)
+        raft      (-> system :group :state-atom deref (dissoc :private-key))
+        {:keys [cmd-queue new-db-queue networks leases]} raft
+        instant   (System/currentTimeMillis)
+        cmd-q     (loop [[cq & r] cmd-queue
+                         acc []]
+                    (if cq
+                      (let [[k v] cq
+                            acc* (into acc [{(keyword k) (count v)}])]
+                        (recur r acc*))
+                      acc))
+        new-db-q  (loop [[nq & r] new-db-queue
+                         acc []]
+                    (if nq
+                      (let [[k v] nq
+                            acc* (into acc [{(keyword k) (count v)}])]
+                        (recur r acc*))
+                      acc))
+        nw-data   (->> networks (remove-deep [:private-key]) vector)
+        svr-state (when-let [servers (into [] (:servers leases))]
+                    (loop [[server & r] servers
+                           acc []]
+                      (if-let [item (second server)]
+                        (recur r (into acc [{:id      (:id item)
+                                             :active? (> (:expire item) instant)}]))
+                        acc)))
+        raft'     (-> raft
+                      (assoc :cmd-queue cmd-q
+                             :new-db-queue new-db-q
+                             :networks nw-data))
+        state     (-> (txproto/-state (:group system))
+                      (select-keys [:snapshot-term
+                                    :latest-index
+                                    :snapshot-index
+                                    :other-servers
+                                    :index
+                                    :snapshot-pending
+                                    :term
+                                    :leader
+                                    :timeout-at
+                                    :this-server
+                                    :status
+                                    :id
+                                    :commit
+                                    :servers
+                                    :voted-for
+                                    :timeout-ms])
+                      (assoc :open-api open-api?)
+                      (assoc :raft raft')
+                      (assoc :svr-state svr-state))]
+    {:status  200
+     :headers {"Content-Type" "application/json; charset=utf-8"}
+     :body    (json/stringify-UTF8 state)}))
 
 
 (defn add-server
@@ -758,29 +735,24 @@
 
 (defn delete-ledger
   [{:keys [conn] :as system} {:keys [body remote-addr] :as request}]
-  (let [deferred (d/deferred)]
-    (async/go
-      (try
-        (let [body         (when body (decode-body body :json))
-              ledger-ident (:db/id body)
-              [nw db] (str/split ledger-ident #"/")
-              ledger       (keyword nw db)
-              auth-map     (auth-map system ledger request body)
-              session      (session/session conn [nw db])
-              db*          (<? (session/current-db session))
-              ;; TODO - root role just checks if the auth has a role with id 'root' this can
-              ;; be manipulated, so we need a better way of handling this.
-              _            (when-not (or (open-api? system)
-                                         (<? (auth/root-role? db* (:auth auth-map))))
-                             (throw (ex-info (str "To delete a ledger, must be using an open API or an auth record with a root role.") {:status 401 :error :db/invalid-auth})))
-              _            (<? (delete/process conn nw db))
-              resp         {:status  200
-                            :headers {"Content-Type" "application/json; charset=utf-8"}
-                            :body    (json/stringify-UTF8 {"deleted" (str nw "/" db)})}]
-          (log/info (str ledger ":deleted" " [" (or resp 400) "] " remote-addr))
-          (d/success! deferred resp))
-        (catch Exception e
-          (d/error! deferred e)))) deferred))
+  (let [body         (when body (decode-body body :json))
+        ledger-ident (:db/id body)
+        [nw db]      (str/split ledger-ident #"/")
+        ledger       (keyword nw db)
+        auth-map     (auth-map system ledger request body)
+        session      (session/session conn [nw db])
+        db*          (<?? (session/current-db session))
+        ;; TODO - root role just checks if the auth has a role with id 'root' this can
+        ;; be manipulated, so we need a better way of handling this.
+        _            (when-not (or (open-api? system)
+                                   (<?? (auth/root-role? db* (:auth auth-map))))
+                       (throw (ex-info (str "To delete a ledger, must be using an open API or an auth record with a root role.") {:status 401 :error :db/invalid-auth})))
+        _            (<?? (delete/process conn nw db))
+        resp         {:status  200
+                      :headers {"Content-Type" "application/json; charset=utf-8"}
+                      :body    (json/stringify-UTF8 {"deleted" (str nw "/" db)})}]
+    (log/info (str ledger ":deleted" " [" (or resp 400) "] " remote-addr))
+    resp))
 
 
 (defn deserialize
@@ -802,98 +774,101 @@
     (serdeproto/-deserialize-leaf serializer data)))
 
 
+(def storage-timeout 3000) ;; TODO - Should this be configurable?
 
 ;; TODO - check for content in the cache might be quicker? cache is already deserialized though.
-;; TODO - if file store, consider streaming contents back - currently sends it all in one big chunk.
+;; TODO - if file store (or other store that supports it), consider streaming contents back - currently sends it all in one big chunk.
 (defn storage-handler
   "Handler for key-value store requests.
   Used if query engine uses ledger as storage."
   [system {:keys [headers params] :as request}]
-  (let [deferred (d/deferred)]
-    (async/go
-      (try (let [conn             (:conn system)
-                 storage-read-fn  (:storage-read conn)
-                 accept-encodings (or (get headers "accept")
-                                      "application/json")
-                 signature        (return-signature request)
-                 jwt              (return-token request)    ;may not be signed if client is using password auth
-                 open-api?        (open-api? system)
-                 _                (when (and (not open-api?) (not signature) (not jwt))
-                                    (throw (ex-info (str "To request an item from storage, open-api must be true or your request must be signed.") {:status 401
-                                                                                                                                                    :error  :db/invalid-transaction})))
-                 response-type    (if (str/includes? accept-encodings "application/json")
-                                    :json
-                                    :avro)
-                 _                (when (and (not open-api?) (= :avro response-type))
-                                    (throw (ex-info (str "If using a closed api, a storage request must be returned as json.") {:status 401
-                                                                                                                                :error  :db/invalid-transaction})))
-                 {:keys [network db type key]} params
-                 db-name          (keyword network db)
-                 _                (when-not (and network db type)
-                                    (throw (ex-info (str "Incomplete request. At least a network, db and type are required. Provided network: " network " db: " db " type: " type " key: " key)
-                                                    {:status 400 :error :db/invalid-request})))
-                 auth-id          (cond
+  (let [attempt (go-try
+                  (let [conn             (:conn system)
+                        storage-read-fn  (:storage-read conn)
+                        accept-encodings (or (get headers "accept")
+                                             "application/json")
+                        signature        (return-signature request)
+                        jwt              (return-token request)    ;may not be signed if client is using password auth
+                        open-api?        (open-api? system)
+                        _                (when (and (not open-api?) (not signature) (not jwt))
+                                           (throw (ex-info (str "To request an item from storage, open-api must be true or your request must be signed.")
+                                                           {:status 401
+                                                            :error  :db/invalid-transaction})))
+                        response-type    (if (str/includes? accept-encodings "application/json")
+                                           :json
+                                           :avro)
+                        _                (when (and (not open-api?) (= :avro response-type))
+                                           (throw (ex-info (str "If using a closed api, a storage request must be returned as json.")
+                                                           {:status 401
+                                                            :error  :db/invalid-transaction})))
+                        {:keys [network db type key]} params
+                        db-name          (keyword network db)
+                        _                (when-not (and network db type)
+                                           (throw (ex-info (str "Incomplete request. At least a network, db and type are required. Provided network: " network " db: " db " type: " type " key: " key)
+                                                           {:status 400 :error :db/invalid-request})))
+                        auth-id          (cond
 
-                                    signature
-                                    (let [this-server (get-in system [:group :this-server])
-                                          servers     (get-in system [:config :group :server-configs])
-                                          host        (-> (filter (fn [n] (= (:server-id n) this-server)) servers)
-                                                          first :host)
+                                           signature
+                                           (let [this-server (get-in system [:group :this-server])
+                                                 servers     (get-in system [:config :group :server-configs])
+                                                 host        (-> (filter (fn [n] (= (:server-id n) this-server)) servers)
+                                                                 first :host)
 
-                                          {:keys [auth authority]} (http-signatures/verify-request* {:headers headers} :get
-                                                                                                    (str "/fdb/storage/" network "/" db
-                                                                                                         (when type (str "/" type))
-                                                                                                         (when key (str "/" key))) host)
-                                          db          (<? (fdb/db (:conn system) db-name))]
-                                      (<? (verify-auth db auth authority)))
+                                                 {:keys [auth authority]} (http-signatures/verify-request*
+                                                                            {:headers headers} :get
+                                                                            (str "/fdb/storage/" network "/" db
+                                                                                 (when type (str "/" type))
+                                                                                 (when key (str "/" key))) host)
+                                                 db          (<? (fdb/db (:conn system) db-name))]
+                                             (<? (verify-auth db auth authority)))
 
-                                    jwt
-                                    (let [jwt-auth (-> system
-                                                       :conn
-                                                       (pw-auth/fluree-auth-map jwt)
-                                                       :auth)
-                                          db'      (<? (fdb/db (:conn system) db-name))
-                                          auth-id' (<? (dbproto/-subid db' ["_auth/id" jwt-auth] true))
-                                          _        (when (util/exception? auth-id')
-                                                     (throw (ex-info (str "Auth id for request does not exist in the database: " jwt-auth)
-                                                                     {:status 403 :error :db/invalid-auth})))]
-                                      jwt-auth))
-                 formatted-key    (cond-> (str network "_" db "_" type)
-                                          key (str "_" key))
-                 avro-data        (<? (storage-read-fn formatted-key))
-                 status           (if avro-data 200 404)
-                 headers          (if avro-data
-                                    {"Content-Type" (if (= :json response-type)
-                                                      "application/json"
-                                                      "avro/binary")}
-                                    {"Content-Type" "text/plain"})
-                 body             (cond
-                                    (and avro-data (= :json response-type))
-                                    (let [serializer (storage-core/serde conn)
-                                          data       (deserialize serializer formatted-key avro-data)]
-                                      (if auth-id
-                                        (let [auth            (if (string? auth-id) ["_auth/id" auth-id] auth-id)
-                                              permissioned-db (<? (fdb/db conn db-name {:auth auth}))
-                                              flakes          (when-let [flakes (:flakes data)]
-                                                                (<? (permissions-validate/allow-flakes? permissioned-db flakes)))
-                                              data'           (if flakes
-                                                                (assoc data :flakes flakes)
-                                                                data)]
-                                          (json/stringify data'))
-                                        (json/stringify data)))
+                                           jwt
+                                           (let [jwt-auth (-> system
+                                                              :conn
+                                                              (pw-auth/fluree-auth-map jwt)
+                                                              :auth)
+                                                 db'      (<? (fdb/db (:conn system) db-name))
+                                                 auth-id' (<? (dbproto/-subid db' ["_auth/id" jwt-auth] true))
+                                                 _        (when (util/exception? auth-id')
+                                                            (throw (ex-info (str "Auth id for request does not exist in the database: " jwt-auth)
+                                                                            {:status 403 :error :db/invalid-auth})))]
+                                             jwt-auth))
+                        formatted-key    (cond-> (str network "_" db "_" type)
+                                                 key (str "_" key))
+                        avro-data        (<? (storage-read-fn formatted-key))
+                        status           (if avro-data 200 404)
+                        headers          (if avro-data
+                                           {"Content-Type" (if (= :json response-type)
+                                                             "application/json"
+                                                             "avro/binary")}
+                                           {"Content-Type" "text/plain"})
+                        body             (cond
+                                           (and avro-data (= :json response-type))
+                                           (let [serializer (storage-core/serde conn)
+                                                 data       (deserialize serializer formatted-key avro-data)]
+                                             (if auth-id
+                                               (let [auth            (if (string? auth-id) ["_auth/id" auth-id] auth-id)
+                                                     permissioned-db (<? (fdb/db conn db-name {:auth auth}))
+                                                     flakes          (when-let [flakes (:flakes data)]
+                                                                       (<? (permissions-validate/allow-flakes? permissioned-db flakes)))
+                                                     data'           (if flakes
+                                                                       (assoc data :flakes flakes)
+                                                                       data)]
+                                                 (json/stringify data'))
+                                               (json/stringify data)))
 
-                                    avro-data avro-data
+                                           avro-data avro-data
 
-                                    :else "Not Found")]
-             (d/success! deferred {:status  status
-                                   :headers headers
-                                   :body    body}))
-           (catch Exception e
-             (d/error! deferred e)))
-      (d/timeout! deferred 3000 {:status  504
-                                 :headers {"Content-Type" "text/plain"}
-                                 :body    "Gateway Timeout"}))
-    deferred))
+                                           :else "Not Found")]
+                    {:status  status
+                     :headers headers
+                     :body    body}))]
+    (let [[resp ch] (async/alts!! [attempt (async/timeout storage-timeout)])]
+      (if (= ch attempt)
+        resp
+        {:status  504
+         :headers {"Content-Type" "text/plain"}
+         :body    "Gateway Timeout"}))))
 
 
 ; From https://gist.github.com/dannypurcell/8215411
@@ -907,15 +882,17 @@
   (fn [request]
     (let [uri (:uri request)]
       (handler (assoc request :uri (if (and (not (= "/" uri))
-                                            (.endsWith uri "/"))
+                                            (str/ends-with? uri "/"))
                                      (subs uri 0 (dec (count uri)))
                                      uri))))))
 
 
-(defn wrap-version-header [handler]
+(defn wrap-response-headers [handler & headers]
   (fn [request]
-    (let [response (handler request)]
-      (assoc-in response [:headers "X-Fdb-Version"] (meta/version)))))
+    (let [header-map (reduce (fn [m [k v]] (assoc m (name k) v))
+                             {} (partition 2 headers))
+          response (handler request)]
+      (update response :headers merge header-map))))
 
 
 (defn- api-routes
@@ -941,6 +918,13 @@
     ;; fallback 404 for unknown API paths
     (compojure/ANY "/fdb/*" [] not-found)))
 
+;; Teach ring how to handle resources under GraalVM
+;; From https://github.com/ring-clojure/ring/issues/370
+(defmethod resp/resource-data :resource
+  [^URL url]
+  (let [conn (.openConnection url)]
+    {:content        (.getInputStream conn)
+     :content-length (let [len (.getContentLength conn)] (when-not (pos? len) len))}))
 
 (defroutes admin-ui-routes
            (compojure/GET "/" [] (resp/resource-response "index.html" {:root "adminUI"}))
@@ -959,7 +943,7 @@
         ;; final 404 fallback
         (constantly not-found))
 
-      wrap-version-header
+      (wrap-response-headers "X-Fdb-Version" (meta/version))
       params/wrap-params
       (->> (wrap-errors (:debug-mode? system)))
       (cors/wrap-cors
@@ -969,8 +953,9 @@
       ignore-trailing-slash))
 
 
-(defrecord WebServer [close])
+(defonce web-server (atom nil))
 
+(defrecord WebServer [close])
 
 (defn webserver-factory
   [opts]
@@ -986,9 +971,11 @@
           system*     (assoc system :clients clients
                                     :debug-mode? debug-mode?
                                     :open-api open-api)
-          server-proc (try
+          _           (try
                         (json/encode-BigDecimal-as-string json-bigdec-string)
-                        (http/start-server (make-handler system*) {:port port})
+                        (reset! web-server (http/run-server
+                                             (make-handler system*)
+                                             {:port port}))
                         (catch BindException _
                           (log/error (str "Cannot start. Port binding failed, address already in use. Port: " port "."))
                           (log/error "FlureeDB Exiting. Adjust your config, or shut down other service using port.")
@@ -998,8 +985,9 @@
                           (log/error "FlureeDB Exiting.")
                           (System/exit 1)))
           close-fn    (fn []
-                        (.close ^Closeable server-proc)
-                        (netty/wait-for-close server-proc))]
+                        ;; shut down the web server but give existing connections 1s to finish
+                        (@web-server :timeout 1000)
+                        (reset! web-server nil))]
       (map->WebServer {:close close-fn}))))
 
 
@@ -1015,13 +1003,13 @@
      :headers {"content-type" "text/plain"}
      :body    "hello!"})
 
-  (def server5 (http/start-server handler {:port 8090}))
+  (def server5 (http/run-server handler {:port 8090}))
 
   (type server)
 
   (do
     ;(.close server4)
-    (aleph.netty/wait-for-close server5))
+    (server5 :timeout 1000))
 
 
   (.close server5))

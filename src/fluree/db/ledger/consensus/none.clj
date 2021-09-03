@@ -10,6 +10,8 @@
             [fluree.db.ledger.txgroup.monitor :as group-monitor])
   (:import (java.util UUID)))
 
+(set! *warn-on-reflection* true)
+
 (defrecord Command [entry id timeout callback])
 
 

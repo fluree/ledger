@@ -13,6 +13,8 @@
             [fluree.db.ledger.bootstrap :as bootstrap])
   (:import (fluree.db.flake Flake)))
 
+(set! *warn-on-reflection* true)
+
 ;; 1) start from block 1
 ;; 2) index each block
 
@@ -103,7 +105,7 @@
                      :post (into (:post novelty) post-flakes)
                      :opst (into (:opst novelty) opst-flakes)
                      :size size}
-        t           (apply min (map #(.-t %) flakes))]
+        t           (apply min (map #(.-t ^Flake %) flakes))]
     (assoc blank-db :block 1
                     :t t
                     :ecount bootstrap/genesis-ecount

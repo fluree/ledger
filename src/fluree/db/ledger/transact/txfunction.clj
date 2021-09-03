@@ -1,6 +1,8 @@
 (ns fluree.db.ledger.transact.txfunction
   (:require [fluree.db.dbfunctions.core :as dbfunctions]))
 
+(set! *warn-on-reflection* true)
+
 ;; functions related to transaction functions
 
 ;; TODO - can probably parse function string to final 'lisp form' when generating TxFunction
