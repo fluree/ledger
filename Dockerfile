@@ -1,4 +1,4 @@
-FROM clojure:tools-deps-1.10.3.855-slim-buster AS builder
+FROM clojure:tools-deps-1.10.3.943-slim-buster AS builder
 
 RUN apt-get update && apt-get install --assume-yes --no-install-recommends curl
 
@@ -44,7 +44,7 @@ USER fluree
 EXPOSE 8090
 
 # Point runtime data paths at volume
-ENV FLUREE_ARGS="-Dfdb-storage-file-root=/var/lib/fluree/"
+ENV FLUREE_ARGS="-Dfdb-storage-file-root=/var/lib/fluree/ -Dfdb-group-log-directory=/var/lib/fluree/group/"
 
 ENTRYPOINT ["./fluree_start.sh"]
 CMD []
