@@ -82,6 +82,7 @@
                ;; So I'm just including everything for now. - WSM 2021/08/20
                "-H:IncludeResources=.*"
                "--enable-url-protocols=http,https"
+               "--enable-all-security-services"
                "--report-unsupported-elements-at-runtime"
                "--initialize-at-build-time"
                "--allow-incomplete-classpath"
