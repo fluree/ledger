@@ -44,7 +44,7 @@ USER fluree
 EXPOSE 8090
 
 # Point runtime data paths at volume
-ENV FLUREE_ARGS="-Dfdb-storage-file-root=/var/lib/fluree/"
+ENV FLUREE_ARGS="-Dfdb-storage-file-root=/var/lib/fluree/ -Dfdb-group-log-directory=/var/lib/fluree/group/"
 
 ENTRYPOINT ["./fluree_start.sh"]
 CMD []
