@@ -1,11 +1,9 @@
 {:deps {org.clojure/clojure               {:mvn/version "1.10.3"}
         org.clojure/data.xml              {:mvn/version "0.2.0-alpha6"}
         com.fluree/alphabase              {:mvn/version "3.2.1"}
-        com.fluree/db                     {:git/url "https://github.com/fluree/db.git"
-                                           :sha     "4da542980d81a154cde5f03de39257787c9d3db3"}
+        com.fluree/db                     {:mvn/version "1.0.0-rc27"}
         com.fluree/raft                   {:mvn/version "1.0.0-beta1"}
-        com.fluree/crypto                 {:git/url "https://github.com/fluree/fluree.crypto.git"
-                                           :sha     "4b7d65534ce6a0198d63da98661a1cf7e02dbd91"}
+        com.fluree/crypto                 {:mvn/version "0.3.6"}
 
         ;; network comm
         net.async/async                   {:mvn/version "0.1.0"}
@@ -50,7 +48,7 @@
   {:extra-paths ["test-resources"]
    :extra-deps  {com.cognitect/test-runner
                  {:git/url "https://github.com/cognitect-labs/test-runner.git"
-                  :sha "e7660458ce25bc4acb4ccc3e2415aae0a4907198"}}
+                  :sha "dd6da11611eeb87f08780a30ac8ea6012d4c05ce"}}
    :exec-fn     cognitect.test-runner.api/test}
 
   :jar
