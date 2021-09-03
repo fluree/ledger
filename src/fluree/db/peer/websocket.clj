@@ -1,9 +1,7 @@
 (ns fluree.db.peer.websocket
-  (:require [manifold.deferred :as d]
-            [org.httpkit.server :as http]
+  (:require [org.httpkit.server :as http]
             [clojure.core.async :as async]
             [clojure.tools.logging :as log]
-            [manifold.stream :as s]
             [fluree.db.util.json :as json]
             [fluree.db.permissions-validate :as permissions-validate]
             [fluree.db.peer.messages :as messages]
