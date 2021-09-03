@@ -34,6 +34,7 @@
    ;; ledger group settings
    :fdb-group-servers            nil                        ;; list of server-id@host:port, separated by commas, of servers to connect to.
    :fdb-group-this-server        nil                        ;; id of this server, must appear in the fdb-group-servers above
+   :fdb-group-port               nil                        ;; only used if this-server is not set or does not point to one of the group-servers; port to listen on for cluster connections
    :fdb-group-timeout            2000                       ;; start new election if nothing from leader in this number of milliseconds
    :fdb-group-heartbeat          nil                        ;; defaults to 1/3 of tx-group-timeout-ms
    :fdb-group-catch-up-rounds    10                         ;; defaults to 1/3 of tx-group-timeout-ms
@@ -61,7 +62,6 @@
    :fdb-api-port                 8090                       ;; integer
    :fdb-api-open                 true                       ;; true or false
 
-   :fdb-ledger-port              9790                       ;; port this server will listen on for group messages
    :fdb-ledger-private-keys      nil
    :fdb-ledger-servers           nil
 
