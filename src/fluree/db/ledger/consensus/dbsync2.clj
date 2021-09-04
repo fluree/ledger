@@ -170,28 +170,29 @@
   retrieval."
   [conn port branch-id]
   (util/go-try
-    ;; first get file local if not already here. Will throw if an error occurs
-    (util/<? (get-file-local conn port branch-id))
-    ;; with file local, we can load and check children
-    (let [branch      (<? (storage/read-branch conn branch-id))
-          children    (:children branch)
-          child-leaf? (true? (-> children first :leaf))]
+   (when branch-id
+     ;; first get file local if not already here. Will throw if an error occurs
+     (util/<? (get-file-local conn port branch-id))
+     ;; with file local, we can load and check children
+     (let [branch      (<? (storage/read-branch conn branch-id))
+           children    (:children branch)
+           child-leaf? (true? (-> children first :leaf))]
 
-      (loop [[c & r] children]
-        (cond
+       (loop [[c & r] children]
+         (cond
 
-          (and c child-leaf?)
-          (do (<? (get-index-leaf-if-needed conn port (:id c)))
-              (recur r))
+           (and c child-leaf?)
+           (do (<? (get-index-leaf-if-needed conn port (:id c)))
+               (recur r))
 
-          ;; child is another branch node
-          c
-          (do (<? (sync-index-branch conn port (:id c)))
-              (recur r))
+           ;; child is another branch node
+           c
+           (do (<? (sync-index-branch conn port (:id c)))
+               (recur r))
 
-          ;; no more children, return
-          (nil? c)
-          ::done)))))
+           ;; no more children, return
+           (nil? c)
+           ::done))))))
 
 
 (defn sync-index-point
