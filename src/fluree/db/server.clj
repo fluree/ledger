@@ -1,6 +1,7 @@
 (ns fluree.db.server
   (:gen-class)
   (:require [environ.core :as environ]
+            [integrant.core :as ig]
             [clojure.tools.logging :as log]
             [clojure.core.async :as async]
 

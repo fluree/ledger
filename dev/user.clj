@@ -6,6 +6,7 @@
             [clojure.edn :as edn]
             [criterium.core :as criterium]
             [environ.core :as environ]
+            [integrant.repl :as repl]
             [fluree.db.api :as fdb]
             [fluree.db.flake :as flake]
             [fluree.db.permissions :as permissions]
