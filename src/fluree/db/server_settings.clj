@@ -6,6 +6,7 @@
             [fluree.db.ledger.storage.filestore :as filestore]
             [fluree.db.ledger.storage.memorystore :as memorystore]
             [fluree.db.ledger.storage.s3store :as s3store]
+            [fluree.db.ledger.upgrade.tspo :as tspo-upgrade]
             [fluree.db.serde.avro :as avro]
             [fluree.db.serde.none :as none]
             [clojure.core.async :as async]
@@ -310,14 +311,19 @@
 (defn- get-serializer
   [env]
   (let [typ        (env-storage-type env)
-        serde-type (case typ
-                     :memory :none
-                     ;; else
-                     :avro)
+        serde-type (if (:fdb-tspo-upgrade? env)
+                     :tspo-upgrade
+                     (case typ
+                       :memory :none
+                       ;; else
+                       :avro))
         serde-opts {}]
     (case serde-type
       :avro
       (avro/map->Serializer serde-opts)
+
+      :tspo-upgrade
+      (tspo-upgrade/->LegacySerializer)
 
       :none
       (none/map->Serializer serde-opts))))
