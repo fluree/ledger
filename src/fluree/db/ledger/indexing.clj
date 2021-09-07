@@ -15,8 +15,6 @@
 
 (set! *warn-on-reflection* true)
 
-(set! *warn-on-reflection* true)
-
 ;;; run an indexing processing a database
 
 (def ^:dynamic *overflow-bytes* 500000)
