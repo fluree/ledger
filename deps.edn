@@ -52,7 +52,7 @@
    :exec-fn     cognitect.test-runner.api/test}
 
   :jar
-  {:replace-deps {com.github.seancorfield/depstar {:mvn/version "2.1.278"}}
+  {:replace-deps {com.github.seancorfield/depstar {:mvn/version "2.1.297"}}
    :exec-fn hf.depstar/jar
    :exec-args {:jar "target/fluree-ledger.jar"
                :group-id :mvn/group-id
@@ -61,7 +61,7 @@
                :sync-pom true}}
 
   :uberjar
-  {:replace-deps {com.github.seancorfield/depstar {:mvn/version "2.1.278"}}
+  {:replace-deps {com.github.seancorfield/depstar {:mvn/version "2.1.297"}}
    :exec-fn hf.depstar/uberjar
    :exec-args {:jar "target/fluree-ledger.standalone.jar"
                :aot [fluree.db.server]
