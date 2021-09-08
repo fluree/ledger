@@ -161,13 +161,14 @@
      (flake/new-flake db-setting-id (get pred->id "_setting/language") (get ident->id ["_tag/id" "_setting/language:en"]) t true)
      (flake/new-flake db-setting-id (get pred->id "_setting/id") "root" t true)]))
 
-(defn boostrap-memory-db
+(defn bootstrap-memory-db
   "Bootstraps a blank db fully in-memory.
   Does not attempt to create the db, or index the db to disk. Holds everything in memory.
 
   Returns a standard 'block' map, but also include the :db key that contains the newly created
   db."
-  ([conn ledger] (boostrap-memory-db conn ledger nil))
+  ([conn ledger]
+   (bootstrap-memory-db conn ledger nil))
   ([conn ledger {:keys [master-auth-id master-auth-private txid cmd sig]}]
    (let [blank-db             (session/blank-db conn ledger)
          timestamp            (System/currentTimeMillis)
@@ -235,7 +236,7 @@
                                          {:status 500
                                           :error  :db/unexpected-error})))
          master-authid (crypto/account-id-from-message cmd sig)
-         block         (boostrap-memory-db conn [network dbid] {:master-auth-id master-authid :txid txid :cmd cmd :sig sig})
+         block         (bootstrap-memory-db conn [network dbid] {:master-auth-id master-authid :txid txid :cmd cmd :sig sig})
          new-db        (:db block)
          block-data    (dissoc block :db)
          _             (<? (storage/write-block conn network dbid block-data))

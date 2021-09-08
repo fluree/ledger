@@ -33,7 +33,7 @@
   ([conn ledger bootstrap-opts]
    (let [pc (async/promise-chan)]
      (async/go
-       (let [block-data   (bootstrap/boostrap-memory-db conn ledger bootstrap-opts)
+       (let [block-data   (bootstrap/bootstrap-memory-db conn ledger bootstrap-opts)
              db-no-schema (:db block-data)
              schema       (<? (schema/schema-map db-no-schema))]
          (async/put! pc (assoc db-no-schema :schema schema))))
