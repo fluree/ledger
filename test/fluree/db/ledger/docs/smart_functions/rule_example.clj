@@ -5,7 +5,7 @@
             [clojure.core.async :as async]
             [fluree.db.api :as fdb]
             [fluree.db.ledger.docs.getting-started.basic-schema :as basic]
-            [fluree.db.ledger.test-helpers :as test]
+            [fluree.db.test-helpers :as test]
             [fluree.db.query.http-signatures :as http-signatures]
             [org.httpkit.client :as http]
             [byte-streams :as bs]

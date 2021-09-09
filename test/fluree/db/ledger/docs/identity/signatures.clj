@@ -1,6 +1,6 @@
 (ns fluree.db.ledger.docs.identity.signatures
   (:require [clojure.test :refer :all]
-            [fluree.db.ledger.test-helpers :as test]
+            [fluree.db.test-helpers :as test]
             [fluree.db.ledger.docs.getting-started.basic-schema :as basic]
             [fluree.db.ledger.api.downloaded :as downloaded]
             [fluree.db.api :as fdb]

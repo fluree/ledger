@@ -2,7 +2,7 @@
   (:require [clojure.test :refer :all]
             [clojure.core.async :as async]
             [clojure.string :as str]
-            [fluree.db.ledger.test-helpers :as test]
+            [fluree.db.test-helpers :as test]
             [fluree.db.ledger.docs.getting-started.basic-schema :as basic]
             [fluree.db.api :as fdb]))
 

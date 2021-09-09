@@ -1,4 +1,4 @@
-(ns fluree.db.ledger.test-helpers
+(ns fluree.db.test-helpers
   (:require [clojure.test :refer :all]
             [clojure.core.async :as async]
             [fluree.db.server :as server]
@@ -15,12 +15,12 @@
 (def port (delay (get-free-port)))
 (def alt-port (delay (get-free-port)))
 (def config (delay (setting/build-env
-                     {:fdb-mode              "dev"
-                      :fdb-group-servers     "DEF@localhost:11001"
-                      :fdb-group-this-server "DEF"
-                      :fdb-storage-type      "memory"
-                      :fdb-api-port          @port
-                      :fdb-consensus-type    "in-memory"})))
+                     {:fdb-mode                "dev"
+                      :fdb-group-servers       "DEF@localhost:11001"
+                      :fdb-group-this-server   "DEF"
+                      :fdb-storage-type        "memory"
+                      :fdb-api-port            @port
+                      :fdb-consensus-type      "in-memory"})))
 
 (def system nil)
 
