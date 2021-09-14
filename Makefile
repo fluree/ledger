@@ -98,7 +98,7 @@ target/fluree-ledger.jar: resources/adminUI $(SOURCES) $(RESOURCES)
 jar: target/fluree-ledger.jar
 
 test:
-	clojure -X:test:runner
+	clojure -X:test
 
 eastwood:
 	clojure -M:eastwood

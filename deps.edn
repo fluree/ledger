@@ -42,10 +42,7 @@
    :extra-deps  {org.clojure/tools.namespace {:mvn/version "1.1.0"}}}
 
   :test
-  {:extra-paths ["test"]}
-
-  :runner
-  {:extra-paths ["test-resources"]
+  {:extra-paths ["test" "test-resources"]
    :extra-deps  {com.cognitect/test-runner
                  {:git/url "https://github.com/cognitect-labs/test-runner.git"
                   :sha "dd6da11611eeb87f08780a30ac8ea6012d4c05ce"}}
