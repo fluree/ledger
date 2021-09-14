@@ -101,7 +101,7 @@ test:
 	clojure -X:test
 
 eastwood:
-	clojure -M:eastwood
+	clojure -M:test:eastwood
 
 ci: test eastwood
 
