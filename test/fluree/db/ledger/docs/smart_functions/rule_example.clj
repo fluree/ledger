@@ -22,7 +22,6 @@
 (def endpoint (str "http://localhost:" @test/port "/fdb/" test/ledger-chat "/"))
 
 (deftest add-permission-scheme
-  []
   (let [person-auth [{:_id  "_predicate", :name "person/auth", :doc "Reference to a database auth.",
                       :type "ref", :restrictCollection "_auth"}]
         _           (async/<!! (fdb/transact-async (basic/get-conn) test/ledger-chat person-auth))

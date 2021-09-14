@@ -65,7 +65,7 @@
         attemptToUpsertRes  (async/<!! (fdb/transact-async (basic/get-conn) test/ledger-chat txn))]
 
 
-    (= res "Unique predicate _collection/name with value: _user matched an existing subject: 17592186044421.")
+    (is (= res "Unique predicate _collection/name with value: _user matched an existing subject: 17592186044421."))
 
     (is (= 200 (:status upsertRes)))
 

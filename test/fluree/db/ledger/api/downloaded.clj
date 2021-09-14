@@ -62,9 +62,9 @@
 
       (is (= 2 (:block body)))
 
-      (= 59 (-> body :tempids (test/get-tempid-count :_predicate)))
+      (is (= 59 (-> body :tempids (test/get-tempid-count :_predicate))))
 
-      (= 4 (-> body :tempids (test/get-tempid-count :_collection))))))
+      (is (= 4 (-> body :tempids (test/get-tempid-count :_collection)))))))
 
 
 
@@ -164,12 +164,6 @@
 
       (is (< 30 (count predicates))))))
 
-(deftest query-collections-predicates*
-  (add-schema*)
-  (query-all-collections)
-  (query-all-predicates))
-
-
 
 ;; ENDPOINT TEST: /multi-query
 
@@ -196,12 +190,12 @@
       ; Are some of the predicates we expect returned?
       (is (every? boolean (map #(predicates %) ["comment/nestedComponent" "person/stringUnique"]))))))
 
+
 (deftest query-collections-predicates*
   (add-schema*)
   (query-all-collections)
   (query-all-predicates)
   (query-collections-predicates-multiquery))
-
 
 
 ;; ENDPOINT TEST: /transact
@@ -384,26 +378,30 @@
 
 (deftest transacting-new-chats
   (testing "Creating 100 random chat messages and adding them to existing persons"
-    (let [query      {:select ["*"] :from "person"}
-          queryRes   @(http/post (str endpoint-url "query") (standard-request query))
-          body       (-> queryRes :body bs/to-string json/parse)
-          persons    (map #(:_id %) body)
-          randomChat (fn []
-                       {:_id             "chat"
-                        :stringNotUnique (rand-str)
-                        :person          (nth persons (rand-int (count persons)))
-                        :instantUnique   "#(now)"})
-          chatTx     (repeatedly 100 randomChat)
-          chatRes    @(http/post (str endpoint-url "transact") (standard-request chatTx))
-          chatBody   (-> chatRes :body bs/to-string json/parse)
-          chatKeys   (keys chatBody)
-          flakes     (:flakes chatBody)
-          tempids    (:tempids chatBody)]
+    (let [query       {:select ["*"] :from "person"}
+          query-res   @(http/post (str endpoint-url "query") (standard-request query))
+          body        (-> query-res :body bs/to-string json/parse)
+          persons     (map #(:_id %) body)
+          random-chat (fn []
+                        {:_id             "chat"
+                         :stringNotUnique (rand-str)
+                         :person          (nth persons (rand-int (count persons)))
+                         :instantUnique   "#(now)"})
+          chat-tx     (repeatedly 100 random-chat)
+          chat-res    @(http/post (str endpoint-url "transact") (standard-request chat-tx))
+          chat-body   (-> chat-res :body bs/to-string json/parse)
+          chat-keys   (keys chat-body)
+          flakes      (:flakes chat-body)
+          tempids     (:tempids chat-body)]
 
       ; Status = 200 for the response
-      (is (= 200 (:status chatBody)))
+      (is (= 200 (:status chat-body)))
 
-      (is (map #(#{:tx-subid :tx :txid :authority :auth :signature :tempids :block :hash :fuel-remaining :time :fuel :status :block-bytes :timestamp :flakes} %) (set chatKeys)))
+      (is (every? #(#{:tx-subid :tx :txid :authority :auth :signature :tempids
+                      :block :hash :fuel-remaining :time :fuel :status
+                      :bytes :timestamp :flakes :instant :type :duration :id :t}
+                    %)
+                  (set chat-keys)))
 
       (is (< 99 (count flakes)))
 
@@ -416,47 +414,50 @@
   (transacting-new-chats))
 
 
-
 ;; ENDPOINT TEST: /transact
 
 (deftest updating-persons
   (testing "Updating all person/stringNotUniques"
-    (let [query      {:select ["*"] :from "person"}
-          queryRes   @(http/post (str endpoint-url "query") (standard-request query))
-          body       (-> queryRes :body bs/to-string json/parse)
-          persons    (map #(:_id %) body)
-          personTx   (mapv (fn [n]
-                             {:_id             n
-                              :stringNotUnique (rand-str)}) persons)
-          personRes  @(http/post (str endpoint-url "transact") (standard-request personTx))
-          personBody (-> personRes :body bs/to-string json/parse)
-          personKeys (keys personBody)
-          flakes     (:flakes personBody)
-          tempids    (:tempids personBody)]
+    (let [query       {:select ["*"] :from "person"}
+          query-res   @(http/post (str endpoint-url "query") (standard-request query))
+          body        (-> query-res :body bs/to-string json/parse)
+          persons     (map #(:_id %) body)
+          person-tx   (mapv (fn [n]
+                              {:_id             n
+                               :stringNotUnique (rand-str)}) persons)
+          person-res  @(http/post (str endpoint-url "transact") (standard-request person-tx))
+          person-body (-> person-res :body bs/to-string json/parse)
+          person-keys  (keys person-body)
+          flakes      (:flakes person-body)
+          tempids     (:tempids person-body)]
 
-      (is (map #(#{:tx-subid :tx :txid :authority :auth :signature :tempids :block :hash :fuel-remaining :time :fuel :status :block-bytes :timestamp :flakes} %)
-               (set personKeys)))
+      (is (every? #(#{:tx-subid :tx :txid :authority :auth :signature :tempids
+                      :block :hash :fuel-remaining :time :fuel :status :bytes
+                      :timestamp :flakes :instant :type :duration :id :t}
+                    %)
+                  (set person-keys)))
 
       (is (< 100 (count flakes)))
 
       (is (= 0 (count tempids)))
 
       ;; Confirm all the predicates we expect to be featured in the flakes
-      (is (= #{101 106 1002 108 100 103 107}) (-> (map (fn [flake]
-                                                         (second flake)) flakes) set)))))
+      (is (= #{101 106 99 100 1003 103 107}
+             (->> flakes (map second) set))))))
 
-(deftest standalone-repeated-updating-persons
-  (add-schema*)
-  (new-people-comments-chats-auth)
-  (updating-persons)
-  (updating-persons)
-  (updating-persons)
-  (updating-persons)
-  (updating-persons)
-  (updating-persons)
-  (updating-persons)
-  (updating-persons)
-  (updating-persons))
+(comment
+  (deftest standalone-repeated-updating-persons
+    (add-schema*)
+    (new-people-comments-chats-auth)
+    (updating-persons)
+    (updating-persons)
+    (updating-persons)
+    (updating-persons)
+    (updating-persons)
+    (updating-persons)
+    (updating-persons)
+    (updating-persons)
+    (updating-persons)))
 
 
 ;; ENDPOINT TEST: /transact
