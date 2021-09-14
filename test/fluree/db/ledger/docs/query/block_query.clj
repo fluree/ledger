@@ -22,7 +22,7 @@
   (let [query {:block "2017-11-14T20:59:36.097Z"}
         res   (try (async/<!! (fdb/block-query-async (basic/get-conn) test/ledger-chat query))
                    (catch Exception e e))]
-    (is (= "There is no data as of 1510693176097" (.getMessage res)))))
+    (is (= "There is no data as of 1510693176097" (ex-message res)))))
 
 
 
@@ -31,7 +31,7 @@
   (let [query {:block "PT1H"}
         res   (try (async/<!! (fdb/block-query-async (basic/get-conn) test/ledger-chat query))
                    (catch Exception e e))]
-    (is (str/includes? (.getMessage res) "There is no data as of "))))
+    (is (str/includes? (ex-message res) "There is no data as of "))))
 
 
 ;; TODO - looks like block range now inclusive? Fix.

@@ -74,7 +74,7 @@
                                         txn
                                         {:timeout 480000}))]
 
-    (= res "Unique predicate _predicate/name with value: _user/username matched an existing subject: 50.")
+    (is (= res "Unique predicate _predicate/name with value: _user/username matched an existing subject: 50."))
 
     (is (= 200 (:status upsertRes)))
 
