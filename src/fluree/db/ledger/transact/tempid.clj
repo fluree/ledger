@@ -8,6 +8,8 @@
             [fluree.db.dbproto :as dbproto]
             [fluree.db.util.log :as log]))
 
+(set! *warn-on-reflection* true)
+
 ;; functions related to generation of tempids
 
 (defrecord TempId [user-string collection key unique?])

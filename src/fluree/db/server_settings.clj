@@ -17,6 +17,8 @@
            (java.lang.management ManagementFactory)
            (java.io Reader)))
 
+(set! *warn-on-reflection* true)
+
 
 ;; note every environment variable must be placed in this default map for it to be picked up.
 ;; THIS IS THE MASTER LIST!  nil as a value means there is no default
@@ -35,6 +37,7 @@
    ;; ledger group settings
    :fdb-group-servers            nil                        ;; list of server-id@host:port, separated by commas, of servers to connect to.
    :fdb-group-this-server        nil                        ;; id of this server, must appear in the fdb-group-servers above
+   :fdb-group-port               nil                        ;; only used if this-server is not set or does not point to one of the group-servers; port to listen on for cluster connections
    :fdb-group-timeout            2000                       ;; start new election if nothing from leader in this number of milliseconds
    :fdb-group-heartbeat          nil                        ;; defaults to 1/3 of tx-group-timeout-ms
    :fdb-group-catch-up-rounds    10                         ;; defaults to 1/3 of tx-group-timeout-ms
@@ -62,7 +65,6 @@
    :fdb-api-port                 8090                       ;; integer
    :fdb-api-open                 true                       ;; true or false
 
-   :fdb-ledger-port              9790                       ;; port this server will listen on for group messages
    :fdb-ledger-private-keys      nil
    :fdb-ledger-servers           nil
 
@@ -117,21 +119,21 @@
   Uses either/both FDB_MODE and FDB_SETTINGS variables to apply
   a set of default values if not otherwise specified."
   [environment]
-  (let [properties      (when-let [prop-file (:fdb-properties-file environment)]
-                          (read-properties-file prop-file))
-        java-prop-flags (-> (stats/jvm-arguments) :input stats/jvm-args->map)
-        _               (if properties
-                          (log/info (format "Properties file %s successfully loaded."
-                                            (:fdb-properties-file environment)))
-                          (log/info "Properties file does not exist, skipping."))
-        propEnvFlag     (merge properties java-prop-flags environment)
-        propEnvFlagDef  (reduce
-                          (fn [acc [k v]] (assoc acc k (or (get propEnvFlag k) v)))
-                          {}
-                          default-env)]
-    (assert (#{"query" "ledger" "dev"} (-> propEnvFlagDef :fdb-mode str/lower-case))
+  (let [properties        (when-let [prop-file (:fdb-properties-file environment)]
+                            (read-properties-file prop-file))
+        java-prop-flags   (-> (stats/jvm-arguments) :input stats/jvm-args->map)
+        _                 (if properties
+                            (log/info (format "Properties file %s successfully loaded."
+                                              (:fdb-properties-file environment)))
+                            (log/info "Properties file does not exist, skipping."))
+        prop-env-flag     (merge properties java-prop-flags environment)
+        prop-env-flag-def (reduce
+                            (fn [acc [k v]] (assoc acc k (or (get prop-env-flag k) v)))
+                            {}
+                            default-env)]
+    (assert (#{"query" "ledger" "dev"} (-> prop-env-flag-def :fdb-mode str/lower-case))
             "Invalid FDB_MODE, must be dev, query or ledger.")
-    propEnvFlagDef))
+    prop-env-flag-def))
 
 
 (defn env-boolean
@@ -300,7 +302,8 @@
                       {:status 400 :error :db/invalid-configuration}))
       (System/exit 1))
 
-    (when (< max-memory (* 1.2 mem-cache-bytes))
+    ;; On GraalVM native-image max memory is reported as -1
+    (when (and (not= -1 max-memory) (< max-memory (* 1.2 mem-cache-bytes)))
       (throw (ex-info (str "Unable to start, JVM max memory must be at least 20% larger than fdb-memory-cache size (ideally more). Cache size: "
                            (:fdb-memory-cache env) ". JVM max memory:" (format "%.1f GB" (/ max-memory 1073741824.0)))
                       {:status 400 :error :db/invalid-configuration}))

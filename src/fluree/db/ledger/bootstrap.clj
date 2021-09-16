@@ -12,6 +12,8 @@
             [fluree.db.util.core :as util])
   (:import (fluree.db.flake Flake)))
 
+(set! *warn-on-reflection* true)
+
 (declare bootstrap-txn)
 
 
@@ -19,7 +21,7 @@
   "Note this must be in the proper sort order before executing"
   [flakes]
   (->> flakes
-       (mapv #(vector (.-s %) (.-p %) (.-o %) (.-t %) (.-op %) (.-m %)))
+       (mapv #(let [^Flake f %] (vector (.-s f) (.-p f) (.-o f) (.-t f) (.-op f) (.-m f))))
        (json/stringify)
        (crypto/sha3-256)))
 

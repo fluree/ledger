@@ -9,7 +9,10 @@
             [fluree.db.constants :as const]
             [fluree.db.query.range :as query-range]
             [fluree.db.time-travel :as time-travel]
-            [clojure.string :as str]))
+            [clojure.string :as str])
+  (:import (fluree.db.flake Flake)))
+
+(set! *warn-on-reflection* true)
 
 
 (defn v1->v2
@@ -66,7 +69,7 @@
   "Ensures that a name conforms to [a-z0-9-]. Lowercases names, converts _ to -, removes all other special chars"
   [name]
   (-> name
-      (#(.toLowerCase %))
+      str/lower-case
       (str/replace #"_" "-")
       (str/replace #"[^a-z0-9-]" "")))
 
@@ -139,7 +142,7 @@
                                   (time-travel/as-of-block 1)
                                   <?)
                   setting-res (<? (query-range/collection db-1 "_setting"))
-                  setting-id  (-> setting-res first (.-s))
+                  setting-id  (:s (first setting-res))
                   setting-txn [{:_id setting-id
                                 :id  "root"}]]
               (<? (fdb/transact-async conn db-ident update-txn))

@@ -20,3 +20,5 @@ default_private_key.txt
 /.clj-kondo/.cache
 /.eastwood
 /scanning_results
+/fluree-ledger
+/fluree-ledger.build_artifacts.txt

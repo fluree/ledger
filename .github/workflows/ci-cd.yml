@@ -6,12 +6,12 @@ on:
 
 jobs:
   test:
-    name: Run Tests
+    name: Run CI Tests & Linters
     runs-on: [self-hosted, docker]
     steps:
       - uses: actions/checkout@v2
       - name: Run integration tests
-        run: script/run-in-docker.sh make test
+        run: script/run-in-docker.sh make ci
       - name: Notify Slack fail
         if: github.ref == 'refs/heads/main' && failure()
         env:
@@ -44,6 +44,8 @@ jobs:
           VERSION=none
           if [[ "${{ github.event_name }}" == "schedule" ]]; then
             VERSION=nightly
+          elif [[ $GITHUB_REF =~ ^refs/tags/v[[:digit:]]+ ]]; then
+            VERSION=${GITHUB_REF#refs/tags/v}
           elif [[ $GITHUB_REF == refs/tags/* ]]; then
             VERSION=${GITHUB_REF#refs/tags/}
           elif [[ $GITHUB_REF == refs/heads/* ]]; then

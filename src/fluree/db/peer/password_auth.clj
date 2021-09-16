@@ -9,6 +9,8 @@
             [fluree.db.util.async :refer [go-try <?]]
             [fluree.db.token-auth :as token-auth]))
 
+(set! *warn-on-reflection* true)
+
 
 (defn password-enabled?
   "Returns true if Fluree password auth feature is enabled"
@@ -240,8 +242,8 @@
   ([conn ledger jwt]
    (let [{:keys [secret]} (-> conn :meta :password-auth)
          payload (token-auth/verify-jwt secret jwt)
-         {:keys [iss sub pri]} payload                      ;; iss is ledger, sub is auth-id
-         ]
+         {:keys [iss sub pri]} payload]                      ;; iss is ledger, sub is auth-id
+
      (when (and ledger (not= (keyword ledger) (keyword iss)))
        (throw (ex-info (str "Invalid ledger in JWT - request originated for ledger: " ledger
                             ", but JWT was issued from ledger: " iss ".")
@@ -385,9 +387,9 @@
 
     (-> secret
         alphabase/bytes->base64
-        token-auth/base64->base64url)
+        token-auth/base64->base64url))
 
-    )
+
 
   (def enc-pri "ce4910db71971911f20c6a5147bae2f27c45b20406f53e3abc9abbcf1f98a81591684344054e35fbd27fc14eab186a70a178ef0f53d28d1bde82154beafbbf91c87b0457785ee0cc69a7e1f98ddab796")
   (def iv (byte-array [12 -35 -96 114 23 73 -24 125 -85 109 -16 -56 16 79 40 66]))
@@ -400,6 +402,5 @@
   (vec (alphabase/hex->bytes "6b7605abb089f63bf8c900026112eacf6ee768f25b80222dbb7731b8573a551e"))
 
   (-> (crypto/aes-encrypt "6b7605abb089f63bf8c900026112eacf6ee768f25b80222dbb7731b8573a551e" iv secret)
-      (crypto/aes-decrypt iv secret))
+      (crypto/aes-decrypt iv secret)))
 
-  )

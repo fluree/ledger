@@ -8,6 +8,8 @@
   (:import (java.lang.management ManagementFactory)
            (java.time Instant)))
 
+(set! *warn-on-reflection* true)
+
 
 ;;; ---------------------------------
 ;;;

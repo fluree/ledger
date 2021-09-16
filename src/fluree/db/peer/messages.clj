@@ -17,6 +17,7 @@
             [fluree.db.ledger.consensus.raft :as raft]
             [fluree.db.dbproto :as dbproto]))
 
+(set! *warn-on-reflection* true)
 
 (defn- throw-invalid-command
   [message]
@@ -192,7 +193,7 @@
                     (let [exdata     (ex-data e)
                           status     (or (:status exdata) 500)
                           error      (or (:error exdata) :db/unexpected-error)
-                          error-resp {:message (.getMessage e)
+                          error-resp {:message (ex-message e)
                                       :status  status
                                       :error   error}]
                       ;; log any unexpected errors locally
@@ -202,7 +203,7 @@
      (log/trace "Incoming message: " (pr-str msg))
      (try
        (case (keyword operation)
-         :close (do                                         ;; close will trigger the on-closed callback and clean up all session info.
+         :close (do ;; close will trigger the on-closed callback and clean up all session info.
                   ;; send a confirmation message first
                   (success! true)
                   ;(s/put! ws (json/write [(assoc header :status 200) true]))
@@ -216,7 +217,7 @@
                      (cond-> {:open-api?          open-api?
                               :password-enabled?  (-> system :conn pw-auth/password-enabled?)}
                              (or open-api? has-auth?) (assoc :jwt-secret (-> system :conn :meta :password-auth :secret
-                                                                         (ab-core/byte-array-to-base :hex)))
+                                                                             (ab-core/byte-array-to-base :hex)))
                              true success!))
 
          :cmd (success! (process-command system arg))
@@ -267,9 +268,9 @@
                       (success! true))
 
          :unsubscribe (let [ledger (if (sequential? (first arg))
-                                            ;; Expect [ [network, dbid], auth ] or [network, dbid] or network/dbid
-                                            (first arg)
-                                            arg)
+                                     ;; Expect [ [network, dbid], auth ] or [network, dbid] or network/dbid
+                                     (first arg)
+                                     arg)
                             dbv (session/resolve-ledger (:conn system) ledger)
                             [network dbid] dbv
                             _   (when-not (txproto/ledger-exists? (:group system) network dbid)
@@ -451,7 +452,7 @@
 
        (catch Exception e
          (log/info "Error caught in incoming message handler: "
-                   {:error   (.getMessage e)
+                   {:error   (ex-message e)
                     :message msg})
          (error! e))))))
 

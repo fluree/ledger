@@ -15,6 +15,8 @@
             [fluree.db.ledger.transact.tempid :as tempid])
   (:import (fluree.db.flake Flake)))
 
+(set! *warn-on-reflection* true)
+
 ;;; functions to validate transactions
 
 (defn queue-validation-fn
@@ -120,7 +122,8 @@
   (let [f (fn [{:keys [flakes t]}]
             (let [check-flake (flake/flip-flake existing-flake t)
                   retracted?  (contains? flakes check-flake)]
-              (when-not retracted?
+              (if retracted?
+                true
                 (throw (ex-info (str "Unique predicate " (pred-info :name) " with value: "
                                      object " matched an existing subject.")
                                 {:status   400
@@ -173,7 +176,7 @@
   (cond
     ;; some error in processing happened, don't allow transaction but communicate internal error
     (util/exception? response)
-    (ex-info (str "Internal execution error for predicate spec: " (.getMessage response) ". "
+    (ex-info (str "Internal execution error for predicate spec: " (ex-message response) ". "
                   "Predicate spec failed for predicate: " predicate-name "." (when specDoc (str " " specDoc)))
              {:status     400
               :error      :db/predicate-spec
@@ -364,7 +367,7 @@
     (try
       (let [subject-flakes (get-in @validate-fn [:c-spec sid])
             has-adds?      (some (fn [^Flake flake] (when (true? (.-op flake)) true)) subject-flakes) ;; stop at first `true` .-op
-            deleted?       (or (not has-adds?)
+            deleted?       (or (false? has-adds?)  ; has-adds? is nil when not found
                                (empty? (<? (query-range/index-range @db-after :spot = [sid]))))]
         (if deleted?
           true
@@ -508,7 +511,7 @@
                  (map #(let [ex (ex-data %)]
                          (when (= 500 (:status ex))
                            (log/error % "Unexpected validation error in transaction! Flakes:" (pr-str all-flakes)))
-                         (assoc ex :message (.getMessage %))))
+                         (assoc ex :message (ex-message %))))
                  (not-empty))
 
             (util/exception? next-res)
@@ -526,23 +529,21 @@
   is an error.
 
   Exceptions here should throw: catch by go-try."
-  [db tx-map]
-  (let [deps (:deps tx-map)]
-    (go-try
-      (if (empty? deps)
+  [db {:keys [deps] :as tx-map}]
+  (go-try
+    (let [res (->> deps
+                   (reduce-kv (fn [query-acc key dep]
+                                (-> query-acc
+                                    (update :selectOne conj (str "?error" key))
+                                    (update :where conj [(str "?tx" key) "_tx/id" dep])
+                                    (update :optional conj [(str "?tx" key) "_tx/error" (str "?error" key)])))
+                              {:selectOne [] :where [] :optional []})
+                   (fdb/query-async (go-try db))
+                   <?)]
+      (if (and (seq res) (every? nil? res))
         true
-        (let [res (->> (reduce-kv (fn [query-acc key dep]
-                                    (-> query-acc
-                                        (update :selectOne conj (str "?error" key))
-                                        (update :where conj [(str "?tx" key) "_tx/id" dep])
-                                        (update :optional conj [(str "?tx" key) "_tx/error" (str "?error" key)])))
-                                  {:selectOne [] :where [] :optional []} deps)
-                       (fdb/query-async (go-try db))
-                       <?)]
-          (if (and (seq res) (every? nil? res))
-            true
-            (throw (ex-info (str "One or more of the dependencies for this transaction failed: " deps)
-                            {:status 403 :error :db/invalid-auth}))))))))
+        (throw (ex-info (str "One or more of the dependencies for this transaction failed: " deps)
+                        {:status 400 :error :db/invalid-dependency}))))))
 
 
 ;; Runtime
@@ -561,14 +562,14 @@
     (let [{:keys [queue]} @validate-fn]
       (when (not-empty queue)                               ;; if nothing in queue, return
         (let [tx-state* (assoc tx-state :flakes all-flakes)
-
               queue-ch  (async/chan parallelism)
               result-ch (async/chan parallelism)
               af        (fn [f res-chan]
                           (async/go
                             (let [fn-result (as-> (f tx-state*) res
                                                   (if (channel? res) (async/<! res) res))]
-                              (async/put! res-chan fn-result)
+                              (when-not (nil? fn-result)
+                                (async/put! res-chan fn-result))
                               (async/close! res-chan))))]
 
           ;; kicks off process to push queue onto queue-ch
@@ -587,7 +588,7 @@
                      (map #(let [ex (ex-data %)]
                              (when (= 500 (:status ex))
                                (log/error % "Unexpected validation error in transaction! Flakes:" (pr-str all-flakes)))
-                             (assoc ex :message (.getMessage %))))
+                             (assoc ex :message (ex-message %))))
                      (not-empty))
 
                 (util/exception? next-res)

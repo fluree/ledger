@@ -3,6 +3,8 @@
             [fluree.db.util.core :as util]
             [clojure.core.async :as async]))
 
+(set! *warn-on-reflection* true)
+
 
 ;; To allow for pluggable consensus, we have a TxGroup protocol.
 ;; In order to allow for a new consensus type, we need to create a record with all of the following methods.
@@ -283,12 +285,12 @@ or this server is not responsible for this ledger, will return false. Else true 
   "Returns command queue as a list of maps.
    Queued commands are stored in state machine with key-seq of [:cmd-queue network txid].
     Map keys are:
-    1. txid
-    2. data    - map of actual tx data
+    1. id
+    2. command    - command data (map)
     3. size    - size of command in bytes
     4. network
     5. dbid
-    6.instant - instant we put this tx into our state machine"
+    6. instant - instant we put this tx into our state machine"
   ([group]
    (->> (get-in (-local-state group) [:cmd-queue])
         (vals)
@@ -304,7 +306,12 @@ or this server is not responsible for this ledger, will return false. Else true 
 (defn queue-command-async
   "Writes a new tx to the queue"
   [group network ledger-id command-id command]
-  (kv-assoc-in-async group [:cmd-queue network command-id] {:command command :size (count (:cmd command)) :id command-id :network network :dbid ledger-id :instant (System/currentTimeMillis)}))
+  (kv-assoc-in-async group [:cmd-queue network command-id] {:command command
+                                                            :size (count (:cmd command))
+                                                            :id command-id
+                                                            :network network
+                                                            :dbid ledger-id
+                                                            :instant (System/currentTimeMillis)}))
 
 
 ;; Block commands
@@ -318,6 +325,11 @@ or this server is not responsible for this ledger, will return false. Else true 
   [group network ledger-id block-data]
   (let [command [:new-block network ledger-id block-data (this-server group)]]
     (-new-entry-async group command)))
+
+(defn remove-command-from-queue
+  "Removes a command that is in the queue so it will no longer attempt to be processed."
+  [group network command-id]
+  (kv-dissoc-in-async group [:cmd-queue network command-id]))
 
 ;; TODO - this should use a CAS, to ensure DB does not currently exist.
 (defn register-genesis-block-async

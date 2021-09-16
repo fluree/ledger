@@ -10,8 +10,10 @@
             [fluree.db.util.core :as util]
             [fluree.db.ledger.txgroup.txgroup-proto :as txproto])
   (:import (fluree.db.flake Flake)
-           (java.time Instant)))
+           (java.time Instant)
+           (clojure.lang Sorted)))
 
+(set! *warn-on-reflection* true)
 
 (def ^:dynamic *overflow-bytes* 500000)
 (defn overflow-leaf?
@@ -176,7 +178,7 @@
                                    :rhs rhs)
                             (dissoc :id :leftmost?))]
           (conj leaves last-leaf))
-        (let [new-size (-> f flake/size-flake (+ cur-size))]
+        (let [new-size (-> f flake/size-flake (+ cur-size) long)]
           (if (> new-size target-size)
             (let [subrange (flake/subrange flakes >= cur-first < f)
                   new-leaf (-> leaf
@@ -375,8 +377,8 @@
           (<? (storage/write-db-root indexed-db ecount))
           (<? (storage/write-garbage indexed-db garbage))
           (let [end-time  (Instant/now)
-                duration  (- (.toEpochMilli end-time)
-                             (.toEpochMilli start-time))
+                duration  (- (.toEpochMilli ^Instant end-time)
+                             (.toEpochMilli ^Instant start-time))
                 end-stats (assoc init-stats
                                  :end-time end-time
                                  :duration duration)]

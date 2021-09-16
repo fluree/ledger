@@ -1,10 +1,13 @@
 (ns fluree.db.ledger.merkle
   (:require [fluree.crypto :as crypto]))
 
+(set! *warn-on-reflection* true)
+
 (defn exp [x n]
   (loop [acc 1 n n]
-    (if (zero? n) acc
-                  (recur (* x acc) (dec n)))))
+    (if (zero? n)
+      acc
+      (recur (long (* x acc)) (dec n))))) ; long keeps recur arg primitive
 
 (defn find-closest-power-2
   [n]

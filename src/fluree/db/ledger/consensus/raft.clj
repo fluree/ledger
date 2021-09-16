@@ -17,7 +17,10 @@
             [fluree.crypto :as crypto]
             [fluree.db.ledger.storage :as ledger-storage]
             [fluree.db.constants :as const])
-  (:import (java.util UUID)))
+  (:import (java.util UUID)
+           (fluree.db.flake Flake)))
+
+(set! *warn-on-reflection* true)
 
 
 (defn snapshot-xfer
@@ -228,6 +231,20 @@
   (reset! state-change-fn-atom {}))
 
 
+(defn rejected-block-handler
+  "If a block is rejected for some reason, handles exception and logging."
+  [state-atom command error-msg]
+  (let [[_ network dbid block-map submission-server] command
+        {:keys [block txns cmd-types]} block-map
+        txids (keys txns)]
+    (swap! state-atom
+           (fn [state]
+             (reduce (fn [s txid] (update-state/dissoc-in s [:cmd-queue network txid])) state txids)))
+    (ex-info (str " --------------- BLOCK REJECTED! " error-msg)
+             {:error  :db/invalid-block
+              :status 500})))
+
+
 (defn state-machine
   [_ state-atom storage-read storage-write]
   (fn [command _]
@@ -254,7 +271,7 @@
                                   (update-state/register-new-dbs txns state-atom block-map))
 
                                 (if (and is-next-block? server-allowed?)
-                                  (do
+                                  (try
                                     ;; write out block data - todo: ensure raft shutdown happens successfully if write fails
                                     (storage-write file-key (avro/serialize-block block-map))
 
@@ -270,23 +287,19 @@
                                     ;; publish new-block event
                                     (event-bus/publish :block [network dbid] block-map)
                                     ;; return success!
-                                    true)
-                                  (do
-                                    (swap! state-atom
-                                           (fn [state]
-                                             (reduce (fn [s txid] (update-state/dissoc-in s [:cmd-queue network txid])) state txids)))
-
-                                    (ex-info (str " --------------- BLOCK REJECTED! "
-                                                  (if (not is-next-block?)
-                                                    (str "Blocks out of order. Block " block " should be one more than current block: " current-block)
-                                                    (str "Server: " submission-server " is not registered as current worker for this network: " network
-                                                         ". That server is: " (get-in @state-atom [:_work :networks network])))
-                                                  (pr-str {:server-allowed server-allowed?
-                                                           :is-next-block? is-next-block?
-                                                           :command        command
-                                                           :state-dump     @state-atom}))
-                                             {:error  :db/invalid-block
-                                              :status 500}))))
+                                    true
+                                    (catch Exception e
+                                      (rejected-block-handler state-atom command
+                                                              (str "Exception attempting to write block: " (.getMessage e)))))
+                                  (rejected-block-handler state-atom command
+                                                          (str (if (not is-next-block?)
+                                                                 (str "Blocks out of order. Block " block " should be one more than current block: " current-block)
+                                                                 (str "Server: " submission-server " is not registered as current worker for this network: " network
+                                                                      ". That server is: " (get-in @state-atom [:_work :networks network])))
+                                                               (pr-str {:server-allowed server-allowed?
+                                                                        :is-next-block? is-next-block?
+                                                                        :command        command
+                                                                        :state-dump     @state-atom})))))
 
 
                    ;; stages a new db to be created
@@ -327,7 +340,7 @@
                    :get-in (update-state/get-in* command state-atom)
 
                    ;; Returns true if there was an existing value removed, else false.
-                   :dissoc-in (update-state/assoc-in* command state-atom)
+                   :dissoc-in (update-state/dissoc-in* command state-atom)
 
                    ;; acquires lease, stored at specified ks (a more elaborate cas). Uses local clock
                    ;; to help combat clock skew. Will only allow a single lease at specified ks.
@@ -730,8 +743,9 @@
                       ;; would error in raft if these are not included, recreate from block data
                       block-data* (assoc block-data :cmd-types #{:tx}
                                                     :txns (->> (:flakes block-data)
-                                                               (keep #(when (= const/$_tx:id (.-p %))
-                                                                        [(.-o %) nil]))
+                                                               (keep #(let [^Flake f %]
+                                                                        (when (= const/$_tx:id (.-p f))
+                                                                          [(.-o f) nil])))
                                                                (into {})))]
 
                   (log/info (str "Ledger " network "/" dbid

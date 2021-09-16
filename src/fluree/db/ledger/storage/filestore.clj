@@ -4,11 +4,12 @@
             [clojure.core.async :as async]
             [fluree.db.ledger.storage :refer [key->unix-path]]
             [fluree.db.ledger.storage.crypto :as crypto])
-  (:import (java.io ByteArrayOutputStream FileNotFoundException)))
+  (:import (java.io ByteArrayOutputStream FileNotFoundException File)))
 
+(set! *warn-on-reflection* true)
 
 (defn write-file
-  [val path]
+  [^bytes val path]
   (try
     (with-open [out (io/output-stream (io/file path))]
       (.write out val))
@@ -131,8 +132,8 @@
 (defn storage-rename
   [base-path old-key new-key]
   (.renameTo
-    (key->unix-path base-path old-key)
-    (key->unix-path base-path new-key)))
+    (io/file (key->unix-path base-path old-key))
+    (io/file (key->unix-path base-path new-key))))
 
 
 (defn storage-rename-async
@@ -173,7 +174,7 @@
     (log/debug "storage-list full-path:" full-path)
     (when (exists? full-path)
       (let [files (-> full-path io/file file-seq)]
-        (map (fn [f] {:name (.getName f), :url (.toURL f), :size (.length f)})
+        (map (fn [^File f] {:name (.getName f), :url (.toURI f), :size (.length f)})
              files)))))
 
 
