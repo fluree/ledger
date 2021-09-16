@@ -1,6 +1,6 @@
 (ns fluree.db.ledger.docs.smart-functions.collection-spec
   (:require [clojure.test :refer :all]
-            [fluree.db.ledger.test-helpers :as test]
+            [fluree.db.test-helpers :as test]
             [clojure.core.async :as async]
             [fluree.db.api :as fdb]
             [fluree.db.ledger.docs.getting-started.basic-schema :as basic]))

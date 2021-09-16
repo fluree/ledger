@@ -1,6 +1,6 @@
 (ns fluree.db.ledger.api.downloaded
   (:require [clojure.test :refer :all]
-            [fluree.db.ledger.test-helpers :as test]
+            [fluree.db.test-helpers :as test]
             [fluree.db.util.log :as log]
             [clojure.tools.reader.edn :as edn]
             [clojure.java.io :as io]
