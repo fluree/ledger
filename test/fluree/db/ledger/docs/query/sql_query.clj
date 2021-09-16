@@ -1,7 +1,7 @@
 (ns fluree.db.ledger.docs.query.sql-query
   (:require [clojure.test :refer :all]
             [clojure.stacktrace :refer [root-cause]]
-            [fluree.db.ledger.test-helpers :as test]
+            [fluree.db.test-helpers :as test]
             [fluree.db.ledger.docs.getting-started.basic-schema :as basic]
             [fluree.db.api :as fdb]
             [fluree.db.util.core :as utils]

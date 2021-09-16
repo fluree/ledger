@@ -1,7 +1,6 @@
-(ns fluree.db.ledger.ledger-test
+(ns fluree.db.ledger-test
   (:require [clojure.test :refer :all]
-            [clojure.tools.logging :as log]
-            [fluree.db.ledger.test-helpers :as test]
+            [fluree.db.test-helpers :as test]
 
             [fluree.db.ledger.api.downloaded :as api]
 
@@ -33,7 +32,8 @@
             [fluree.db.ledger.docs.examples.cryptocurrency :as cryptocurrency]
             [fluree.db.ledger.docs.examples.supply-chain :as supply-chain]
             [fluree.db.ledger.docs.examples.voting :as voting]
-            [fluree.db.ledger.general.todo-permissions :as todo-perm]))
+            [fluree.db.ledger.general.todo-permissions :as todo-perm]
+            [fluree.db.peer.server-health-tests :as sh-test]))
 
 ;; TODO - tests fail - commented out for convenience:
 ;; API - (test-gen-flakes-query-transact-with)
@@ -107,7 +107,12 @@
 
              ;; 9- General
              (test/print-banner "General Tests")
-             (todo-perm/todo-auth-tests))))))
+             (todo-perm/todo-auth-tests)
+
+             ;; 10- Server health
+             (test/print-banner "Server Health")
+             (sh-test/server-health-tests)
+             )))))
 
 (comment
 

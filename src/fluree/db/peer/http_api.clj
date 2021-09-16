@@ -1,8 +1,7 @@
 (ns fluree.db.peer.http-api
   (:require [clojure.tools.logging :as log]
-            [clojure.walk :as walk]
             [clojure.string :as str]
-            [clojure.core.async :as async :refer [<!!]]
+            [clojure.core.async :as async]
             [org.httpkit.server :as http]
             [compojure.core :as compojure :refer [defroutes]]
             [compojure.route :as route]
@@ -27,6 +26,7 @@
             [fluree.db.ledger.txgroup.txgroup-proto :as txproto]
             [fluree.db.serde.protocol :as serdeproto]
             [fluree.db.permissions-validate :as permissions-validate]
+            [fluree.db.peer.server-health :as server-health]
             [fluree.db.peer.password-auth :as pw-auth]
             [fluree.db.ledger.reindex :as reindex]
             [fluree.db.ledger.mutable :as mutable]
@@ -604,71 +604,6 @@
    :body    (meta/version)})
 
 
-(defn- remove-deep
-  [key-set data]
-  (walk/prewalk (fn [node] (if (map? node)
-                             (apply dissoc node key-set)
-                             node))
-                data))
-
-
-(defn nw-state-handler
-  [system _]
-  (let [open-api? (open-api? system)
-        raft      (-> system :group :state-atom deref (dissoc :private-key))
-        {:keys [cmd-queue new-db-queue networks leases]} raft
-        instant   (System/currentTimeMillis)
-        cmd-q     (loop [[cq & r] cmd-queue
-                         acc []]
-                    (if cq
-                      (let [[k v] cq
-                            acc* (into acc [{(keyword k) (count v)}])]
-                        (recur r acc*))
-                      acc))
-        new-db-q  (loop [[nq & r] new-db-queue
-                         acc []]
-                    (if nq
-                      (let [[k v] nq
-                            acc* (into acc [{(keyword k) (count v)}])]
-                        (recur r acc*))
-                      acc))
-        nw-data   (->> networks (remove-deep [:private-key]) vector)
-        svr-state (when-let [servers (into [] (:servers leases))]
-                    (loop [[server & r] servers
-                           acc []]
-                      (if-let [item (second server)]
-                        (recur r (into acc [{:id      (:id item)
-                                             :active? (> (:expire item) instant)}]))
-                        acc)))
-        raft'     (-> raft
-                      (assoc :cmd-queue cmd-q
-                             :new-db-queue new-db-q
-                             :networks nw-data))
-        state     (-> (txproto/-state (:group system))
-                      (select-keys [:snapshot-term
-                                    :latest-index
-                                    :snapshot-index
-                                    :other-servers
-                                    :index
-                                    :snapshot-pending
-                                    :term
-                                    :leader
-                                    :timeout-at
-                                    :this-server
-                                    :status
-                                    :id
-                                    :commit
-                                    :servers
-                                    :voted-for
-                                    :timeout-ms])
-                      (assoc :open-api open-api?)
-                      (assoc :raft raft')
-                      (assoc :svr-state svr-state))]
-    {:status  200
-     :headers {"Content-Type" "application/json; charset=utf-8"}
-     :body    (json/stringify-UTF8 state)}))
-
-
 (defn add-server
   [system {:keys [body]}]
   (let [{:keys [server]} (decode-body body :json)
@@ -685,17 +620,6 @@
     {:status  200
      :headers {"Content-Type" "application/json; charset=utf-8"}
      :body    (json/stringify-UTF8 remove-server)}))
-
-
-(defn health-handler
-  [system _]
-  (let [state (-> (txproto/-state (:group system))
-                  :status)]
-    {:status  200
-     :headers {"Content-Type" "application/json; charset=utf-8"}
-     :body    (json/stringify-UTF8 {:ready       true
-                                    :status      state
-                                    :utilization 0.5})}))
 
 
 (defn keys-handler
@@ -898,8 +822,8 @@
     (compojure/GET "/fdb/storage/:network/:db/:type" request (storage-handler system request))
     (compojure/GET "/fdb/storage/:network/:db/:type/:key" request (storage-handler system request))
     (compojure/GET "/fdb/ws" request (websocket/handler system request))
-    (compojure/ANY "/fdb/health" request (health-handler system request))
-    (compojure/ANY "/fdb/nw-state" request (nw-state-handler system request))
+    (compojure/ANY "/fdb/health" request (server-health/health-handler system request))
+    (compojure/ANY "/fdb/nw-state" request (server-health/nw-state-handler system request))
     (compojure/GET "/fdb/version" request (version-handler system request))
     (compojure/POST "/fdb/add-server" request (add-server system request))
     (compojure/POST "/fdb/remove-server" request (remove-server system request))
