@@ -264,7 +264,7 @@
 
 
 (defmethod action-handler :command
-  [_ system param _ ledger timeout]
+  [_ system param _ ledger {:keys [timeout] :as opts}]
   (go-try
     (let [_      (when-not (and (map? param) (:cmd param))
                    (throw (ex-info (str "Api endpoint for 'command' must contain a map/object with cmd keys.")
@@ -493,7 +493,8 @@
                           (try (Integer/parseInt timeout)
                                (catch Exception _ 60000))
                           60000)
-        [header body]   (<?? (action-handler action* system action-param auth-map ledger request-timeout))
+        opts            (assoc params :timeout request-timeout)
+        [header body] (<?? (action-handler action* system action-param auth-map ledger opts))
         request-time    (- (System/nanoTime) start)
         resp-body       (json/stringify-UTF8 body)
         resp-headers    (reduce-kv (fn [acc k v]
