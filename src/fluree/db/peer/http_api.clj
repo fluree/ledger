@@ -375,11 +375,9 @@
   [_ system _ _ ledger _]
   (go-try
     (let [conn    (:conn system)
-          session (session/session conn ledger)
           db-info (<? (fdb/ledger-info-async conn ledger))
           db-stat (-> (<? (session/db conn ledger {:connect? false}))
-                      (get-in [:stats]))
-          _       (session/close session)]
+                      (get-in [:stats]))]
       [{:status 200} {:status 200 :data (merge db-info db-stat)}])))
 
 
