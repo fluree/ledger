@@ -446,39 +446,14 @@
     pc))
 
 
-(defn merge-index-block
+(defn merge-new-index
   "Attempts to merge newly completed index job with block-map.
   Optimistically the new index will be one block behind the block-map,
   but if not we will pause momentarily to try to see if things catch up
-  before throwing and error."
-  [session indexed-db {:keys [block flakes] :as block-map}]
-  (go-try
-    (let [indexed-block (:block indexed-db)
-          current?      (= indexed-block block)]
-      (log/warn "-------- merge-index-block: " current? indexed-block)
-      (if current?
-        (do
-          (session/release-indexing-lock! session indexed-block)
-          (assoc block-map :db-after indexed-db))
-        (let [_         (log/warn "^^^^^^ PAUSING  ^^^^ merge-index-block: " indexed-block block)
-              _         (async/<! (async/timeout 2000))
-              latest-db (<? (session/current-db session))
-              current?  (= (:block latest-db) block)]
-          (if current?
-            (do
-              (session/release-indexing-lock! session indexed-block)
-              (assoc block-map :db-after indexed-db))
-            (throw (ex-info (str "Recently re-indexed DB on disk is not current after 2 second pause. "
-                                 "Pending new block: " block ", latest block on disk: " (:block latest-db) ".")
-                            {:status 500 :error :db/unexpected-error}))))))))
-
-
-(defn merge-new-index
+  before throwing an error."
   ([session block-map reindexed-db]
    (merge-new-index session block-map reindexed-db 0))
   ([session {:keys [flakes block] :as block-map} reindexed-db retries]
-   (log/warn "MERGING NEW INDEX: " {:old (:db-after block-map)
-                                    :new reindexed-db})
    (go-try
      (let [max-retries           20
            pause-before-retry-ms 100
@@ -497,9 +472,7 @@
                          {:status 500 :error :db/unexpected-error}))
 
          :else
-         (let [_ (log/warn "###### MERGING NEW INDEX WAIT - retries: " retries
-                           "indexed-block: " indexed-block "current-block: " block)
-               _          (async/<! (async/timeout pause-before-retry-ms))
+         (let [_          (async/<! (async/timeout pause-before-retry-ms))
                updated-db (<? (session/current-db session))]
            (<? (merge-new-index session block-map updated-db (inc retries)))))))))
 
@@ -517,8 +490,9 @@
             index-current? (= (:block db) (dec (:block block-map)))]
         (if index-current?
           block-map
-          (let [updated-orig (<? (do-index session db nil))]
-            (<? (merge-index-block session updated-orig (assoc block-map :db-orig updated-orig)))))))))
+          (let [updated-orig (<? (do-index session db nil))
+                block-map*   (assoc block-map :db-orig updated-orig)]
+            (<? (merge-new-index session block-map* updated-orig))))))))
 
 
 (defn ensure-indexing
