@@ -202,19 +202,21 @@
 
 
 (defmethod action-handler :transact
-  [_ system param auth-map ledger timeout]
+  [_ system param auth-map ledger {:keys [timeout] :as opts}]
   (go-try
     (require-authentication system auth-map)
     (let [conn        (:conn system)
           private-key (when (= :jwt (:type auth-map))
                         (<? (pw-auth/fluree-decode-jwt conn (:jwt auth-map))))
+
           _           (when-not (sequential? param)
                         (throw (ex-info (str "A transaction submitted to the 'transact' endpoint must be a list/vector/array.")
                                         {:status 400 :error :db/invalid-transaction})))
+          txid-only?  (some-> (get opts "txid-only") str/lower-case (= "true"))
           auth-id     (:auth auth-map)
           result      (<? (fdb/transact-async conn ledger param {:auth        auth-id
                                                                  :private-key private-key
-                                                                 :txid-only   false
+                                                                 :txid-only   txid-only?
                                                                  :timeout     timeout}))]
       [{:status (or (:status result) 200)
         :fuel   (or (:fuel result) 0)}
