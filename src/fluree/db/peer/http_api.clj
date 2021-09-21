@@ -202,19 +202,21 @@
 
 
 (defmethod action-handler :transact
-  [_ system param auth-map ledger timeout]
+  [_ system param auth-map ledger {:keys [timeout] :as opts}]
   (go-try
     (require-authentication system auth-map)
     (let [conn        (:conn system)
           private-key (when (= :jwt (:type auth-map))
                         (<? (pw-auth/fluree-decode-jwt conn (:jwt auth-map))))
+
           _           (when-not (sequential? param)
                         (throw (ex-info (str "A transaction submitted to the 'transact' endpoint must be a list/vector/array.")
                                         {:status 400 :error :db/invalid-transaction})))
+          txid-only?  (some-> (get opts "txid-only") str/lower-case (= "true"))
           auth-id     (:auth auth-map)
           result      (<? (fdb/transact-async conn ledger param {:auth        auth-id
                                                                  :private-key private-key
-                                                                 :txid-only   false
+                                                                 :txid-only   txid-only?
                                                                  :timeout     timeout}))]
       [{:status (or (:status result) 200)
         :fuel   (or (:fuel result) 0)}
@@ -262,7 +264,7 @@
 
 
 (defmethod action-handler :command
-  [_ system param _ ledger timeout]
+  [_ system param _ ledger {:keys [timeout] :as opts}]
   (go-try
     (let [_      (when-not (and (map? param) (:cmd param))
                    (throw (ex-info (str "Api endpoint for 'command' must contain a map/object with cmd keys.")
@@ -489,7 +491,8 @@
                           (try (Integer/parseInt timeout)
                                (catch Exception _ 60000))
                           60000)
-        [header body]   (<?? (action-handler action* system action-param auth-map ledger request-timeout))
+        opts            (assoc params :timeout request-timeout)
+        [header body]   (<?? (action-handler action* system action-param auth-map ledger opts))
         request-time    (- (System/nanoTime) start)
         resp-body       (json/stringify-UTF8 body)
         resp-headers    (reduce-kv (fn [acc k v]
