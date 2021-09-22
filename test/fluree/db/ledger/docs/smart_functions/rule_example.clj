@@ -38,8 +38,8 @@
         q-endpoint   (str endpoint "multi-query")
         level-1-req  (http-signatures/sign-request :post q-endpoint my-request (:private-key jdoe))
         level-2-req  (http-signatures/sign-request :post q-endpoint my-request (:private-key zsmith))
-        l1-resp @(http/post q-endpoint level-1-req)
-        l2-resp @(http/post q-endpoint level-2-req)
+        l1-resp      @(http/post q-endpoint level-1-req)
+        l2-resp      @(http/post q-endpoint level-2-req)
         level-1-resp (-> l1-resp :body bs/to-string json/parse)
         level-2-resp (-> l2-resp :body bs/to-string json/parse)]
 
