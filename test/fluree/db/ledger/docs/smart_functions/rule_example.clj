@@ -54,10 +54,9 @@
     (is (= #{:person/handle :_id}
            (->> (:person level-1-resp) (map keys) flatten set)))
 
-    ;; Level 2 should be able to view all person predicates
-    (is (= #{:person/handle :_id :person/favNums :person/age :person/favArtists
-             :person/follows :person/auth :person/fullName :person/favMovies
-             :person/active}
+    ;; Level 2 should be able to view all person predicates (but not refs they were not given permission to)
+    (is (= #{:person/handle :_id :person/favNums :person/age
+             :person/follows :person/fullName :person/active}
            (->> (:person level-2-resp) (map keys) flatten set)))))
 
 (deftest permissioned-transaction

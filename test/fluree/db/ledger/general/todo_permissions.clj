@@ -23,18 +23,27 @@
 
 (deftest add-schema
   (testing "Add the todo collection and its predicates")
-  (let [schema-txn  [{:_id "_collection",
-                      :name "todo"},
-                     {:_id "_predicate",
-                      :name "todo/auth",
-                      :type "ref",
+  (let [schema-txn  [{:_id  "_collection",
+                      :name "todo"}
+                     {:_id  "_collection",
+                      :name "todo.item"},
+                     {:_id                "_predicate",
+                      :name               "todo/auth",
+                      :type               "ref",
                       :restrictCollection "_auth"},
-                     {:_id "_predicate",
-                      :name "todo/id",
-                      :type "string",
+                     {:_id    "_predicate",
+                      :name   "todo/id",
+                      :type   "string",
                       :unique true},
-                     {:_id "_predicate",
+                     {:_id  "_predicate",
                       :name "todo/doc",
+                      :type "string"}
+                     {:_id   "_predicate",
+                      :name  "todo/items",
+                      :multi true
+                      :type  "ref"}
+                     {:_id  "_predicate",
+                      :name "todo.item/item",
                       :type "string"}]
         schema-resp  (async/<!! (fdb/transact-async (basic/get-conn) test/ledger-todo schema-txn))]
 
@@ -45,7 +54,7 @@
     (is (= 2 (:block schema-resp)))
 
     ;; there should be 3 _predicate tempids
-    (is (= 3 (test/get-tempid-count (:tempids schema-resp) "_predicate")))
+    (is (= 5 (test/get-tempid-count (:tempids schema-resp) "_predicate")))
 
     ;; there should be 2 tempid keys
     (is (= 2 (count (keys (:tempids schema-resp)))))))
@@ -55,15 +64,22 @@
   (let [sf-txn  [{:_id "_fn$ownTodo?",
                   :name "ownTodo?",
                   :code "(relationship? (?sid) [\"todo/auth\"] (?auth_id))"},
-                 {:_id "_rule$ownTodo",
-                  :id "ownTodo",
-                  :doc "User can only control their own todos",
-                  :fns ["_fn$ownTodo?"],
-                  :ops ["all"],
-                  :collection "todo",
+                 {:_id               "_rule$ownTodo",
+                  :id                "ownTodo",
+                  :doc               "User can only control their own todos",
+                  :fns               ["_fn$ownTodo?"],
+                  :ops               ["all"],
+                  :collection        "todo",
                   :collectionDefault true},
-                 {:_id "_role$ownTodo",
-                  :id "ownTodo",
+                 {:_id               "_rule$noTodoItems",
+                  :id                "noTodoItems",
+                  :doc               "User can not see any todo items.",
+                  :fns               [["_fn/name", "false"]],
+                  :ops               ["query"],
+                  :collection        "todo.item",
+                  :collectionDefault true}
+                 {:_id   "_role$ownTodo",
+                  :id    "ownTodo",
                   :rules ["_rule$ownTodo"]}]
         sf-resp  (async/<!! (fdb/transact-async (basic/get-conn) test/ledger-todo sf-txn))]
 
@@ -74,7 +90,7 @@
     (is (= 3 (:block sf-resp)))
 
     ;; there should be 3 tempids
-    (is (= 3 (count (:tempids sf-resp))))))
+    (is (= 4 (count (:tempids sf-resp))))))
 
 (deftest add-user-auth
   (testing "Add _user, _auth")
@@ -103,22 +119,28 @@
 
 (deftest add-todos
   (testing "Add to-dos for each user")
-  (let [td-txn [{:_id "todo$Scott",
-                 :id "Scott",
-                 :doc "Todo item Scott",
-                 :auth ["_auth/id", (:auth scott)]},
-                {:_id "todo$Kevin",
-                 :id "Kevin",
-                 :doc "Todo item Kevin",
-                 :auth ["_auth/id", (:auth kevin)]},
-                {:_id "todo$Jay",
-                 :id "Jay",
-                 :doc "Todo item Jay",
-                 :auth ["_auth/id", (:auth jay)]},
-                {:_id "todo$SysAdmin",
-                 :id "SysAdmin",
-                 :doc "Todo item SysAdmin",
-                 :auth ["_auth/id", (:auth sys-admin)]}]
+  (let [td-txn  [{:_id  "todo$Scott",
+                  :id   "Scott",
+                  :doc  "Todo item Scott",
+                  :auth ["_auth/id", (:auth scott)]},
+                 {:_id   "todo$Kevin",
+                  :id    "Kevin",
+                  :doc   "Todo item Kevin",
+                  :auth  ["_auth/id", (:auth kevin)]
+                  :items [{:_id  "todo.item"
+                           :item "Toothpaste"}
+                          {:_id  "todo.item"
+                           :item "Soap"}]},
+                 {:_id   "todo$Jay",
+                  :id    "Jay",
+                  :doc   "Todo item Jay",
+                  :auth  ["_auth/id", (:auth jay)]
+                  :items [{:_id  "todo.item"
+                           :item "Hair Brush"}]},
+                 {:_id  "todo$SysAdmin",
+                  :id   "SysAdmin",
+                  :doc  "Todo item SysAdmin",
+                  :auth ["_auth/id", (:auth sys-admin)]}]
         td-resp (async/<!! (fdb/transact-async (basic/get-conn) test/ledger-todo td-txn))]
     ;; status should be 200
     (is (= 200 (:status td-resp)))
@@ -127,7 +149,7 @@
     (is (= 5 (:block td-resp)))
 
     ;; there should be 4 tempids
-    (is (= 4 (count (:tempids td-resp))))))
+    (is (= 5 (count (:tempids td-resp))))))
 
 (deftest query-auth
   (testing "Verify auth records exist")
@@ -143,27 +165,40 @@
 
 (deftest query-todo-root-auth
   (testing "testing root auth sees all to-dos")
-  (let [id-list (-> (basic/get-db test/ledger-todo {:auth ["_auth/id" (:auth sys-admin)]})
-                    (fdb/query-async {:select ["*"] :from "todo"})
-                    async/<!!
-                    (as-> res (reduce-kv
-                                (fn [z _ v]
-                                  (into z [(-> v (get "todo/auth") (get "_id"))]))
-                                []
-                                res)))]
+  (let [res     (-> (basic/get-db test/ledger-todo {:auth ["_auth/id" (:auth sys-admin)]})
+                    (fdb/query-async {:select ["*", {:items ["*"]}] :from "todo"})
+                    async/<!!)
+        id-list (reduce-kv
+                  (fn [z _ v]
+                    (into z [(-> v (get "todo/auth") (get "_id"))]))
+                  []
+                  res)]
     (is (= 4 (count id-list)))))
 
 (deftest query-own-todo
   (testing "testing non-system admin users see only own to-do")
-  (let [id-list (-> (fdb/db (:conn test/system) test/ledger-todo {:auth ["_auth/id" (:auth kevin)]})
-                    (fdb/query-async {:select ["*"] :from "todo"})
-                    async/<!!
-                    (as-> res (reduce-kv
-                                (fn [z _ v]
-                                  (into z [(-> v (get "todo/auth") (get "_id"))]))
-                                []
-                                res)))]
-    (is (= 1 (count id-list)))))
+  (let [db         (fdb/db (:conn test/system) test/ledger-todo {:auth ["_auth/id" (:auth kevin)]})
+        res-graph  @(fdb/query db {:select ["*", {:items ["*"]}] :from "todo"}) ;; wildcard with crawl(s)
+        res-analy  @(fdb/query db {:select {"?s" ["*", {:items ["*"]}]}
+                                   :where  [["?s" "rdf:type" "todo"]]})
+        res-graph2 @(fdb/query db {:select ["*"] :from "todo"}) ;; wildcard
+        id-list    (reduce-kv
+                     (fn [z _ v]
+                       (into z [(-> v (get "todo/auth") (get "_id"))]))
+                     []
+                     res-graph)]
+
+    ;; basic and analytical queries should be identical
+    (is (= res-graph res-analy))
+
+    ;; only one item should be returned as permissioned user can only see own
+    (is (= 1 (count id-list)))
+
+    ;; items smart function set to false, so despite two items being there results should be empty
+    (is (empty? (get (first res-graph) "items")))
+
+    ;; since you cannot see any todo/items, it should not exist in the result map
+    (is (nil? (get (first res-graph2) "todo/items")))))
 
 (deftest query-own-todo-analytical
   (testing "testing non-system admin users see only own to-do")
