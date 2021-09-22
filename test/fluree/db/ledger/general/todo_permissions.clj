@@ -165,6 +165,21 @@
                                 res)))]
     (is (= 1 (count id-list)))))
 
+(deftest query-own-todo-analytical
+  (testing "testing non-system admin users see only own to-do")
+  (let [perm-db  (fdb/db (:conn test/system) test/ledger-todo {:auth ["_auth/id" (:auth kevin)]})
+        root-db  (fdb/db (:conn test/system) test/ledger-todo)
+        query {:select "?s"
+               :where  [["?s" "rdf:type" "todo"]]}
+        root-res @(fdb/query root-db query)
+        perm-res @(fdb/query perm-db query)]
+
+    ;; all 4 subjects should be returned for root
+    (is (= 4 (count root-res)))
+
+    ;; permissioned should only be a single subject returned
+    (is (= 1 (count perm-res)))))
+
 (deftest retract-todo-auth-failure
   (testing "testing that non-system admin cannot delete someone else's to-do")
   (let [txn [{:_id ["todo/id" "Kevin"], :_action "delete"}]
@@ -194,7 +209,8 @@
   (add-todos)
   (query-todo-root-auth)
   (query-own-todo)
+  (query-own-todo-analytical)
   (retract-todo-auth-failure)
-  (query-auth) ;; verify db cache
+  (query-auth)                                              ;; verify db cache
   (retract-todo-own)
   (retract-todo-system-admin))
