@@ -201,7 +201,7 @@
     (is (nil? (get (first res-graph2) "todo/items")))))
 
 (deftest query-own-todo-analytical
-  (testing "testing non-system admin users see only own to-do")
+  (testing "testing analytical query non-system admin users see only own to-do")
   (let [perm-db  (fdb/db (:conn test/system) test/ledger-todo {:auth ["_auth/id" (:auth kevin)]})
         root-db  (fdb/db (:conn test/system) test/ledger-todo)
         query    {:select "?s"
