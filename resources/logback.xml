@@ -29,7 +29,7 @@
     </root>
 
     <logger name="ch.qos.logback" level="WARN"/>
-    <logger name="fluree.db" level="DEBUG"/>
+    <!-- <logger name="fluree.db" level="DEBUG"/> -->
 
 </configuration>
 
