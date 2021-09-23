@@ -69,7 +69,7 @@
                :version :mvn/version
                :sync-pom true}}
 
-  :full-text-repair-jar
+  :full-text-repair-uberjar
   {:replace-deps {com.github.seancorfield/depstar {:mvn/version "2.1.297"}}
    :exec-fn hf.depstar/uberjar
    :exec-args {:jar "target/fluree-ledger.standalone.jar"
