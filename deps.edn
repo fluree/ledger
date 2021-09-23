@@ -1,7 +1,8 @@
 {:deps {org.clojure/clojure               {:mvn/version "1.10.3"}
         org.clojure/data.xml              {:mvn/version "0.2.0-alpha6"}
         com.fluree/alphabase              {:mvn/version "3.2.1"}
-        com.fluree/db                     {:mvn/version "1.0.0-rc29"}
+        ;; com.fluree/db                     {:mvn/version "1.0.0-rc29"}
+        com.fluree/db                     {:local/root "../db"}
         com.fluree/raft                   {:mvn/version "1.0.0-beta1"}
         com.fluree/crypto                 {:mvn/version "0.3.6"}
 
@@ -63,6 +64,17 @@
    :exec-args {:jar "target/fluree-ledger.standalone.jar"
                :aot [fluree.db.server]
                :main-class fluree.db.server
+               :group-id :mvn/group-id
+               :artifact-id :mvn/artifact-id
+               :version :mvn/version
+               :sync-pom true}}
+
+  :full-text-repair-jar
+  {:replace-deps {com.github.seancorfield/depstar {:mvn/version "2.1.297"}}
+   :exec-fn hf.depstar/uberjar
+   :exec-args {:jar "target/fluree-ledger.standalone.jar"
+               :aot [fluree.db.ledger.upgrade.full-text]
+               :main-class fluree.db.ledger.upgrade.full-text
                :group-id :mvn/group-id
                :artifact-id :mvn/artifact-id
                :version :mvn/version
