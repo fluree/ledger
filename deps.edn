@@ -69,17 +69,6 @@
                :version :mvn/version
                :sync-pom true}}
 
-  :full-text-repair-uberjar
-  {:replace-deps {com.github.seancorfield/depstar {:mvn/version "2.1.297"}}
-   :exec-fn hf.depstar/uberjar
-   :exec-args {:jar "target/fluree-ledger.standalone.jar"
-               :aot [fluree.db.ledger.upgrade.full-text]
-               :main-class fluree.db.ledger.upgrade.full-text
-               :group-id :mvn/group-id
-               :artifact-id :mvn/artifact-id
-               :version :mvn/version
-               :sync-pom true}}
-
   :native-image
   {:main-opts ["-m" "clj.native-image" "fluree.db.server"
                "-H:Name=fluree-ledger" "--no-fallback"
