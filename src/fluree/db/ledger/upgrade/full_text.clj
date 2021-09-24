@@ -16,11 +16,7 @@
 
 (defn wait-for-block
   [conn ledger expected-block]
-  (loop [{:keys [block] :as db} (<!! (fdb/db conn ledger))]
-    (if (< block expected-block)
-      (do (Thread/sleep 200)
-          (recur (<!! (fdb/db conn ledger))))
-      db)))
+  (<!! (fdb/db conn ledger) {:syncTo expected-block}))
 
 (defn mark-invalid-pred
   [{:keys [conn network dbid] :as db}]
@@ -96,10 +92,9 @@
 
         update-result (update-subjects added-db)
         updated-block (-> update-result last :block)
-        updated-db    (wait-for-block conn ledger updated-block)
-
-        reset-result  (reset-index updated-db)]
-    reset-result))
+        updated-db    (wait-for-block conn ledger updated-block)]
+    (log/info "Resetting full text index")
+    (reset-index updated-db)))
 
 (defn -main
   []
@@ -113,8 +108,8 @@
     (let [network   (:fdb-network environ/env)
           ledger-id (:fdb-ledger-id environ/env)]
       (if (and network ledger-id)
-        (let [results (repair conn [network ledger-id])]
-          (log/info "Full text repair completed")
-          (log/info "Results: " results))
+        (do (log/info "Repairing full text index")
+            (let [results (repair conn [network ledger-id])]
+              (log/info "Full text repair completed:" results)))
         (log/error "You must set the" :fdb-network "and" :fdb-ledger-id
                    "variables in the environment or Fluree configuration")))))
