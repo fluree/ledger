@@ -7,7 +7,8 @@
             [org.httpkit.client :as http]
             [fluree.db.util.json :as json]
             [byte-streams :as bs]
-            [fluree.db.api :as fdb]))
+            [fluree.db.api :as fdb]
+            [fluree.db.query.http-signatures :as http-signatures]))
 
 (use-fixtures :once test/test-system)
 
@@ -190,6 +191,36 @@
       ; Are some of the predicates we expect returned?
       (is (every? boolean (map #(predicates %) ["comment/nestedComponent" "person/stringUnique"]))))))
 
+(deftest sign-multi-query
+  (testing "sign-multi-query where collections are not named in alphanumeric order"
+    (let [private-key (slurp "default-private-key.txt")
+          qry-str      "{\"collections\":{\"select\":[\"*\"],\"from\":\"_collection\"},\n       \"predicates\":{\"select\":[\"*\"],\"from\":\"_predicate\"},\n       \"_setting\":{\"select\":[\"*\"],\"from\":\"_setting\"},\n       \"_rule\":{\"select\":[\"*\"],\"from\":\"_rule\"},\n       \"_role\":{\"select\":[\"*\"],\"from\":\"_role\"},\n       \"_user\":{\"select\":[\"*\"],\"from\":\"_user\"}\n      }"
+          request      {:headers {"content-type" "application/json"}
+                        :body    qry-str}
+          q-endpoint   (str endpoint-url "multi-query")
+          signed-req   (http-signatures/sign-request :post q-endpoint request private-key)
+          resp         @(http/post q-endpoint signed-req)
+          responseKeys (keys resp)
+          status       (:status resp)
+          body         (some-> resp :body bs/to-string json/parse)
+          collections  (into #{} (map #(:_collection/name %) (:collections body)))
+          predicates   (into #{} (map #(:_predicate/name %) (:predicates body)))
+          roles        (into #{} (map #(:_role/id %) (:_role body)))]
+
+      (is (= 200 status))
+
+      ; The keys in the response are -> :request-time :aleph/keep-alive? :headers :status :connection-time :body
+      (is (not (empty? (remove nil? (map #(#{:request-time :aleph/keep-alive? :headers :status :connection-time :body} %)
+                                         responseKeys)))))
+
+      ; Are all the predicates what we expect?
+      (is (= collections #{"_rule" "nestedComponent" "_fn" "_predicate" "_setting" "chat" "_auth" "_user" "person" "_shard" "_tag" "comment" "_role" "_collection"}))
+
+      ; Are some of the predicates we expect returned?
+      (is (every? boolean (map #(predicates %) ["comment/nestedComponent" "person/stringUnique"])))
+
+      ; Are the expected roles returned?
+      (is (= roles #{"chatUser" "root"})))))
 
 (deftest query-collections-predicates*
   (add-schema*)
@@ -622,4 +653,5 @@
   (command-add-person)
   (command-add-person-verbose)
   (get-all-dbs)
+  (sign-multi-query)
   (health-check))
