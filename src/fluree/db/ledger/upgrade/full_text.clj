@@ -16,7 +16,7 @@
 
 (defn wait-for-block
   [conn ledger expected-block]
-  (<!! (fdb/db conn ledger) {:syncTo expected-block}))
+  (<!! (fdb/db conn ledger {:syncTo expected-block})))
 
 (defn mark-invalid-pred
   [{:keys [conn network dbid] :as db}]
