@@ -97,7 +97,7 @@
     (reset-index updated-db)))
 
 (defn -main
-  []
+  [& args]
   (let [{:keys [conn] :as system} (server/startup)]
     (.addShutdownHook (Runtime/getRuntime)
                       (Thread. ^Runnable
@@ -105,11 +105,9 @@
                                  (log/info "SHUTDOWN Start")
                                  (server/shutdown system)
                                  (log/info "SHUTDOWN Complete"))))
-    (let [network   (:fdb-network environ/env)
-          ledger-id (:fdb-ledger-id environ/env)]
+    (let [[network ledger-id] (take 2 args)]
       (if (and network ledger-id)
         (do (log/info "Repairing full text index")
             (let [results (repair conn [network ledger-id])]
               (log/info "Full text repair completed:" results)))
-        (log/error "You must set the" :fdb-network "and" :fdb-ledger-id
-                   "variables in the environment or Fluree configuration")))))
+        (log/error "You must supply the network and ledger-id")))))
