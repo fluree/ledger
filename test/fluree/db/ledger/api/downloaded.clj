@@ -307,6 +307,26 @@
 
       (is (every? boolean (map #(collection-names %) ["_rule" "_fn" "_predicate" "_setting" "_auth" "_user" "_shard" "_tag" "_role" "_collection"]))))))
 
+(deftest sign-all-collections-graphql
+  (testing "sign a query for all collections through the graphql endpoint"
+    (let [private-key         (slurp "default-private-key.txt")
+          qry-str             (json/stringify {:query "{  graph {  _collection (sort: {predicate: \"name\", order: ASC}) { _id name spec version doc}}}"})
+          request             {:headers {"content-type" "application/json"}
+                               :body    qry-str}
+          q-endpoint          (str endpoint-url "graphql")
+          signed-req          (http-signatures/sign-request :post q-endpoint request private-key)
+          resp                @(http/post q-endpoint signed-req)
+          body                (-> resp :body bs/to-string json/parse)
+          collection-names    (into #{} (map #(:name %) (-> body :data :_collection)))]
+
+      ; Are the collection keys what we expect?
+      (is (map #(#{:doc :version :spec :name :_id} %) body))
+
+      ;; Are the collections what we expect?
+      (is (not (empty? (remove nil? (map #((into #{} collection-names) %) ["_rule" "_fn" "_predicate" "_setting" "_auth" "_user" "_shard" "_tag" "_role" "_collection"])))))
+
+      (is (every? boolean (map #(collection-names %) ["_rule" "_fn" "_predicate" "_setting" "_auth" "_user" "_shard" "_tag" "_role" "_collection"]))))))
+
 
 (deftest repeated-query-all-collections-graphql*
   (query-all-collections-graphql*)
@@ -365,6 +385,26 @@
 
       (is (every? boolean (map #(collection-names %) ["_predicate" "_auth" "_collection" "_fn" "_role" "_rule" "_setting" "_tag" "_user"]))))))
 
+(deftest sign-query-collection-sparql
+  (testing "sign a query for all collections through the sparql endpoint"
+    (let [private-key      (slurp "default-private-key.txt")
+          qry-str          (json/stringify "SELECT ?name \nWHERE \n {\n ?collection fd:_collection/name ?name. \n}")
+          request          {:headers {"content-type" "application/json"}
+                            :body    qry-str}
+          q-endpoint       (str endpoint-url "sparql")
+          signed-req       (http-signatures/sign-request :post q-endpoint request private-key)
+          resp             @(http/post q-endpoint signed-req)
+          body             (-> resp :body bs/to-string json/parse)
+          collection-names (into #{} (apply concat body))]
+
+      ;; Make sure we got results back
+      (is (> (count body) 1))
+
+      ;; Each result should be an array of 1 (?name)
+      (is (every? boolean (map #(= 1 (count %)) body)))
+
+      (is (every? boolean (map #(collection-names %) ["_predicate" "_auth" "_collection" "_fn" "_role" "_rule" "_setting" "_tag" "_user"]))))))
+
 
 
 ;; ENDPOINT TEST: /sparql
@@ -381,6 +421,31 @@
 
       ;; Each result should be an array of 2 (?item and ?itemLabel)
       (is (every? boolean (map #(= 2 (count %)) body))))))
+
+
+;; ENDPOINT TEST: /sql
+
+(deftest sign-sql-query
+  (testing "sign a query for all collections through the sql endpoint"
+    (let [private-key  (slurp "default-private-key.txt")
+          qry-str      (json/stringify "SELECT * FROM _collection")
+          request      {:headers {"content-type" "application/json"}
+                        :body    qry-str}
+          q-endpoint   (str endpoint-url "sql")
+          signed-req   (http-signatures/sign-request :post q-endpoint request private-key)
+          resp         @(http/post q-endpoint signed-req)
+          responseKeys (keys resp)
+          status       (:status resp)
+          body         (some-> resp :body bs/to-string json/parse)
+          collections  (into #{} (map #(:_collection/name %) body))]
+      (is (= 200 status))
+
+      ; The keys in the response are -> :request-time :aleph/keep-alive? :headers :status :connection-time :body
+      (is (not (empty? (remove nil? (map #(#{:request-time :aleph/keep-alive? :headers :status :connection-time :body} %)
+                                         responseKeys)))))
+
+      ; Are all the predicates what we expect?
+      (is (= collections #{"_rule" "nestedComponent" "_fn" "_predicate" "_setting" "chat" "_auth" "_user" "person" "_shard" "_tag" "comment" "_role" "_collection"})))))
 
 
 
@@ -688,5 +753,8 @@
   (command-add-person-verbose)
   (get-all-dbs)
   (sign-multi-query)
+  (sign-sql-query)
+  (sign-all-collections-graphql)
+  (sign-query-collection-sparql)
   (delete-ledger-tests)
   (health-check))
