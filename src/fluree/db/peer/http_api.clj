@@ -112,10 +112,10 @@
 
 (defn decode-body
   [body type]
-  (let [^bytes body' (.bytes ^BytesInputStream body)]
+  (let [body' (-> ^BytesInputStream body .bytes (String. "UTF-8"))]
     (case type
-      :string (String. body' "UTF-8")
-      :json   (-> body' (String. "UTF-8") json/parse))))
+      :string body'
+      :json   (json/parse body'))))
 
 
 (defn- return-token
