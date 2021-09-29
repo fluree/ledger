@@ -84,9 +84,8 @@
 
       (is (= 200 status))
 
-      ; The keys in the response are -> :request-time :aleph/keep-alive? :headers :status :connection-time :body
-      (is (not (empty? (remove nil? (map #(#{:request-time :aleph/keep-alive? :headers :status :connection-time :body} %)
-                                         response-keys)))))
+      ; The keys in the response are -> :opts :body :headers :status
+      (is (every? (map #(#{:opts :body :headers :status})) response-keys))
 
       ; The keys in the body are :tempids :block :hash :time :status :block-bytes :timestamp :flakes
       (is (not (empty? (remove nil? (map #(#{:tempids :block :hash :fuel-remaining :time :fuel :status :block-bytes :timestamp :flakes} %)
@@ -121,16 +120,15 @@
   (testing "Querying all collections"
     (let [query               {:select ["*"] :from "_collection"}
           queryCollectionsRes @(http/post (str endpoint-url "query") (standard-request query))
-          responseKeys        (keys queryCollectionsRes)
+          response-keys       (keys queryCollectionsRes)
           status              (:status queryCollectionsRes)
           body                (-> queryCollectionsRes :body bs/to-string json/parse)
           collections         (into #{} (map #(:_collection/name %) body))]
 
       (is (= 200 status))
 
-      ; The keys in the response are -> :request-time :aleph/keep-alive? :headers :status :connection-time :body
-      (is (not (empty? (remove nil? (map #(#{:request-time :aleph/keep-alive? :headers :status :connection-time :body} %)
-                                         responseKeys)))))
+      ; The keys in the response are -> :opts :body :headers :status
+      (is (every? (map #(#{:opts :body :headers :status})) response-keys))
 
       ; Are all the collection names what we expect?
       (is (= collections #{"_rule" "nestedComponent" "_fn" "_predicate" "_setting" "chat" "_auth" "_user" "person" "_shard" "_tag" "comment" "_role" "_collection"})))))
@@ -148,7 +146,7 @@
   (testing "Query all predicates."
     (let [query               {:select ["*"] :from "_predicate"}
           queryCollectionsRes @(http/post (str endpoint-url "query") (standard-request query))
-          responseKeys        (keys queryCollectionsRes)
+          response-keys       (keys queryCollectionsRes)
           status              (:status queryCollectionsRes)
           body                (-> queryCollectionsRes :body bs/to-string json/parse)
           predicates          (into #{} (map #(:_predicate/name %) body))]
@@ -156,9 +154,8 @@
 
       (is (= 200 status))
 
-      ; The keys in the response are -> :request-time :aleph/keep-alive? :headers :status :connection-time :body
-      (is (not (empty? (remove nil? (map #(#{:request-time :aleph/keep-alive? :headers :status :connection-time :body} %)
-                                         responseKeys)))))
+      ; The keys in the response are -> :opts :body :headers :status
+      (is (every? (map #(#{:opts :body :headers :status})) response-keys))
 
       ; Are some of the predicates we expect returned?
       (is (every? boolean (map #(predicates %) ["comment/nestedComponent" "person/stringUnique"])))
@@ -171,20 +168,19 @@
 
 (deftest query-collections-predicates-multiquery
   (testing "Querying all collections and predicates in multi-query"
-    (let [query        {:coll {:select ["*"] :from "_collection"}
-                        :pred {:select ["*"] :from "_predicate"}}
-          multiRes     @(http/post (str endpoint-url "multi-query") (standard-request query))
-          responseKeys (keys multiRes)
-          status       (:status multiRes)
-          body         (-> multiRes :body bs/to-string json/parse)
-          collections  (into #{} (map #(:_collection/name %) (:coll body)))
-          predicates   (into #{} (map #(:_predicate/name %) (:pred body)))]
+    (let [query         {:coll {:select ["*"] :from "_collection"}
+                         :pred {:select ["*"] :from "_predicate"}}
+          multiRes      @(http/post (str endpoint-url "multi-query") (standard-request query))
+          response-keys (keys multiRes)
+          status        (:status multiRes)
+          body          (-> multiRes :body bs/to-string json/parse)
+          collections   (into #{} (map #(:_collection/name %) (:coll body)))
+          predicates    (into #{} (map #(:_predicate/name %) (:pred body)))]
 
       (is (= 200 status))
 
-      ; The keys in the response are -> :request-time :aleph/keep-alive? :headers :status :connection-time :body
-      (is (not (empty? (remove nil? (map #(#{:request-time :aleph/keep-alive? :headers :status :connection-time :body} %)
-                                         responseKeys)))))
+      ; The keys in the response are -> :opts :body :headers :status
+      (is (every? (map #(#{:opts :body :headers :status})) response-keys))
 
       ; Are all the predicates what we expect?
       (is (= collections #{"_rule" "nestedComponent" "_fn" "_predicate" "_setting" "chat" "_auth" "_user" "person" "_shard" "_tag" "comment" "_role" "_collection"}))
@@ -194,25 +190,24 @@
 
 (deftest sign-multi-query
   (testing "sign-multi-query where collections are not named in alphanumeric order"
-    (let [private-key (slurp "default-private-key.txt")
-          qry-str      "{\"collections\":{\"select\":[\"*\"],\"from\":\"_collection\"},\n       \"predicates\":{\"select\":[\"*\"],\"from\":\"_predicate\"},\n       \"_setting\":{\"select\":[\"*\"],\"from\":\"_setting\"},\n       \"_rule\":{\"select\":[\"*\"],\"from\":\"_rule\"},\n       \"_role\":{\"select\":[\"*\"],\"from\":\"_role\"},\n       \"_user\":{\"select\":[\"*\"],\"from\":\"_user\"}\n      }"
-          request      {:headers {"content-type" "application/json"}
-                        :body    qry-str}
-          q-endpoint   (str endpoint-url "multi-query")
-          signed-req   (http-signatures/sign-request :post q-endpoint request private-key)
-          resp         @(http/post q-endpoint signed-req)
-          responseKeys (keys resp)
-          status       (:status resp)
-          body         (some-> resp :body bs/to-string json/parse)
-          collections  (into #{} (map #(:_collection/name %) (:collections body)))
-          predicates   (into #{} (map #(:_predicate/name %) (:predicates body)))
-          roles        (into #{} (map #(:_role/id %) (:_role body)))]
+    (let [private-key   (slurp "default-private-key.txt")
+          qry-str       "{\"collections\":{\"select\":[\"*\"],\"from\":\"_collection\"},\n       \"predicates\":{\"select\":[\"*\"],\"from\":\"_predicate\"},\n       \"_setting\":{\"select\":[\"*\"],\"from\":\"_setting\"},\n       \"_rule\":{\"select\":[\"*\"],\"from\":\"_rule\"},\n       \"_role\":{\"select\":[\"*\"],\"from\":\"_role\"},\n       \"_user\":{\"select\":[\"*\"],\"from\":\"_user\"}\n      }"
+          request       {:headers {"content-type" "application/json"}
+                         :body    qry-str}
+          q-endpoint    (str endpoint-url "multi-query")
+          signed-req    (http-signatures/sign-request :post q-endpoint request private-key)
+          resp          @(http/post q-endpoint signed-req)
+          response-keys (keys resp)
+          status        (:status resp)
+          body          (some-> resp :body bs/to-string json/parse)
+          collections   (into #{} (map #(:_collection/name %) (:collections body)))
+          predicates    (into #{} (map #(:_predicate/name %) (:predicates body)))
+          roles         (into #{} (map #(:_role/id %) (:_role body)))]
 
       (is (= 200 status))
 
-      ; The keys in the response are -> :request-time :aleph/keep-alive? :headers :status :connection-time :body
-      (is (not (empty? (remove nil? (map #(#{:request-time :aleph/keep-alive? :headers :status :connection-time :body} %)
-                                         responseKeys)))))
+      ; The keys in the response are -> :opts :body :headers :status
+      (is (every? (map #(#{:opts :body :headers :status})) response-keys))
 
       ; Are all the predicates what we expect?
       (is (= collections #{"_rule" "nestedComponent" "_fn" "_predicate" "_setting" "chat" "_auth" "_user" "person" "_shard" "_tag" "comment" "_role" "_collection"}))
@@ -427,22 +422,21 @@
 
 (deftest sign-sql-query
   (testing "sign a query for all collections through the sql endpoint"
-    (let [private-key  (slurp "default-private-key.txt")
-          qry-str      (json/stringify "SELECT * FROM _collection")
-          request      {:headers {"content-type" "application/json"}
-                        :body    qry-str}
-          q-endpoint   (str endpoint-url "sql")
-          signed-req   (http-signatures/sign-request :post q-endpoint request private-key)
-          resp         @(http/post q-endpoint signed-req)
-          responseKeys (keys resp)
-          status       (:status resp)
-          body         (some-> resp :body bs/to-string json/parse)
-          collections  (into #{} (map #(:_collection/name %) body))]
+    (let [private-key   (slurp "default-private-key.txt")
+          qry-str       (json/stringify "SELECT * FROM _collection")
+          request       {:headers {"content-type" "application/json"}
+                         :body    qry-str}
+          q-endpoint    (str endpoint-url "sql")
+          signed-req    (http-signatures/sign-request :post q-endpoint request private-key)
+          resp          @(http/post q-endpoint signed-req)
+          response-keys (keys resp)
+          status        (:status resp)
+          body          (some-> resp :body bs/to-string json/parse)
+          collections   (into #{} (map #(:_collection/name %) body))]
       (is (= 200 status))
 
-      ; The keys in the response are -> :request-time :aleph/keep-alive? :headers :status :connection-time :body
-      (is (not (empty? (remove nil? (map #(#{:request-time :aleph/keep-alive? :headers :status :connection-time :body} %)
-                                         responseKeys)))))
+      ; The keys in the response are -> :opts :body :headers :status
+      (is (every? (map #(#{:opts :body :headers :status})) response-keys))
 
       ; Are all the predicates what we expect?
       (is (= collections #{"_rule" "nestedComponent" "_fn" "_predicate" "_setting" "chat" "_auth" "_user" "person" "_shard" "_tag" "comment" "_role" "_collection"})))))
