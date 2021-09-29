@@ -1,5 +1,6 @@
 (ns fluree.db.ledger.api.downloaded
   (:require [clojure.test :refer :all]
+            [clojure.core.async :as async]
             [fluree.db.test-helpers :as test]
             [fluree.db.util.log :as log]
             [clojure.tools.reader.edn :as edn]
@@ -570,6 +571,39 @@
   (command-add-person)
   (command-add-person-verbose))
 
+(defn- wait-for-db
+  [network db max-tries]
+  (loop [counter max-tries]
+    (if (= 0 counter)
+      false
+      (let [res      @(http/post (str endpoint-url-short "nw-state"))
+            body     (-> res :body bs/to-string json/parse)
+            network' (keyword network)
+            db'      (keyword db)
+            status   (some-> body :raft :networks first network' :dbs db' :status)]
+      (if (= "ready" status)
+        true
+        (do
+          (Thread/sleep 200)
+          (recur (dec counter))))))))
+
+;; ENDPOINT TEST: signed /delete-db request
+(deftest delete-ledger-tests
+  (testing "delete ledger - open api"
+    (let [network      "deleteme"
+          db-id        "one"
+          ledger-id (str network "/" db-id)
+          new-db-res   @(http/post (str endpoint-url-short "new-db") (standard-request {:db/id ledger-id}))
+          new-db-body  (-> new-db-res :body bs/to-string json/parse)]
+      (is (= 200 (:status new-db-res)))
+      (is (string? new-db-body))
+      (is (= 64 (count new-db-body)))
+      (when (wait-for-db network db-id 100)
+        (let [res  @(http/post (str endpoint-url-short "delete-db")
+                               (standard-request {:db/id ledger-id}))
+              body (some-> res :body bs/to-string json/parse)]
+          (is (= 200 (:status res)))
+          (is (= ledger-id (:deleted body))))))))
 
 ;; TODO - can't test this with other tests - fails. Can't have any txns processed between gen-flakes and query-with. Not sure how to make sure of that. Running the independent version succeeds.
 ;; ENDPOINT TEST: /gen-flakes, /query-with, /test-transact-with
@@ -622,4 +656,5 @@
   (command-add-person)
   (command-add-person-verbose)
   (get-all-dbs)
+  (delete-ledger-tests)
   (health-check))
