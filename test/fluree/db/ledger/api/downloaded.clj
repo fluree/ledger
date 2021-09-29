@@ -182,9 +182,14 @@
       (is (every? boolean (map #(predicates %) ["comment/nestedComponent" "person/stringUnique"]))))))
 
 (deftest sign-multi-query
-  (testing "sign-multi-query where collections are not named in alphanumeric order"
+  (testing "sign multi-query where collections are not named in alphanumeric order"
     (let [private-key   (slurp "default-private-key.txt")
-          qry-str       "{\"collections\":{\"select\":[\"*\"],\"from\":\"_collection\"},\n       \"predicates\":{\"select\":[\"*\"],\"from\":\"_predicate\"},\n       \"_setting\":{\"select\":[\"*\"],\"from\":\"_setting\"},\n       \"_rule\":{\"select\":[\"*\"],\"from\":\"_rule\"},\n       \"_role\":{\"select\":[\"*\"],\"from\":\"_role\"},\n       \"_user\":{\"select\":[\"*\"],\"from\":\"_user\"}\n      }"
+          qry-str       (str "{\"collections\":{\"select\":[\"*\"],\"from\":\"_collection\"},\n "
+                             " \"predicates\":{\"select\":[\"*\"],\"from\":\"_predicate\"},\n  "
+                             " \"_setting\":{\"select\":[\"*\"],\"from\":\"_setting\"},\n "
+                             " \"_rule\":{\"select\":[\"*\"],\"from\":\"_rule\"},\n "
+                             " \"_role\":{\"select\":[\"*\"],\"from\":\"_role\"},\n "
+                             " \"_user\":{\"select\":[\"*\"],\"from\":\"_user\"}\n }")
           request       {:headers {"content-type" "application/json"}
                          :body    qry-str}
           q-endpoint    (str endpoint-url "multi-query")
@@ -201,14 +206,14 @@
       ; The keys in the response are -> :opts :body :headers :status
       (is (test/contains-many? resp :opts :body :headers :status))
 
-      ; Are all the predicates what we expect?
-      (is (= collections #{"_rule" "nestedComponent" "_fn" "_predicate" "_setting" "chat" "_auth" "_user" "person" "_shard" "_tag" "comment" "_role" "_collection"}))
+      ; Are all the collections what we expect?
+      (is (test/contains-many? collections "_rule" "nestedComponent" "_fn" "_predicate" "_setting" "chat" "_auth" "_user" "person" "_shard" "_tag" "comment" "_role" "_collection"))
 
       ; Are some of the predicates we expect returned?
-      (is (every? boolean (map #(predicates %) ["comment/nestedComponent" "person/stringUnique"])))
+      (is (test/contains-many? predicates "comment/nestedComponent" "person/stringUnique"))
 
       ; Are the expected roles returned?
-      (is (= roles #{"chatUser" "root"})))))
+      (is (test/contains-many? roles "chatUser" "root")))))
 
 (deftest query-collections-predicates*
   (add-schema*)
@@ -297,22 +302,28 @@
 (deftest sign-all-collections-graphql
   (testing "sign a query for all collections through the graphql endpoint"
     (let [private-key         (slurp "default-private-key.txt")
-          qry-str             (json/stringify {:query "{  graph {  _collection (sort: {predicate: \"name\", order: ASC}) { _id name spec version doc}}}"})
+          graphql-str         (str "{  graph {  _collection "
+                                   "(sort: {predicate: \"name\", order: ASC})"
+                                   "{ _id name spec version doc}}}")
+          qry-str             (json/stringify {:query graphql-str})
           request             {:headers {"content-type" "application/json"}
                                :body    qry-str}
           q-endpoint          (str endpoint-url "graphql")
           signed-req          (http-signatures/sign-request :post q-endpoint request private-key)
           resp                @(http/post q-endpoint signed-req)
           body                (-> resp :body bs/to-string json/parse)
-          collection-names    (into #{} (map #(:name %) (-> body :data :_collection)))]
+          collections         (-> body :data :_collection)
+          collection-keys     (reduce-kv
+                                (fn [result _ collection] (->> collection keys (into result)))
+                                #{}
+                                collections)
+          collection-names    (into #{} (map #(:name %) collections))]
 
-      ; Are the collection keys what we expect?
-      (is (map #(#{:doc :version :spec :name :_id} %) body))
+      ; Are the keys in the collections what we expect?
+      (is (test/contains-many? collection-keys :_id :name :version :doc))
 
       ;; Are the collections what we expect?
-      (is (not (empty? (remove nil? (map #((into #{} collection-names) %) ["_rule" "_fn" "_predicate" "_setting" "_auth" "_user" "_shard" "_tag" "_role" "_collection"])))))
-
-      (is (every? boolean (map #(collection-names %) ["_rule" "_fn" "_predicate" "_setting" "_auth" "_user" "_shard" "_tag" "_role" "_collection"]))))))
+      (is (test/contains-many? collection-names "_rule" "_fn" "_predicate" "_setting" "_auth" "_user" "_shard" "_tag" "_role" "_collection")))))
 
 
 (deftest repeated-query-all-collections-graphql*
@@ -390,7 +401,8 @@
       ;; Each result should be an array of 1 (?name)
       (is (every? boolean (map #(= 1 (count %)) body)))
 
-      (is (every? boolean (map #(collection-names %) ["_predicate" "_auth" "_collection" "_fn" "_role" "_rule" "_setting" "_tag" "_user"]))))))
+      (is (test/contains-many? collection-names
+                               "_predicate" "_auth" "_collection" "_fn" "_role" "_rule" "_setting" "_tag" "_user")))))
 
 
 
@@ -429,8 +441,11 @@
       ; The keys in the response are -> :opts :body :headers :status
       (is (test/contains-many? resp :opts :body :headers :status))
 
-      ; Are all the predicates what we expect?
-      (is (= collections #{"_rule" "nestedComponent" "_fn" "_predicate" "_setting" "chat" "_auth" "_user" "person" "_shard" "_tag" "comment" "_role" "_collection"})))))
+      ; Are all the collections what we expect?
+      (is (test/contains-many? collections
+                               "_rule" "nestedComponent" "_fn" "_predicate" "_setting"
+                               "chat" "_auth" "_user" "person" "_shard" "_tag" "comment"
+                               "_role" "_collection")))))
 
 
 
