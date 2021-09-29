@@ -47,15 +47,13 @@
     (let [filename      "../test/fluree/db/ledger/Resources/ChatAltVersion/schema.edn"
           tx            (edn/read-string (slurp (io/resource filename)))
           schema-res    @(http/post (str endpoint-url "transact") (standard-request tx))
-          response-keys (keys schema-res)
           status        (:status schema-res)
           body          (-> schema-res :body bs/to-string json/parse)
           body-keys     (keys body)]
 
       (is (= 200 status))
 
-      (is (map #(#{:headers :status :opts :body} %)
-               response-keys))
+      (is (test/contains-many? schema-res :opts :body :headers :status))
 
       (is (map #(#{:tx-subid :tx :txid :authority :auth :signature :tempids
                    :block :hash :fuel-remaining :time :fuel :status :block-bytes
@@ -77,7 +75,6 @@
     (let [filename      "../test/fluree/db/ledger/Resources/ChatAltVersion/people-comments-chats-auth.edn"
           tx            (edn/read-string (slurp (io/resource filename)))
           new-data-res  @(http/post (str endpoint-url "transact") (standard-request tx))
-          response-keys (keys new-data-res)
           status        (:status new-data-res)
           body          (-> new-data-res :body bs/to-string json/parse)
           bodyKeys      (keys body)]
@@ -85,7 +82,7 @@
       (is (= 200 status))
 
       ; The keys in the response are -> :opts :body :headers :status
-      (is (every? (map #(#{:opts :body :headers :status})) response-keys))
+      (is (test/contains-many? new-data-res :opts :body :headers :status))
 
       ; The keys in the body are :tempids :block :hash :time :status :block-bytes :timestamp :flakes
       (is (not (empty? (remove nil? (map #(#{:tempids :block :hash :fuel-remaining :time :fuel :status :block-bytes :timestamp :flakes} %)
@@ -120,7 +117,6 @@
   (testing "Querying all collections"
     (let [query               {:select ["*"] :from "_collection"}
           queryCollectionsRes @(http/post (str endpoint-url "query") (standard-request query))
-          response-keys       (keys queryCollectionsRes)
           status              (:status queryCollectionsRes)
           body                (-> queryCollectionsRes :body bs/to-string json/parse)
           collections         (into #{} (map #(:_collection/name %) body))]
@@ -128,7 +124,7 @@
       (is (= 200 status))
 
       ; The keys in the response are -> :opts :body :headers :status
-      (is (every? (map #(#{:opts :body :headers :status})) response-keys))
+      (is (test/contains-many? queryCollectionsRes :opts :body :headers :status))
 
       ; Are all the collection names what we expect?
       (is (= collections #{"_rule" "nestedComponent" "_fn" "_predicate" "_setting" "chat" "_auth" "_user" "person" "_shard" "_tag" "comment" "_role" "_collection"})))))
@@ -146,16 +142,14 @@
   (testing "Query all predicates."
     (let [query               {:select ["*"] :from "_predicate"}
           queryCollectionsRes @(http/post (str endpoint-url "query") (standard-request query))
-          response-keys       (keys queryCollectionsRes)
           status              (:status queryCollectionsRes)
           body                (-> queryCollectionsRes :body bs/to-string json/parse)
           predicates          (into #{} (map #(:_predicate/name %) body))]
 
-
       (is (= 200 status))
 
       ; The keys in the response are -> :opts :body :headers :status
-      (is (every? (map #(#{:opts :body :headers :status})) response-keys))
+      (is (test/contains-many? queryCollectionsRes :opts :body :headers :status))
 
       ; Are some of the predicates we expect returned?
       (is (every? boolean (map #(predicates %) ["comment/nestedComponent" "person/stringUnique"])))
@@ -170,17 +164,16 @@
   (testing "Querying all collections and predicates in multi-query"
     (let [query         {:coll {:select ["*"] :from "_collection"}
                          :pred {:select ["*"] :from "_predicate"}}
-          multiRes      @(http/post (str endpoint-url "multi-query") (standard-request query))
-          response-keys (keys multiRes)
-          status        (:status multiRes)
-          body          (-> multiRes :body bs/to-string json/parse)
+          multi-res     @(http/post (str endpoint-url "multi-query") (standard-request query))
+          status        (:status multi-res)
+          body          (-> multi-res :body bs/to-string json/parse)
           collections   (into #{} (map #(:_collection/name %) (:coll body)))
           predicates    (into #{} (map #(:_predicate/name %) (:pred body)))]
 
       (is (= 200 status))
 
       ; The keys in the response are -> :opts :body :headers :status
-      (is (every? (map #(#{:opts :body :headers :status})) response-keys))
+      (is (test/contains-many? multi-res :opts :body :headers :status))
 
       ; Are all the predicates what we expect?
       (is (= collections #{"_rule" "nestedComponent" "_fn" "_predicate" "_setting" "chat" "_auth" "_user" "person" "_shard" "_tag" "comment" "_role" "_collection"}))
@@ -197,7 +190,6 @@
           q-endpoint    (str endpoint-url "multi-query")
           signed-req    (http-signatures/sign-request :post q-endpoint request private-key)
           resp          @(http/post q-endpoint signed-req)
-          response-keys (keys resp)
           status        (:status resp)
           body          (some-> resp :body bs/to-string json/parse)
           collections   (into #{} (map #(:_collection/name %) (:collections body)))
@@ -207,7 +199,7 @@
       (is (= 200 status))
 
       ; The keys in the response are -> :opts :body :headers :status
-      (is (every? (map #(#{:opts :body :headers :status})) response-keys))
+      (is (test/contains-many? resp :opts :body :headers :status))
 
       ; Are all the predicates what we expect?
       (is (= collections #{"_rule" "nestedComponent" "_fn" "_predicate" "_setting" "chat" "_auth" "_user" "person" "_shard" "_tag" "comment" "_role" "_collection"}))
@@ -429,14 +421,13 @@
           q-endpoint    (str endpoint-url "sql")
           signed-req    (http-signatures/sign-request :post q-endpoint request private-key)
           resp          @(http/post q-endpoint signed-req)
-          response-keys (keys resp)
           status        (:status resp)
           body          (some-> resp :body bs/to-string json/parse)
           collections   (into #{} (map #(:_collection/name %) body))]
       (is (= 200 status))
 
       ; The keys in the response are -> :opts :body :headers :status
-      (is (every? (map #(#{:opts :body :headers :status})) response-keys))
+      (is (test/contains-many? resp :opts :body :headers :status))
 
       ; Are all the predicates what we expect?
       (is (= collections #{"_rule" "nestedComponent" "_fn" "_predicate" "_setting" "chat" "_auth" "_user" "person" "_shard" "_tag" "comment" "_role" "_collection"})))))
