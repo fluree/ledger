@@ -11,6 +11,7 @@
             [fluree.db.permissions :as permissions]
             [fluree.db.dbfunctions.fns :as dbfunctions]
             [fluree.db.storage.core :as storage]
+            [fluree.db.test-helpers :as test-helpers]
             [fluree.crypto :as crypto]
             [fluree.db.session :as session]
             [fluree.db.event-bus :as event-bus]
@@ -116,6 +117,41 @@
   (->> sql-query
        sql/parse
        (query-db db-name)))
+
+(defn load-chat-ledger
+  []
+  (let [collection-txn  [{:_id  "_collection"
+                          :name "person"}
+                         {:_id  "_collection"
+                          :name "chat"}
+                         {:_id  "_collection"
+                          :name "comment"}
+                         {:_id  "_collection"
+                          :name "artist"}
+                         {:_id  "_collection"
+                          :name "movie"}]
+
+        pred-filename   "../test/fluree/db/ledger/Resources/ChatApp/chatPreds.edn"
+        predicate-txn   (edn/read-string (slurp (io/resource pred-filename)))
+
+        data-filename   "../test/fluree/db/ledger/Resources/ChatApp/chatAppData.edn"
+        data-txn        (edn/read-string (slurp (io/resource data-filename)))]
+    (log/info "Creating new ledger")
+    @(fdb/new-ledger (:conn system) test-helpers/ledger-chat)
+    (Thread/sleep 250)
+
+    (log/info "Adding collections")
+    (async/<!! (fdb/transact-async (:conn system) test-helpers/ledger-chat collection-txn))
+    (Thread/sleep 250)
+
+    (log/info "Adding predicates")
+    (async/<!! (fdb/transact-async (:conn system) test-helpers/ledger-chat predicate-txn))
+    (Thread/sleep 250)
+
+    (log/info "Adding data")
+    (async/<!! (fdb/transact-async (:conn system) test-helpers/ledger-chat data-txn))
+
+    :loaded))
 
 (comment
   (async/<!! (http-api/action-handler :ledger-stats system {} {} :test/chat {}))
