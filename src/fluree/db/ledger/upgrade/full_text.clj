@@ -3,6 +3,7 @@
             [fluree.db.constants :as const]
             [fluree.db.dbproto :as dbproto]
             [fluree.db.server :as server]
+            [fluree.db.ledger.txgroup.txgroup-proto :as txproto]
             [fluree.db.query.range :as query-range]
             [clojure.core.async :as async :refer [<!!]]
             [clojure.tools.logging :as log]
@@ -98,16 +99,23 @@
 
 (defn -main
   [& args]
-  (let [{:keys [conn] :as system} (server/startup)]
-    (.addShutdownHook (Runtime/getRuntime)
-                      (Thread. ^Runnable
-                               (fn []
-                                 (log/info "SHUTDOWN Start")
-                                 (server/shutdown system)
-                                 (log/info "SHUTDOWN Complete"))))
-    (let [[network ledger-id] (take 2 args)]
-      (if (and network ledger-id)
-        (do (log/info "Repairing full text index")
+  (let [[network ledger-id] (take 2 args)]
+    (if (and network ledger-id)
+      (do (log/info "Starting system")
+          (let [{:keys [conn] :as system} (server/startup)]
+            (.addShutdownHook (Runtime/getRuntime)
+                              (Thread. ^Runnable
+                                       (fn []
+                                         (log/info "SHUTDOWN Start")
+                                         (server/shutdown system)
+                                         (log/info "SHUTDOWN Complete"))))
+            (loop [count 0]
+              (if (> count 5)
+                (log/error "No shared private key configured")
+                (when (nil? (txproto/get-shared-private-key (:group system) network ledger-id))
+                  (Thread/sleep 500)
+                  (recur (inc count)))))
+            (log/info "Repairing full text index")
             (let [results (repair conn [network ledger-id])]
-              (log/info "Full text repair completed:" results)))
-        (log/error "You must supply the network and ledger-id")))))
+              (log/info "Full text repair completed:" results))))
+      (log/error "You must supply the network and ledger-id"))))
