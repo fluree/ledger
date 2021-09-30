@@ -112,9 +112,10 @@
 
 (defn decode-body
   [body type]
-  (case type
-    :json (let [^bytes body' (.bytes ^BytesInputStream body)]
-            (-> body' (String. "UTF-8") json/parse))))
+  (let [body' (-> ^BytesInputStream body .bytes (String. "UTF-8"))]
+    (case type
+      :string body'
+      :json   (json/parse body'))))
 
 
 (defn- return-token
@@ -485,8 +486,9 @@
         start           (System/nanoTime)
         ledger          (keyword network db)
         action*         (keyword action)
-        action-param    (when body (decode-body body :json))
-        auth-map        (auth-map system ledger request action-param)
+        body'           (when body (decode-body body :string))
+        action-param    (some-> body' json/parse)
+        auth-map        (auth-map system ledger request body')
         request-timeout (if-let [timeout (:request-timeout headers)]
                           (try (Integer/parseInt timeout)
                                (catch Exception _ 60000))
@@ -660,11 +662,12 @@
 
 (defn delete-ledger
   [{:keys [conn] :as system} {:keys [body remote-addr] :as request}]
-  (let [body         (when body (decode-body body :json))
-        ledger-ident (:db/id body)
+  (let [body-str     (when body (decode-body body :string))
+        body'        (some-> body-str json/parse)
+        ledger-ident (:db/id body')
         [nw db]      (str/split ledger-ident #"/")
         ledger       (keyword nw db)
-        auth-map     (auth-map system ledger request body)
+        auth-map     (auth-map system ledger request body-str)
         session      (session/session conn [nw db])
         db*          (<?? (session/current-db session))
         ;; TODO - root role just checks if the auth has a role with id 'root' this can
