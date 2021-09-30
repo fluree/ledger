@@ -317,7 +317,7 @@
                                 (fn [result _ collection] (->> collection keys (into result)))
                                 #{}
                                 collections)
-          collection-names    (into #{} (map #(:name %) collections))]
+          collection-names    (set (map :name collections))]
 
       ; Are the keys in the collections what we expect?
       (is (test/contains-many? collection-keys :_id :name :version :doc))
