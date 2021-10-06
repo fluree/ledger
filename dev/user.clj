@@ -107,17 +107,6 @@
   (Thread/sleep 1000)
   (load-ledger-resources db-name loader resource-paths))
 
-(defn query-db [db-name query]
-  @(-> system
-       :conn
-       (fdb/db db-name)
-       (fdb/query query)))
-
-(defn sql-query-db [db-name sql-query]
-  (->> sql-query
-       sql/parse
-       (query-db db-name)))
-
 (defn load-chat-ledger
   []
   (let [collection-txn  [{:_id  "_collection"
@@ -141,17 +130,26 @@
     (Thread/sleep 250)
 
     (log/info "Adding collections")
-    (async/<!! (fdb/transact-async (:conn system) test-helpers/ledger-chat collection-txn))
-    (Thread/sleep 250)
+    @(fdb/transact (:conn system) test-helpers/ledger-chat collection-txn)
 
     (log/info "Adding predicates")
-    (async/<!! (fdb/transact-async (:conn system) test-helpers/ledger-chat predicate-txn))
-    (Thread/sleep 250)
+    @(fdb/transact (:conn system) test-helpers/ledger-chat predicate-txn)
 
     (log/info "Adding data")
-    (async/<!! (fdb/transact-async (:conn system) test-helpers/ledger-chat data-txn))
+    @(fdb/transact (:conn system) test-helpers/ledger-chat data-txn)
 
     :loaded))
+
+(defn query-db [db-name query]
+  @(-> system
+       :conn
+       (fdb/db db-name)
+       (fdb/query query)))
+
+(defn sql-query-db [db-name sql-query]
+  (->> sql-query
+       sql/parse
+       (query-db db-name)))
 
 (comment
   (async/<!! (http-api/action-handler :ledger-stats system {} {} :test/chat {}))
