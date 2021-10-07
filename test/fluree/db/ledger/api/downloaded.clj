@@ -1,5 +1,6 @@
 (ns fluree.db.ledger.api.downloaded
   (:require [clojure.test :refer :all]
+            [clojure.core.async :as async]
             [fluree.db.test-helpers :as test]
             [fluree.db.util.log :as log]
             [clojure.tools.reader.edn :as edn]
@@ -7,7 +8,8 @@
             [org.httpkit.client :as http]
             [fluree.db.util.json :as json]
             [byte-streams :as bs]
-            [fluree.db.api :as fdb]))
+            [fluree.db.api :as fdb]
+            [fluree.db.query.http-signatures :as http-signatures]))
 
 (use-fixtures :once test/test-system)
 
@@ -45,15 +47,13 @@
     (let [filename      "../test/fluree/db/ledger/Resources/ChatAltVersion/schema.edn"
           tx            (edn/read-string (slurp (io/resource filename)))
           schema-res    @(http/post (str endpoint-url "transact") (standard-request tx))
-          response-keys (keys schema-res)
           status        (:status schema-res)
           body          (-> schema-res :body bs/to-string json/parse)
           body-keys     (keys body)]
 
       (is (= 200 status))
 
-      (is (map #(#{:headers :status :opts :body} %)
-               response-keys))
+      (is (test/contains-many? schema-res :opts :body :headers :status))
 
       (is (map #(#{:tx-subid :tx :txid :authority :auth :signature :tempids
                    :block :hash :fuel-remaining :time :fuel :status :block-bytes
@@ -75,16 +75,14 @@
     (let [filename      "../test/fluree/db/ledger/Resources/ChatAltVersion/people-comments-chats-auth.edn"
           tx            (edn/read-string (slurp (io/resource filename)))
           new-data-res  @(http/post (str endpoint-url "transact") (standard-request tx))
-          response-keys (keys new-data-res)
           status        (:status new-data-res)
           body          (-> new-data-res :body bs/to-string json/parse)
           bodyKeys      (keys body)]
 
       (is (= 200 status))
 
-      ; The keys in the response are -> :request-time :aleph/keep-alive? :headers :status :connection-time :body
-      (is (not (empty? (remove nil? (map #(#{:request-time :aleph/keep-alive? :headers :status :connection-time :body} %)
-                                         response-keys)))))
+      ; The keys in the response are -> :opts :body :headers :status
+      (is (test/contains-many? new-data-res :opts :body :headers :status))
 
       ; The keys in the body are :tempids :block :hash :time :status :block-bytes :timestamp :flakes
       (is (not (empty? (remove nil? (map #(#{:tempids :block :hash :fuel-remaining :time :fuel :status :block-bytes :timestamp :flakes} %)
@@ -119,16 +117,14 @@
   (testing "Querying all collections"
     (let [query               {:select ["*"] :from "_collection"}
           queryCollectionsRes @(http/post (str endpoint-url "query") (standard-request query))
-          responseKeys        (keys queryCollectionsRes)
           status              (:status queryCollectionsRes)
           body                (-> queryCollectionsRes :body bs/to-string json/parse)
           collections         (into #{} (map #(:_collection/name %) body))]
 
       (is (= 200 status))
 
-      ; The keys in the response are -> :request-time :aleph/keep-alive? :headers :status :connection-time :body
-      (is (not (empty? (remove nil? (map #(#{:request-time :aleph/keep-alive? :headers :status :connection-time :body} %)
-                                         responseKeys)))))
+      ; The keys in the response are -> :opts :body :headers :status
+      (is (test/contains-many? queryCollectionsRes :opts :body :headers :status))
 
       ; Are all the collection names what we expect?
       (is (= collections #{"_rule" "nestedComponent" "_fn" "_predicate" "_setting" "chat" "_auth" "_user" "person" "_shard" "_tag" "comment" "_role" "_collection"})))))
@@ -146,17 +142,14 @@
   (testing "Query all predicates."
     (let [query               {:select ["*"] :from "_predicate"}
           queryCollectionsRes @(http/post (str endpoint-url "query") (standard-request query))
-          responseKeys        (keys queryCollectionsRes)
           status              (:status queryCollectionsRes)
           body                (-> queryCollectionsRes :body bs/to-string json/parse)
           predicates          (into #{} (map #(:_predicate/name %) body))]
 
-
       (is (= 200 status))
 
-      ; The keys in the response are -> :request-time :aleph/keep-alive? :headers :status :connection-time :body
-      (is (not (empty? (remove nil? (map #(#{:request-time :aleph/keep-alive? :headers :status :connection-time :body} %)
-                                         responseKeys)))))
+      ; The keys in the response are -> :opts :body :headers :status
+      (is (test/contains-many? queryCollectionsRes :opts :body :headers :status))
 
       ; Are some of the predicates we expect returned?
       (is (every? boolean (map #(predicates %) ["comment/nestedComponent" "person/stringUnique"])))
@@ -169,20 +162,18 @@
 
 (deftest query-collections-predicates-multiquery
   (testing "Querying all collections and predicates in multi-query"
-    (let [query        {:coll {:select ["*"] :from "_collection"}
-                        :pred {:select ["*"] :from "_predicate"}}
-          multiRes     @(http/post (str endpoint-url "multi-query") (standard-request query))
-          responseKeys (keys multiRes)
-          status       (:status multiRes)
-          body         (-> multiRes :body bs/to-string json/parse)
-          collections  (into #{} (map #(:_collection/name %) (:coll body)))
-          predicates   (into #{} (map #(:_predicate/name %) (:pred body)))]
+    (let [query         {:coll {:select ["*"] :from "_collection"}
+                         :pred {:select ["*"] :from "_predicate"}}
+          multi-res     @(http/post (str endpoint-url "multi-query") (standard-request query))
+          status        (:status multi-res)
+          body          (-> multi-res :body bs/to-string json/parse)
+          collections   (into #{} (map #(:_collection/name %) (:coll body)))
+          predicates    (into #{} (map #(:_predicate/name %) (:pred body)))]
 
       (is (= 200 status))
 
-      ; The keys in the response are -> :request-time :aleph/keep-alive? :headers :status :connection-time :body
-      (is (not (empty? (remove nil? (map #(#{:request-time :aleph/keep-alive? :headers :status :connection-time :body} %)
-                                         responseKeys)))))
+      ; The keys in the response are -> :opts :body :headers :status
+      (is (test/contains-many? multi-res :opts :body :headers :status))
 
       ; Are all the predicates what we expect?
       (is (= collections #{"_rule" "nestedComponent" "_fn" "_predicate" "_setting" "chat" "_auth" "_user" "person" "_shard" "_tag" "comment" "_role" "_collection"}))
@@ -190,6 +181,39 @@
       ; Are some of the predicates we expect returned?
       (is (every? boolean (map #(predicates %) ["comment/nestedComponent" "person/stringUnique"]))))))
 
+(deftest sign-multi-query
+  (testing "sign multi-query where collections are not named in alphanumeric order"
+    (let [private-key   (slurp "default-private-key.txt")
+          qry-str       (str "{\"collections\":{\"select\":[\"*\"],\"from\":\"_collection\"},\n "
+                             " \"predicates\":{\"select\":[\"*\"],\"from\":\"_predicate\"},\n  "
+                             " \"_setting\":{\"select\":[\"*\"],\"from\":\"_setting\"},\n "
+                             " \"_rule\":{\"select\":[\"*\"],\"from\":\"_rule\"},\n "
+                             " \"_role\":{\"select\":[\"*\"],\"from\":\"_role\"},\n "
+                             " \"_user\":{\"select\":[\"*\"],\"from\":\"_user\"}\n }")
+          request       {:headers {"content-type" "application/json"}
+                         :body    qry-str}
+          q-endpoint    (str endpoint-url "multi-query")
+          signed-req    (http-signatures/sign-request :post q-endpoint request private-key)
+          resp          @(http/post q-endpoint signed-req)
+          status        (:status resp)
+          body          (some-> resp :body bs/to-string json/parse)
+          collections   (into #{} (map #(:_collection/name %) (:collections body)))
+          predicates    (into #{} (map #(:_predicate/name %) (:predicates body)))
+          roles         (into #{} (map #(:_role/id %) (:_role body)))]
+
+      (is (= 200 status))
+
+      ; The keys in the response are -> :opts :body :headers :status
+      (is (test/contains-many? resp :opts :body :headers :status))
+
+      ; Are all the collections what we expect?
+      (is (test/contains-many? collections "_rule" "nestedComponent" "_fn" "_predicate" "_setting" "chat" "_auth" "_user" "person" "_shard" "_tag" "comment" "_role" "_collection"))
+
+      ; Are some of the predicates we expect returned?
+      (is (test/contains-many? predicates "comment/nestedComponent" "person/stringUnique"))
+
+      ; Are the expected roles returned?
+      (is (test/contains-many? roles "chatUser" "root")))))
 
 (deftest query-collections-predicates*
   (add-schema*)
@@ -275,6 +299,32 @@
 
       (is (every? boolean (map #(collection-names %) ["_rule" "_fn" "_predicate" "_setting" "_auth" "_user" "_shard" "_tag" "_role" "_collection"]))))))
 
+(deftest sign-all-collections-graphql
+  (testing "sign a query for all collections through the graphql endpoint"
+    (let [private-key         (slurp "default-private-key.txt")
+          graphql-str         (str "{  graph {  _collection "
+                                   "(sort: {predicate: \"name\", order: ASC})"
+                                   "{ _id name spec version doc}}}")
+          qry-str             (json/stringify {:query graphql-str})
+          request             {:headers {"content-type" "application/json"}
+                               :body    qry-str}
+          q-endpoint          (str endpoint-url "graphql")
+          signed-req          (http-signatures/sign-request :post q-endpoint request private-key)
+          resp                @(http/post q-endpoint signed-req)
+          body                (-> resp :body bs/to-string json/parse)
+          collections         (-> body :data :_collection)
+          collection-keys     (reduce-kv
+                                (fn [result _ collection] (->> collection keys (into result)))
+                                #{}
+                                collections)
+          collection-names    (set (map :name collections))]
+
+      ; Are the keys in the collections what we expect?
+      (is (test/contains-many? collection-keys :_id :name :version :doc))
+
+      ;; Are the collections what we expect?
+      (is (test/contains-many? collection-names "_rule" "_fn" "_predicate" "_setting" "_auth" "_user" "_shard" "_tag" "_role" "_collection")))))
+
 
 (deftest repeated-query-all-collections-graphql*
   (query-all-collections-graphql*)
@@ -333,6 +383,27 @@
 
       (is (every? boolean (map #(collection-names %) ["_predicate" "_auth" "_collection" "_fn" "_role" "_rule" "_setting" "_tag" "_user"]))))))
 
+(deftest sign-query-collection-sparql
+  (testing "sign a query for all collections through the sparql endpoint"
+    (let [private-key      (slurp "default-private-key.txt")
+          qry-str          (json/stringify "SELECT ?name \nWHERE \n {\n ?collection fd:_collection/name ?name. \n}")
+          request          {:headers {"content-type" "application/json"}
+                            :body    qry-str}
+          q-endpoint       (str endpoint-url "sparql")
+          signed-req       (http-signatures/sign-request :post q-endpoint request private-key)
+          resp             @(http/post q-endpoint signed-req)
+          body             (-> resp :body bs/to-string json/parse)
+          collection-names (into #{} (apply concat body))]
+
+      ;; Make sure we got results back
+      (is (> (count body) 1))
+
+      ;; Each result should be an array of 1 (?name)
+      (is (every? boolean (map #(= 1 (count %)) body)))
+
+      (is (test/contains-many? collection-names
+                               "_predicate" "_auth" "_collection" "_fn" "_role" "_rule" "_setting" "_tag" "_user")))))
+
 
 
 ;; ENDPOINT TEST: /sparql
@@ -349,6 +420,32 @@
 
       ;; Each result should be an array of 2 (?item and ?itemLabel)
       (is (every? boolean (map #(= 2 (count %)) body))))))
+
+
+;; ENDPOINT TEST: /sql
+
+(deftest sign-sql-query
+  (testing "sign a query for all collections through the sql endpoint"
+    (let [private-key   (slurp "default-private-key.txt")
+          qry-str       (json/stringify "SELECT * FROM _collection")
+          request       {:headers {"content-type" "application/json"}
+                         :body    qry-str}
+          q-endpoint    (str endpoint-url "sql")
+          signed-req    (http-signatures/sign-request :post q-endpoint request private-key)
+          resp          @(http/post q-endpoint signed-req)
+          status        (:status resp)
+          body          (some-> resp :body bs/to-string json/parse)
+          collections   (into #{} (map #(:_collection/name %) body))]
+      (is (= 200 status))
+
+      ; The keys in the response are -> :opts :body :headers :status
+      (is (test/contains-many? resp :opts :body :headers :status))
+
+      ; Are all the collections what we expect?
+      (is (test/contains-many? collections
+                               "_rule" "nestedComponent" "_fn" "_predicate" "_setting"
+                               "chat" "_auth" "_user" "person" "_shard" "_tag" "comment"
+                               "_role" "_collection")))))
 
 
 
@@ -570,6 +667,39 @@
   (command-add-person)
   (command-add-person-verbose))
 
+(defn- wait-for-db
+  [network db max-tries]
+  (loop [counter max-tries]
+    (if (= 0 counter)
+      false
+      (let [res      @(http/post (str endpoint-url-short "nw-state"))
+            body     (-> res :body bs/to-string json/parse)
+            network' (keyword network)
+            db'      (keyword db)
+            status   (some-> body :raft :networks first network' :dbs db' :status)]
+      (if (= "ready" status)
+        true
+        (do
+          (Thread/sleep 200)
+          (recur (dec counter))))))))
+
+;; ENDPOINT TEST: signed /delete-db request
+(deftest delete-ledger-tests
+  (testing "delete ledger - open api"
+    (let [network      "deleteme"
+          db-id        "one"
+          ledger-id (str network "/" db-id)
+          new-db-res   @(http/post (str endpoint-url-short "new-db") (standard-request {:db/id ledger-id}))
+          new-db-body  (-> new-db-res :body bs/to-string json/parse)]
+      (is (= 200 (:status new-db-res)))
+      (is (string? new-db-body))
+      (is (= 64 (count new-db-body)))
+      (when (wait-for-db network db-id 100)
+        (let [res  @(http/post (str endpoint-url-short "delete-db")
+                               (standard-request {:db/id ledger-id}))
+              body (some-> res :body bs/to-string json/parse)]
+          (is (= 200 (:status res)))
+          (is (= ledger-id (:deleted body))))))))
 
 ;; TODO - can't test this with other tests - fails. Can't have any txns processed between gen-flakes and query-with. Not sure how to make sure of that. Running the independent version succeeds.
 ;; ENDPOINT TEST: /gen-flakes, /query-with, /test-transact-with
@@ -622,4 +752,9 @@
   (command-add-person)
   (command-add-person-verbose)
   (get-all-dbs)
+  (sign-multi-query)
+  (sign-sql-query)
+  (sign-all-collections-graphql)
+  (sign-query-collection-sparql)
+  (delete-ledger-tests)
   (health-check))

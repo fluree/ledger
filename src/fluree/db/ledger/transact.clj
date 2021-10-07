@@ -29,8 +29,9 @@
 (defn ->block-map
   "Creates initial block map that ultimately gets returned after block completed."
   [db prev-hash]
-  {:db-before    db
-   :db-after     nil
+  {:db-orig      db                                         ;; original DB before block starts
+   :db-before    db                                         ;; db before each transaction
+   :db-after     db                                         ;; db after each transaction
    :cmd-types    #{}
    :block        (inc (:block db))                          ;; block number
    :t            (:t db)                                    ;; updated with every tx within block
@@ -53,9 +54,10 @@
   also uses this function to update the db, flakes and bytes. The block tx does not
   have a txid, and intentionally will not exist in the :txns map."
   [block-map tx-result]
-  (let [{:keys [db-after bytes fuel flakes remove-preds type t txid hash]} tx-result]
+  (let [{:keys [db-before db-after bytes fuel flakes remove-preds type t txid hash]} tx-result]
     (-> block-map
-        (assoc :db-after db-after
+        (assoc :db-before db-before
+               :db-after db-after
                :t t
                :hash hash)
         (update :flakes into flakes)
@@ -75,9 +77,10 @@
   "Generates the transaction for the block sealing, and returns the final block-map.
   Note db-before is never updated during transactions, so it is the db before the block
   was started."
-  [{:keys [db-before flakes t prev-hash block before-t txns instant] :as block-map} session]
+  [{:keys [db-after t prev-hash block before-t txns instant] :as block-map} session]
   (go-try
-    (let [private-key         (:tx-private-key (:conn session))
+    (let [db-before           db-after
+          private-key         (:tx-private-key (:conn session))
           block-t             (dec t)
           prevHash-flake      (flake/->Flake block-t const/$_block:prevHash prev-hash block-t true nil)
           instant-flake       (flake/->Flake block-t const/$_block:instant instant block-t true nil)
@@ -107,32 +110,14 @@
           new-flakes*         (-> (into block-flakes sigs-ref-flakes)
                                   (conj hash-flake)
                                   (conj block-tx-hash-flake))
-          all-flakes          (into flakes new-flakes*)
-          latest-db           (<? (session/current-db session))
-          ;; if db was indexing and is now complete, add all flakes to newly indexed db... else just add new block flakes to latest db.
-          db-after            (cond
-                                (not= (:block latest-db) (:block db-before))
-                                (throw (ex-info "While performing transactions, latest db became newer. Cancelling."
-                                                {:status 500 :error :db/unexpected-error}))
-
-                                ;; nothing has changed, just add block flakes to latest db
-                                (= (get-in db-before [:stats :indexed]) (get-in latest-db [:stats :indexed]))
-                                (<? (dbproto/-with db-before block (sort flake/cmp-flakes-spot-novelty new-flakes*)))
-
-                                ;; database has been re-indexed while we were transacting. Use latest indexed
-                                ;; version and reapply all flakes from this block
-                                :else
-                                (do
-                                  (log/info "---> While transacting, database has been reindexed. Reapplying all block flakes to latest."
-                                            {:original-index (get-in db-before [:stats :indexed])
-                                             :latest-index   (get-in latest-db [:stats :indexed])})
-                                  (<? (dbproto/-with latest-db block all-flakes))))]
-      {:db-after db-after
-       :flakes   all-flakes
-       :hash     hash
-       :t        block-t
-       :fuel     0
-       :bytes    (- (get-in db-after [:stats :size]) (get-in db-before [:stats :size]))})))
+          db-after*           (<? (dbproto/-with db-before block new-flakes*))]
+      {:db-before db-before
+       :db-after  db-after*
+       :flakes    new-flakes*
+       :hash      hash
+       :t         block-t
+       :fuel      0
+       :bytes     (- (get-in db-after* [:stats :size]) (get-in db-before [:stats :size]))})))
 
 
 (defn retrieve-prev-hash
@@ -152,7 +137,7 @@
   "Proposes block to consensus network. Returns core async channel with success or failure."
   [{:keys [group] :as conn} network dbid {:keys [flakes] :as block-map}]
   (let [block-map' (-> block-map
-                       (dissoc :fuel :db-before :db-after :before-t :prev-hash :remove-preds)
+                       (dissoc :fuel :db-orig :db-before :db-after :before-t :prev-hash :remove-preds)
                        (assoc :flakes (into [] flakes)))]
     (txproto/propose-new-block-async group network dbid block-map')))
 
@@ -209,19 +194,19 @@
 
 (defn build-block
   "Builds a new block with supplied transaction(s)."
-  [{:keys [conn network dbid] :as session} transactions]
+  [{:keys [conn network dbid] :as session} db-before transactions]
   (go-try
-    (let [db-current (<? (session/current-db session))
-          _          (when (nil? db-current)
-                       ;; TODO - think about this error, if it is possible, and what to do with any pending transactions
-                       (log/warn "Unable to find a current db. Db transaction processor closing for db: %s/%s." network dbid)
-                       (session/close session)
-                       (throw (ex-info (format "Unable to find a current db for: %s/%s." network dbid)
-                                       {:status 400 :error :db/invalid-transaction})))
-          prev-hash  (<? (retrieve-prev-hash db-current))]
+    (let [start       (System/currentTimeMillis)
+          _           (when (nil? db-before)
+                        ;; TODO - think about this error, if it is possible, and what to do with any pending transactions
+                        (log/warn "Unable to find a current db. Db transaction processor closing for db: %s/%s." network dbid)
+                        (session/close session)
+                        (throw (ex-info (format "Unable to find a current db for: %s/%s." network dbid)
+                                        {:status 400 :error :db/invalid-transaction})))
+          prev-hash   (<? (retrieve-prev-hash db-before))]
       ;; perform each transaction in order
       (loop [[cmd-data & r] transactions
-             block-map (->block-map db-current prev-hash)]
+             block-map (->block-map db-before prev-hash)]
         (let [block-map* (try
                            (->> (tx-util/validate-command cmd-data)
                                 (tx-core/transact block-map)
@@ -234,26 +219,42 @@
           (if r
             (recur r block-map*)
             (if (:db-after block-map*)
-              (let [block-result   (some->> (async/<! (build-block-tx block-map* session))
-                                            (catch-build-block-exception conn network block-map*) ;; will return nil if exception
-                                            (merge-tx-into-block block-map*))
-                    new-block-resp (when block-result
-                                     (async/<! (propose-block conn network dbid block-result)))]
-                (cond
-                  (true? new-block-resp)
-                  (do
-                    (<? (indexing/index* session (select-keys block-map* [:remove-preds])))
-                    block-result)
+              (let [block-result    (some->> (async/<! (build-block-tx block-map* session))
+                                             (catch-build-block-exception conn network block-map*) ;; will return nil if exception
+                                             (merge-tx-into-block block-map*))
+                    reindexed-db    (indexing/reindexed-db session)
+                    novelty-max?    (indexing/novelty-max? session (:db-after block-result))
+                    ;; if at novelty-max, need to wait for indexing to complete before proceeding
+                    block-result*   (when block-result
+                                      (cond
+                                        reindexed-db
+                                        (<? (indexing/merge-new-index session block-result reindexed-db))
 
-                  (util/exception? new-block-resp)
-                  (error-propose-new-block conn network block-result new-block-resp)
+                                        ;; at novelty-max - may or may not be a reindex in process. Need to wait.
+                                        novelty-max?
+                                        (<? (indexing/novelty-max-block session block-result))
+
+                                        :else
+                                        block-result))
+
+                    block-approved? (when block-result*
+                                      (async/<! (propose-block conn network dbid block-result*)))]
+                (cond
+                  (true? block-approved?)
+                  (do
+                    (when (indexing/novelty-min? session (:db-after block-result*))
+                      (indexing/ensure-indexing session block-result*))
+                    block-result*)
+
+                  (util/exception? block-approved?)
+                  (error-propose-new-block conn network block-result block-approved?)
 
                   :else
                   (do
                     (log/warn "Proposed block was not accepted by the network because: "
-                              (pr-str new-block-resp)
+                              (pr-str block-approved?)
                               "Proposed block: "
-                              (dissoc block-result :db-before :db-after))
+                              (dissoc block-result* :db-orig :db-before :db-after))
                     false)))
               (do                                           ;; all transactions errored out
                 (log/info "Block processing resulted in no new blocks, all transaction attempts had issues.")

@@ -1,6 +1,7 @@
 (ns fluree.db.ledger.indexing
   (:require [clojure.data.avl :as avl]
             [clojure.tools.logging :as log]
+            [fluree.db.dbproto :as dbproto]
             [fluree.db.flake :as flake]
             [fluree.db.index :as index]
             [fluree.db.storage.core :as storage]
@@ -386,52 +387,107 @@
           indexed-db)
         db)))))
 
-(defn novelty-min
-  "Given a db session, returns minimum novelty threshold for reindexing."
+(defn novelty-min-max
+  "Returns a two-tuple of novelty min and novelty max given the session object"
   [session]
-  (-> session :conn :meta :novelty-min))
+  (let [meta (-> session :conn :meta)]
+    [(:novelty-min meta) (:novelty-max meta)]))
 
-;; TODO - should track new index segments and if failure, garbage collect them
-(defn index*
-  ([session {:keys [remove-preds] :as opts}]
+
+(defn novelty-min?
+  "Returns true if ledger is beyond novelty-min threshold."
+  [session db]
+  (let [[min _] (novelty-min-max session)
+        novelty-size (get-in db [:novelty :size])]
+    (> novelty-size min)))
+
+
+(defn novelty-max?
+  "Returns true if ledger is beyond novelty-max threshold."
+  [session db]
+  (let [[_ max] (novelty-min-max session)
+        novelty-size (get-in db [:novelty :size])]
+    (> novelty-size max)))
+
+
+(defn reindexed-db
+  "If a db is being reindexed, this will return the db if it is complete, else nil."
+  [session]
+  (some-> (session/indexing-promise-ch session)
+          async/poll!))
+
+
+(defn do-index
+  "Performs an index operation and returns a promise-channel of the latest db once complete"
+  [session db remove-preds]
+  (let [[lock? pc] (session/acquire-indexing-lock! session (async/promise-chan))]
+    (when lock?
+      ;; when we have a lock, reindex and put updated db onto pc.
+      (async/go
+        (let [indexed-db (<? (refresh db {:remove-preds remove-preds}))]
+          (<? (txproto/write-index-point-async (-> db :conn :group) indexed-db))
+          ;; updated-db might have had additional block(s) written to it, so instead
+          ;; of using it, reload from disk.
+          (session/clear-db! session)                       ;; clear db cache to force reload
+          (async/put! pc indexed-db))))
+    pc))
+
+
+(defn merge-new-index
+  "Attempts to merge newly completed index job with block-map.
+  Optimistically the new index will be one block behind the block-map,
+  but if not we will pause momentarily to try to see if things catch up
+  before throwing an error."
+  ([session block-map reindexed-db]
+   (merge-new-index session block-map reindexed-db 0))
+  ([session {:keys [flakes block] :as block-map} reindexed-db retries]
    (go-try
-    (if (session/indexing? session)
-      false
-      (let [latest-db     (<? (session/current-db session))
-            novelty-size  (get-in latest-db [:novelty :size])
-            novelty-min   (novelty-min session)]
-        (if (or (>= novelty-size novelty-min)
-                (seq remove-preds))
-          (<? (index* session latest-db opts))
-          false)))))
-  ([session {:keys [conn block network dbid] :as db} opts]
-   (go-try
-    (let [last-index (session/indexed session)]
-      (cond
-        (and last-index
-             (<= block last-index))
-        (do
-          (log/info "Index called on DB but last index isn't older."
-                    {:last-index last-index
-                     :block      block
-                     :db         (pr-str db)
-                     :session    (pr-str session)})
-          false)
+     (let [max-retries           20
+           pause-before-retry-ms 100
+           indexed-block         (:block reindexed-db)
+           current?              (= indexed-block (dec block))]
+       (cond
+         ;; everything is good, re-associate db-after with reindexed db
+         current?
+         (let [updated-db (<? (dbproto/-with reindexed-db block flakes))]
+           (session/release-indexing-lock! session (:block updated-db))
+           (assoc block-map :db-after updated-db))
 
-        (session/acquire-indexing-lock! session block)
-        (let [updated-db (<? (refresh db opts))
-              group      (-> updated-db :conn :group)]
-          (<? (txproto/write-index-point-async group updated-db))
-          (session/clear-db! session)                      ;; clear db cache to force reload
-          (session/release-indexing-lock! session block)   ;; free up our lock
-          (<? (index* session opts))                       ;; run a new index check in case we need to start another one immediately
-          true)
+         (= retries max-retries)
+         (throw (ex-info (str "Recently re-indexed DB on disk is not current after " max-retries " retries. "
+                              "Pending new block: " block ", latest block on disk: " (:block reindexed-db) ".")
+                         {:status 500 :error :db/unexpected-error}))
 
-        :else
-        (do
-          (log/warn "Indexing process failed to obtain index lock. Extremely Unusual."
-                    {:network network :db (pr-str db) :block block :indexing? (session/indexing? session)})
-          false))))))
+         :else
+         (let [_          (async/<! (async/timeout pause-before-retry-ms))
+               updated-db (<? (session/current-db session))]
+           (<? (merge-new-index session block-map updated-db (inc retries)))))))))
+
+
+(defn novelty-max-block
+  "When at novelty-max, we need to stop everything until we can get an updated index."
+  [session block-map]
+  (go-try
+    (if-let [indexing-ch (session/indexing-promise-ch session)]
+      ;; existing indexing process happening, wait until complete
+      (<? (merge-new-index session block-map (<? indexing-ch)))
+      ;; indexing not yet happening, initiate it on original db (pre-block)
+      ;; so long as the last index isn't also pre-block, in which case proceed.
+      (let [db             (:db-orig block-map)
+            index-current? (= (:block db) (dec (:block block-map)))]
+        (if index-current?
+          block-map
+          (let [updated-orig (<? (do-index session db nil))
+                block-map*   (assoc block-map :db-orig updated-orig)]
+            (<? (merge-new-index session block-map* updated-orig))))))))
+
+
+(defn ensure-indexing
+  "Checks if indexing operation is happening, and if not kicks one off."
+  [session block-map]
+  (let [indexing? (some? (session/indexing-promise-ch session))]
+    (when-not indexing?
+      (do-index session (:db-after block-map) (:remove-preds block-map)))))
 
 ;;; =====================================
 ;;;

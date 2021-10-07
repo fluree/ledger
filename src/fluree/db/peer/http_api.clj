@@ -112,9 +112,10 @@
 
 (defn decode-body
   [body type]
-  (case type
-    :json (let [^bytes body' (.bytes ^BytesInputStream body)]
-            (-> body' (String. "UTF-8") json/parse))))
+  (let [body' (-> ^BytesInputStream body .bytes (String. "UTF-8"))]
+    (case type
+      :string body'
+      :json   (json/parse body'))))
 
 
 (defn- return-token
@@ -202,19 +203,21 @@
 
 
 (defmethod action-handler :transact
-  [_ system param auth-map ledger timeout]
+  [_ system param auth-map ledger {:keys [timeout] :as opts}]
   (go-try
     (require-authentication system auth-map)
     (let [conn        (:conn system)
           private-key (when (= :jwt (:type auth-map))
                         (<? (pw-auth/fluree-decode-jwt conn (:jwt auth-map))))
+
           _           (when-not (sequential? param)
                         (throw (ex-info (str "A transaction submitted to the 'transact' endpoint must be a list/vector/array.")
                                         {:status 400 :error :db/invalid-transaction})))
+          txid-only?  (some-> (get opts "txid-only") str/lower-case (= "true"))
           auth-id     (:auth auth-map)
           result      (<? (fdb/transact-async conn ledger param {:auth        auth-id
                                                                  :private-key private-key
-                                                                 :txid-only   false
+                                                                 :txid-only   txid-only?
                                                                  :timeout     timeout}))]
       [{:status (or (:status result) 200)
         :fuel   (or (:fuel result) 0)}
@@ -262,7 +265,7 @@
 
 
 (defmethod action-handler :command
-  [_ system param _ ledger timeout]
+  [_ system param _ ledger {:keys [timeout] :as opts}]
   (go-try
     (let [_      (when-not (and (map? param) (:cmd param))
                    (throw (ex-info (str "Api endpoint for 'command' must contain a map/object with cmd keys.")
@@ -373,11 +376,9 @@
   [_ system _ _ ledger _]
   (go-try
     (let [conn    (:conn system)
-          session (session/session conn ledger)
           db-info (<? (fdb/ledger-info-async conn ledger))
           db-stat (-> (<? (session/db conn ledger {:connect? false}))
-                      (get-in [:stats]))
-          _       (session/close session)]
+                      (get-in [:stats]))]
       [{:status 200} {:status 200 :data (merge db-info db-stat)}])))
 
 
@@ -485,13 +486,15 @@
         start           (System/nanoTime)
         ledger          (keyword network db)
         action*         (keyword action)
-        action-param    (when body (decode-body body :json))
-        auth-map        (auth-map system ledger request action-param)
+        body'           (when body (decode-body body :string))
+        action-param    (some-> body' json/parse)
+        auth-map        (auth-map system ledger request body')
         request-timeout (if-let [timeout (:request-timeout headers)]
                           (try (Integer/parseInt timeout)
                                (catch Exception _ 60000))
                           60000)
-        [header body]   (<?? (action-handler action* system action-param auth-map ledger request-timeout))
+        opts            (assoc params :timeout request-timeout)
+        [header body]   (<?? (action-handler action* system action-param auth-map ledger opts))
         request-time    (- (System/nanoTime) start)
         resp-body       (json/stringify-UTF8 body)
         resp-headers    (reduce-kv (fn [acc k v]
@@ -659,11 +662,12 @@
 
 (defn delete-ledger
   [{:keys [conn] :as system} {:keys [body remote-addr] :as request}]
-  (let [body         (when body (decode-body body :json))
-        ledger-ident (:db/id body)
+  (let [body-str     (when body (decode-body body :string))
+        body'        (some-> body-str json/parse)
+        ledger-ident (:db/id body')
         [nw db]      (str/split ledger-ident #"/")
         ledger       (keyword nw db)
-        auth-map     (auth-map system ledger request body)
+        auth-map     (auth-map system ledger request body-str)
         session      (session/session conn [nw db])
         db*          (<?? (session/current-db session))
         ;; TODO - root role just checks if the auth has a role with id 'root' this can
