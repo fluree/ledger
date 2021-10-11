@@ -172,7 +172,7 @@
            cur-first f
            leaves    []]
       (if (empty? r)
-        (let [subrange  (flake/subrange flakes >= cur-first)
+        (let [subrange  (flake/subrange flakes >= cur-first < flake/maximum)
               last-leaf (-> leaf
                             (assoc :flakes subrange
                                    :first cur-first
@@ -501,7 +501,7 @@
   first-flake of the following segment."
   ([conn idx-root] (validate-idx-continuity idx-root false))
   ([conn idx-root throw?] (validate-idx-continuity idx-root throw? nil))
-  ([conn idx-root throw? compare]
+  ([conn idx-root throw? cmp]
    (let [node     (async/<!! (index/resolve conn idx-root))
          children (:children node)
          last-i   (dec (count children))]
@@ -522,9 +522,10 @@
          (println "      last-rhs: " last-rhs)
          (println "     leftmost?: " leftmost?)
          (println "           rhs: " rhs)
-         (when (and compare
-                    child-first rhs)
-           (println "         comp: " (compare child-first rhs)))
+         (when (and cmp
+                    child-first
+                    rhs)
+           (println "         comp: " (cmp child-first rhs)))
          (when (and throw?
                     (not (zero? i))
                     (not continuous?))
