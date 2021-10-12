@@ -169,9 +169,10 @@
          webserver      (let [webserver-opts (-> (:webserver config)
                                                  (assoc :system system))]
                           (http-api/webserver-factory webserver-opts))
-         stats          (stats/initiate-stats-reporting system (-> config :stats :interval))
+         ;; we are not a transacting peer in query mode, don't bother with this
+         stats          (when transactor? (stats/initiate-stats-reporting system (-> config :stats :interval)))
          system*        (assoc system :webserver webserver
-                                      :stats stats)
+                               :stats stats)
          _              (when (and (or memory? (= consensus-type :in-memory))
                                    (not (and memory? (= consensus-type :in-memory))))
                           (log/warn "Error during start-up. Currently if storage-type is 'memory', then consensus-type has to be 'in-memory' and vice versa.")

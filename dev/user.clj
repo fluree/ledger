@@ -242,11 +242,11 @@
 
 
   ;; Query Peer
-  (start {:fdb-group-servers       "myserver@localhost:9790"
-          :fdb-group-servers-ports "localhost:8090"
-          :fdb-api-port            8080
+  (start {:fdb-group-servers-ports "localhost:8090" ; ledger api port - this is where we should be forwarding our qs and txs
+          :fdb-api-port            8080             ; ledger (query mode) api port
           :fdb-mode                "query"})
 
+  (stop)
 
 
   ;; Three servers
