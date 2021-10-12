@@ -446,26 +446,26 @@
      :servers      (:fdb-conn-servers settings)
      :options      (cond-> {:transactor? is-transactor?
                             :tx-private-key (get-or-generate-tx-private-key settings)}
-                     is-transactor?
 
+                     is-transactor?
                      (assoc :storage-read storage-read
                             :storage-exists storage-exists
-                            ;; Storage write is overwritten in the default transactor to use the RAFT group as part of the write process
-                            ;; A default can be used here for
+                            ;; Storage write is overwritten in the default transactor to
+                            ;; use the RAFT group as part of the write process
                             :storage-write storage-write
                             :storage-rename storage-rename
                             :storage-list storage-list
 
-                            :req-chan (async/chan) ;; create our own request channel so we can monitor it if in 'dev' mode
-                                        ;:sub-chan            nil
-                                        ;:object-cache        nil
-                                        ;:object-cache-size   nil
+                            ;; create our own request channel so we can monitor it if in 'dev' mode
+                            :req-chan (async/chan)
+
                             :memory (some-> settings :fdb-memory-cache env-bytes)
                             :close-fn close-fn
                             :serializer serializer
-                            ;; ledger-specific settings
-                            ;; meta is a map of settings that are implementation-specific, i.e.
-                            ;; a transactor needs novelty-min and novelty-max, a web browser connection might need some different info
+                            ;; ledger-specific settings meta is a map of settings that
+                            ;; are implementation-specific, i.e.  a transactor needs
+                            ;; novelty-min and novelty-max, a web browser connection
+                            ;; might need some different info
                             :meta {:novelty-min (-> settings :fdb-memory-reindex env-bytes)
                                    :novelty-max (-> settings :fdb-memory-reindex-max env-bytes)
                                    :dev? dev?
