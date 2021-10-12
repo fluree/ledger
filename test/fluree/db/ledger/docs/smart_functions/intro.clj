@@ -14,7 +14,7 @@
         add-ten-resp (async/<!! (fdb/transact-async (basic/get-conn) test/ledger-chat add-ten))
         chat [{ :_id "chat" :message "#(str \"My age is: \" (addTen 27))"}]
         add-chat (async/<!! (fdb/transact-async (basic/get-conn) test/ledger-chat chat))
-        message-flake (->  (filter #(< 0 (first %)) (:flakes add-chat)) first)]
+        message-flake (->> add-chat :flakes (filter #(< 0 (first %))) first)]
 
    (is (= "My age is: 37" (nth message-flake 2)))))
 
