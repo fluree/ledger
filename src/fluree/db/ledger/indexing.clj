@@ -113,9 +113,7 @@
       (let [novel-ch (async/chan 1 (novel-node-xf t novelty remove-preds))]
         (-> (index/resolve conn node)
             (async/pipe novel-ch)))
-      (let [unchanged-ch (async/chan 1 (map mark-unchanged))]
-        (async/put! unchanged-ch node)
-        unchanged-ch))))
+      (go node))))
 
 (defn resolve-children
   "Resolves a branch's children in parallel, and loads data for each child only if
@@ -236,9 +234,7 @@
     (if (index/leaf? node)
       (storage/write-leaf conn network dbid idx node)
       (storage/write-branch conn network dbid idx node))
-    (let [out (async/chan)]
-      (async/put! out node)
-      out)))
+    (go node)))
 
 (defn write-child-nodes
   [db idx parent child-nodes]
