@@ -103,11 +103,11 @@
             (async/close! out))))
     out))
 
-(defn print-statuses
+(defn log-statuses
   [idx status-ch]
   (go-loop []
     (if-let [status (<! status-ch)]
-      (do (println idx status)
+      (do (log/info "Upgrade status for index idx" status)
           (recur))
       [idx ::done])))
 
@@ -117,7 +117,7 @@
     (-> (range/index-flake-stream db :spot)
         (async/pipe chunk-ch)
         (->> (index-chunks db :tspo))
-        (print-statuses :tspo))))
+        (log-statuses :tspo))))
 
 (defn index-flakes
   [db chunk-size idx flake-ch]
@@ -125,7 +125,7 @@
                              (chan 1 (partition-all chunk-size)))]
     (->> chunk-ch
          (index-chunks db idx)
-         (print-statuses idx))))
+         (log-statuses idx))))
 
 (defn leaf?
   [id-map]
