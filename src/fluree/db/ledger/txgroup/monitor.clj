@@ -243,7 +243,7 @@
             total-size* (if (> size max-size)
                           ;; if command is larger than max-size, we will automatically reject - include tx to process error.
                           total-size
-                          (long (+ total-size size)))       ; long keeps the recur arg primitive
+                          (long (+ total-size size))) ; long keeps the recur arg primitive
             queued*     (if (or (> total-size* max-size) (nil? next-cmds))
                           queued
                           (concat queued next-cmds))]
@@ -381,11 +381,9 @@
         (when (txproto/-is-leader? (:group conn))
           (let [initialize-dbs (txproto/find-all-dbs-to-initialize (:group conn))]
             (doseq [[network dbid command] initialize-dbs]
-              (let [db    (async/<!! (bootstrap/bootstrap-db system command))
-                    {:keys [state] :as session} (session/session conn [network dbid])
-                    db-ch (:db/db @state)]
-                (when (and db-ch (nil? (async/poll! db-ch)))
-                  (async/put! db-ch db))
+              (json/parse (:cmd command))
+              (async/<!! (bootstrap/bootstrap-db system command))
+              (let [session  (session/session conn [network dbid])]
                 ;; force session close, so next request will cause session to keep in sync
                 (session/close session))))))
 
@@ -412,11 +410,11 @@
       ;; Currently only used for fullText search indexing
       :new-block
       (go-try
-        (let [[_ network dbid block-data] (:command state-change)
-              db      (<? (fdb/db (:conn system) [network dbid]))
-              indexer (-> conn :full-text/indexer :process)]
-          ;; TODO: Support full-text indexes on s3 too
-          (<? (indexer {:action :block, :db db, :block block-data}))))
+       (let [[_ network dbid block-data] (:command state-change)
+             db          (<? (fdb/db (:conn system) [network dbid]))
+             indexer     (-> conn :full-text/indexer :process)]
+         ;; TODO: Support full-text indexes on s3 too
+         (<? (indexer {:action :block, :db db, :block block-data}))))
 
       ;;else
       nil)))
