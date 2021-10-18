@@ -383,7 +383,8 @@
          :ledger-info (let [[network dbid] (session/resolve-ledger (:conn system) arg)]
                         (success! (ledger-info system network dbid)))
 
-         :ledger-stats (future (ledger-stats system arg success! error!)) ;; as thread, as it will create new message calls if having to load db, and will block
+         :ledger-stats (future                              ;; as thread/future - otherwise if this needs to load new db will have new requests and will permanently block
+                         (ledger-stats system arg success! error!))
 
          ;; TODO - change command and all internal calls to :ledger-list, deprecate :db-list
          :db-list (let [response (txproto/ledger-list (:group system))]
