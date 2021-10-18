@@ -132,22 +132,31 @@
 
          remote-writer  (fn [k data]
                           (txproto/storage-write-async group k data))
-         conn           (let [conn-opts         (get-in config [:conn :options])
-                              storage-write-fn  (case storage-type
+         conn           (let [storage-write-fn  (case storage-type
                                                   :file remote-writer
                                                   :s3 remote-writer
                                                   :memory memorystore/connection-storage-write)
                               producer-chan     (async/chan (async/sliding-buffer 100))
                               publish-fn        (local-message-process {:config config :group group} producer-chan)
-                              conn-impl         (if transactor?
-                                                  (connection/connect nil (assoc conn-opts :storage-write storage-write-fn :publish publish-fn :memory? memory?))
-                                                  (connection/connect (:fdb-group-servers-ports settings) (assoc conn-opts :memory? memory?)))
+                              conn-opts         (cond-> (get-in config [:conn :options])
+
+                                                        (= :memory storage-type)
+                                                        (assoc :memory? true)
+
+                                                        transactor?
+                                                        (assoc :storage-write storage-write-fn
+                                                               :publish publish-fn)
+
+                                                        group
+                                                        (assoc :group group))
+                              servers           (when-not transactor?
+                                                  (:fdb-group-servers-ports settings))
+                              conn-impl         (connection/connect servers conn-opts)
                               full-text-indexer (full-text/start-indexer conn-impl)]
                           ;; launch message consumer, handles messages back from ledger
                           (local-message-response conn-impl producer-chan)
-                          (-> conn-impl
-                              (assoc :group group)
-                              (assoc-some :full-text/indexer full-text-indexer)))
+
+                          (assoc-some conn-impl :full-text/indexer full-text-indexer))
          system         {:config    config
                          :conn      conn
                          :webserver nil
