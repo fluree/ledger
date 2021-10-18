@@ -150,7 +150,7 @@
                                                         group
                                                         (assoc :group group))
                               servers           (when-not transactor?
-                                                  (:fdb-connection-servers settings))
+                                                  (:fdb-query-peer-servers settings))
                               conn-impl         (connection/connect servers conn-opts)
                               full-text-indexer (full-text/start-indexer conn-impl)]
                           ;; launch message consumer, handles messages back from ledger

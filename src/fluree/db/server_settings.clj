@@ -24,7 +24,7 @@
 (def default-env
   {:fdb-mode                     "query"                    ;; dev, query, ledger
    :fdb-join?                    false                      ;; set to true when server is joining an existing/running network
-   :fdb-connection-servers       "localhost:8090"           ;; servers to connect to while in query mode
+   :fdb-query-peer-servers       "localhost:8090"           ;; servers to connect to while in query mode
    :fdb-license-key              nil
    :fdb-consensus-type           "raft"                     ;; raft
    :fdb-encryption-secret        nil                        ;; Text encryption secret for encrypting data at rest and in transit
