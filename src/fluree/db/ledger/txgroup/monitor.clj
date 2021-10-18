@@ -5,7 +5,6 @@
             [fluree.db.session :as session]
             [fluree.db.ledger.transact :as transact]
             [fluree.db.ledger.bootstrap :as bootstrap]
-            [fluree.db.util.json :as json]
             [fluree.db.util.async :refer [<? go-try]]
             [fluree.db.ledger.txgroup.txgroup-proto :as txproto]
             [fluree.db.api :as fdb]))
@@ -224,10 +223,9 @@
  Commands can optionally contain multiTx, which allows for multiple transactions to be handle together in the
  same block. In order for multiTx to be allowed, all transactions need to be in the queue.  The order of txns
  listed in the last txn submitted is the order in which the transactions are processed."
-  [db cmd-queue]
+  [cmd-queue tx-max]
   ;; TODO - need to check each command id to ensure it hasn't yet been processed
-  (let [max-size     (or (get-in db [:settings :txMax]) default-max-txn-size)
-        sorted-queue (->> cmd-queue
+  (let [sorted-queue (->> cmd-queue
                           (sort-by :instant))]
     (loop [[next-cmd & r] sorted-queue
            total-size 0
@@ -235,19 +233,19 @@
       (let [size        (:size next-cmd)
             multiTxs    (-> next-cmd :command :multiTxs)
             [size next-cmds] (if multiTxs
-                               (let [multi (and (<= size max-size)
+                               (let [multi (and (<= size tx-max)
                                                 (get-multi-txns next-cmd r multiTxs))]
                                  ;; If multiTxs, but not all have come through, skip
                                  (if multi multi [0 nil]))
                                [size [next-cmd]])
-            total-size* (if (> size max-size)
+            total-size* (if (> size tx-max)
                           ;; if command is larger than max-size, we will automatically reject - include tx to process error.
                           total-size
                           (long (+ total-size size)))       ; long keeps the recur arg primitive
-            queued*     (if (or (> total-size* max-size) (nil? next-cmds))
+            queued*     (if (or (> total-size* tx-max) (nil? next-cmds))
                           queued
                           (concat queued next-cmds))]
-        (if (and r (< total-size* max-size))
+        (if (and r (< total-size* tx-max))
           (recur r total-size* queued*)
           queued*)))))
 
@@ -267,53 +265,68 @@
                              (update x network dissoc dbid)))) true))
 
 
+(defn update-recent-cmds
+  "Periodically clears out recent command that should have been cleared out by consensus."
+  [recent-cmds new-cmds]
+  (let [time            (System/currentTimeMillis)
+        clear-threshold (- time 100000)                     ;; 100 seconds ago
+        recent-cmds*    (reduce-kv                          ;; remove old commands from map
+                          (fn [recent-cmds* cmd-id time]
+                            (if (< time clear-threshold)
+                              (dissoc recent-cmds* cmd-id)
+                              recent-cmds*))
+                          recent-cmds recent-cmds)]
+    ;; add new commands into map
+    (reduce
+      (fn [acc cmd]
+        (assoc acc (:id cmd) time))
+      recent-cmds* new-cmds)))
+
+
+(defn get-tx-max
+  "Returns max transaction size from db, or utilizes default"
+  [db]
+  (or (get-in db [:settings :txMax]) default-max-txn-size))
+
+
 ;; TODO - need to detect and propagate errors
 ;; TODO - need way for leader to reject new block if we changed who is responsible for a network in-between, and detect + close here
 (defn db-queue-loop
   "Runs a continuous loop for a db to process new blocks"
-  [conn chan network dbid queue-id]
-  (let [group       (:group conn)
-        this-server (txproto/this-server group)]
-    (async/go-loop [block-map nil]
-      (let [kick (async/<! chan)]
-        (when-not (nil? kick)
+  [conn kick-chan network dbid queue-id]
+  (async/go
+    (let [group       (:group conn)
+          this-server (txproto/this-server group)
+          session     (session/session conn [network dbid])
+          _           (session/reload-db! session)          ;; always reload the session DB to ensure latest when starting loop
+          db          (<? (session/current-db session))
+          tx-max      (get-tx-max db)]
+      ;; launch loop
+      (loop [block-map   {:db-after db
+                          :t        (:t db)}
+             recent-cmds {}]
+        (when (some? (async/<! kick-chan))
           (if-not (network-assigned-to? group this-server network)
             (do
               (log/info (str "Network " network " is no longer assigned to this server. Stopping to process transactions."))
-              (close-db-queue network dbid))
-            (let [queue      (txproto/command-queue group network dbid)
-                  block-map* (try
-                               (if (seq queue)
-                                 (let [session    (session/session conn [network dbid])
-                                       db         (or (:db-after block-map)
-                                                      (<? (session/current-db session)))
-                                       at-last-t? (or (nil? block-map)
-                                                      (= (:t block-map) (:t db)))]
-                                   (if at-last-t?
-                                     (let [cmds (select-block-commands db queue)]
-                                       (when-not (empty? cmds)
-                                         (->> cmds
-                                              (transact/build-block session db)
-                                              <?)))
-                                     ;; db isn't up to date, shouldn't happen but before abandoning, dump and reload db to see if we can get current
-                                     (let [_           (session/clear-db! session)
-                                           db*         (<? (session/current-db session))
-                                           at-last-t?* (= (:t block-map) (:t db*))]
-                                       (if at-last-t?*
-                                         (do
-                                           (log/info (format "Ledger %s/%s is not automatically updating internally, session may be lost." network dbid))
-                                           (let [cmds (select-block-commands db* queue)]
-                                             (when-not (empty? cmds)
-                                               (->> cmds
-                                                    (transact/build-block session db*)
-                                                    <?))))
-                                         (log/warn (format "Ledger skipping new transactions because our last processed 't' is %s, but the latest db we can retrieve is at %s" (:t block-map) (:t db)))))))
-                                 block-map)
-                               (catch Exception e
-                                 (log/error e "Error processing new block. Exiting tx monitor loop.")))]
-              (when (not-empty queue)                       ;; in case we still have a queue to process, kick again until finished
-                (async/put! chan ::kick))
-              (recur block-map*))))))))
+              (close-db-queue network dbid)
+              (session/close session))
+            (let [queue        (->> (txproto/command-queue group network dbid)
+                                    (remove #(contains? recent-cmds (:id %)))) ;; remove any commands already processed but not yet removed by consensus
+                  cmds         (when (seq queue)
+                                 (select-block-commands queue tx-max))
+                  db           (:db-after block-map)
+                  block-map*   (if (empty? cmds)
+                                 block-map
+                                 (try
+                                   (<? (transact/build-block session db cmds))
+                                   (catch Exception e
+                                     (log/error e (str "Error processing new block. Ignoring last block and transaction(s):" (map :id cmds)))
+                                     block-map)))
+                  recent-cmds* (update-recent-cmds recent-cmds cmds)]
+              (when (seq queue)                             ;; in case we still have a queue to process, kick again until finished
+                (async/put! kick-chan ::kick))
+              (recur block-map* recent-cmds*))))))))
 
 
 (defn db-queue
@@ -381,11 +394,8 @@
         (when (txproto/-is-leader? (:group conn))
           (let [initialize-dbs (txproto/find-all-dbs-to-initialize (:group conn))]
             (doseq [[network dbid command] initialize-dbs]
-              (let [db    (async/<!! (bootstrap/bootstrap-db system command))
-                    {:keys [state] :as session} (session/session conn [network dbid])
-                    db-ch (:db/db @state)]
-                (when (and db-ch (nil? (async/poll! db-ch)))
-                  (async/put! db-ch db))
+              (let [db      (async/<!! (bootstrap/bootstrap-db system command))
+                    session (session/session conn [network dbid])]
                 ;; force session close, so next request will cause session to keep in sync
                 (session/close session))))))
 
