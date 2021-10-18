@@ -223,15 +223,13 @@
                                              (catch-build-block-exception conn network block-map*) ;; will return nil if exception
                                              (merge-tx-into-block block-map*))
                     reindexed-db    (indexing/reindexed-db session)
-                    novelty-max?    (indexing/novelty-max? session (:db-after block-result))
-                    ;; if at novelty-max, need to wait for indexing to complete before proceeding
                     block-result*   (when block-result
                                       (cond
                                         reindexed-db
                                         (<? (indexing/merge-new-index session block-result reindexed-db))
 
                                         ;; at novelty-max - may or may not be a reindex in process. Need to wait.
-                                        novelty-max?
+                                        (indexing/novelty-max? session (:db-after block-result))
                                         (<? (indexing/novelty-max-block session block-result))
 
                                         :else
