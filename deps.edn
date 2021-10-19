@@ -35,7 +35,7 @@
  :aliases
  {:mvn/group-id com.fluree
   :mvn/artifact-id ledger
-  :mvn/version "1.0.0-beta15"
+  :mvn/version "1.0.0-beta16"
 
   :dev
   {:extra-paths ["dev", "test"]
