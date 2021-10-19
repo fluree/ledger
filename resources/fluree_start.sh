@@ -151,7 +151,7 @@ while [ $# -gt 0 ]; do
 done
 
 if [ "$XMX" == "" ]; then
-  XMX=-Xmx1g
+  XMX=-Xmx2g
 fi
 if [ "$XMS" == "" ]; then
   XMS=-Xms1g
