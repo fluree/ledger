@@ -918,26 +918,3 @@
                         (reset! web-server nil))]
       (map->WebServer {:close close-fn}))))
 
-
-
-(comment
-  (def opts {:enabled true :system user/system :port 8090})
-
-  (webserver-factory opts)
-
-
-  (defn handler [req]
-    {:status  200
-     :headers {"content-type" "text/plain"}
-     :body    "hello!"})
-
-  (def server5 (http/run-server handler {:port 8090}))
-
-  (type server)
-
-  (do
-    ;(.close server4)
-    (server5 :timeout 1000))
-
-
-  (.close server5))

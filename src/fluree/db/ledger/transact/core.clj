@@ -410,12 +410,12 @@
     (empty? txi)
     (throw (ex-info (str "Empty or nil transaction item found in transaction.")
                     {:status 400
-                     :error :db/invalid-transaction}))
+                     :error  :db/invalid-transaction}))
 
     (not (map? txi))
     (throw (ex-info (str "All transaction items must be maps/objects, at least one is not.")
                     {:status 400
-                     :error :db/invalid-transaction}))
+                     :error  :db/invalid-transaction}))
 
     :else
     (let [[updated-txi found-txis] (extract-children* txi tx-state)]
@@ -428,7 +428,8 @@
 
 (defn ->tx-state
   [db block-instant {:keys [auth auth-sid authority authority-sid tx-permissions txid cmd sig nonce type] :as tx-map}]
-  (let [tx        (case (keyword (:type tx-map))            ;; command type is either :tx or :new-db
+  (let [tx-type   (keyword type)
+        tx        (case tx-type                             ;; command type is either :tx or :new-db
                     :tx (:tx tx-map)
                     :new-db (tx-util/create-new-db-tx tx-map))
         db-before (cond-> db
@@ -445,7 +446,7 @@
      :t                (dec (:t db))
      :instant          block-instant
      :txid             txid
-     :tx-type          type
+     :tx-type          tx-type
      :tx               tx
      :tx-string        cmd
      :signature        sig
@@ -638,7 +639,7 @@
             tx-map*    (<? (tx-auth/add-auth-ids-permissions db-after tx-map))
             tx-state   (->tx-state db-after instant tx-map*)
             result     (async/<! (build-transaction tx-state))
-            result* (if (util/exception? result)
+            result*    (if (util/exception? result)
                          (<? (tx-error/handler result tx-state))
                          result)]
         (assoc result* :duration (str (- (util/current-time-millis) start-time) "ms")))
