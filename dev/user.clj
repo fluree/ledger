@@ -242,11 +242,11 @@
 
 
   ;; Query Peer
-  (start {:fdb-group-servers       "myserver@localhost:9790"
-          :fdb-group-servers-ports "localhost:8090"
+  (start {:fdb-query-peer-servers "localhost:8090"
           :fdb-api-port            8080
           :fdb-mode                "query"})
 
+  (stop)
 
 
   ;; Three servers
