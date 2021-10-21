@@ -82,14 +82,13 @@
 
 (defn connection-storage-read
   "Default function for connection storage."
-  ([base-path] (connection-storage-read base-path nil))
+  ([base-path]
+   (fn [key]
+     (async/thread (storage-read base-path key))))
   ([base-path encryption-key]
-   (if encryption-key
-     (fn [key]
-       (async/thread (let [data (storage-read base-path key)]
-                      (when data (crypto/decrypt-bytes data encryption-key)))))
-     (fn [key]
-       (async/thread (storage-read base-path key))))))
+   (fn [key]
+     (async/thread (let [data (storage-read base-path key)]
+                     (when data (crypto/decrypt-bytes data encryption-key)))))))
 
 
 (defn connection-storage-exists?
@@ -119,14 +118,13 @@
 
 (defn connection-storage-write
   "Default function for connection storage writing."
-  ([base-path] (connection-storage-write base-path nil))
+  ([base-path]
+   (fn [key data]
+     (storage-write-async base-path key data)))
   ([base-path encryption-key]
-   (if encryption-key
-     (fn [key data]
-       (let [enc-data (crypto/encrypt-bytes data encryption-key)]
-         (storage-write-async base-path key enc-data)))
-     (fn [key data]
-       (storage-write-async base-path key data)))))
+   (fn [key data]
+     (let [enc-data (crypto/encrypt-bytes data encryption-key)]
+       (storage-write-async base-path key enc-data)))))
 
 
 (defn storage-rename
