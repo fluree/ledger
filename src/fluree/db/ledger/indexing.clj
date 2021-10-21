@@ -1,6 +1,7 @@
 (ns fluree.db.ledger.indexing
   (:require [clojure.data.avl :as avl]
             [clojure.tools.logging :as log]
+            [clojure.core.async :as async :refer [>! <! chan go go-loop]]
             [fluree.db.dbproto :as dbproto]
             [fluree.db.flake :as flake]
             [fluree.db.index :as index]
@@ -353,34 +354,35 @@
                         :block        block
                         :novelty-size novelty-size
                         :start-time   start-time}]
-      (log/info "Refreshing Index:" init-stats)
       (if (or (dirty? db)
               (seq remove-preds))
-        (let [{:keys [indexes stale] :as status}
-              (<! (refresh-all db remove-preds))
+        (do (log/info "Refreshing Index:" init-stats)
+            (let [{:keys [indexes stale] :as status}
+                  (<! (refresh-all db remove-preds))
 
-              refreshed-db (:db status)
+                  refreshed-db (:db status)
 
-              indexed-db   (-> refreshed-db
-                               empty-novelty
-                               (assoc-in [:stats :indexed] block))
+                  indexed-db   (-> refreshed-db
+                                   empty-novelty
+                                   (assoc-in [:stats :indexed] block))
 
-              block-file   (storage/ledger-block-key network dbid block)
-              garbage      (conj stale block-file)]
+                  block-file   (storage/ledger-block-key network dbid block)
+                  garbage      (conj stale block-file)]
 
-          ;; wait until confirmed writes before returning
-          ;; TODO - ideally issue garbage/root writes to RAFT together as a tx,
-          ;;        currently requires waiting for both through raft sync
-          (<? (storage/write-db-root indexed-db ecount))
-          (<? (storage/write-garbage indexed-db garbage))
-          (let [end-time  (Instant/now)
-                duration  (- (.toEpochMilli ^Instant end-time)
-                             (.toEpochMilli ^Instant start-time))
-                end-stats (assoc init-stats
-                                 :end-time end-time
-                                 :duration duration)]
-            (log/info "Index refresh complete:" end-stats))
-          indexed-db)
+              ;; wait until confirmed writes before returning
+              (<? (storage/write-db-root indexed-db ecount))
+
+              ;; TODO - ideally issue garbage/root writes to RAFT together as a tx,
+              ;;        currently requires waiting for both through raft sync
+              (<? (storage/write-garbage indexed-db garbage))
+              (let [end-time  (Instant/now)
+                    duration  (- (.toEpochMilli ^Instant end-time)
+                                 (.toEpochMilli ^Instant start-time))
+                    end-stats (assoc init-stats
+                                     :end-time end-time
+                                     :duration duration)]
+                (log/info "Index refresh complete:" end-stats))
+              indexed-db))
         db)))))
 
 (defn novelty-min-max
