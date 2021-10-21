@@ -37,7 +37,7 @@
   list only if the id is not `:empty`."
   [garbage {id :id}]
   (cond-> garbage
-    (not= :empty id) (conj garbage id)))
+    (not= :empty id) (conj id)))
 
 (defn dirty?
   "Returns `true` if the index for `db` of type `idx` is out of date, or if `db`
