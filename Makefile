@@ -117,19 +117,19 @@ ifneq ($(strip $(shell which git)),)
 endif
 
 docker-image:
-	docker buildx build --platforms 'linux/amd64,linux/arm64' --load -t fluree/ledger:$(VERSION) .
+	docker buildx build --platform 'linux/amd64,linux/arm64' --load -t fluree/ledger:$(VERSION) .
 ifdef git_tag
-	docker buildx build --platforms 'linux/amd64,linux/arm64' --load -t fluree/ledger:$(git_tag) .
+	docker buildx build --platform 'linux/amd64,linux/arm64' --load -t fluree/ledger:$(git_tag) .
 endif
 
 docker-push:
-	docker buildx build --platforms 'linux/amd64,linux/arm64' --push -t fluree/ledger:$(VERSION) .
+	docker buildx build --platform 'linux/amd64,linux/arm64' --push -t fluree/ledger:$(VERSION) .
 ifdef git_tag
-	docker buildx build --platforms 'linux/amd64,linux/arm64' --push -t fluree/ledger:$(git_tag) .
+	docker buildx build --platform 'linux/amd64,linux/arm64' --push -t fluree/ledger:$(git_tag) .
 endif
 
 docker-push-latest:
-	docker buildx build --platforms 'linux/amd64,linux/arm64' --push -t fluree/ledger:latest .
+	docker buildx build --platform 'linux/amd64,linux/arm64' --push -t fluree/ledger:latest .
 
 $(DESTDIR)/etc/fluree.properties: resources/fluree_sample.properties
 	install -d $(@D)

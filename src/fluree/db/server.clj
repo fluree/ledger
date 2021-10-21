@@ -138,22 +138,31 @@
 
          remote-writer  (fn [k data]
                           (txproto/storage-write-async group k data))
-         conn           (let [conn-opts         (get-in config [:conn :options])
-                              storage-write-fn  (case storage-type
+         conn           (let [storage-write-fn  (case storage-type
                                                   :file remote-writer
                                                   :s3 remote-writer
                                                   :memory memorystore/connection-storage-write)
                               producer-chan     (async/chan (async/sliding-buffer 100))
                               publish-fn        (local-message-process {:config config :group group} producer-chan)
-                              conn-impl         (if transactor?
-                                                  (connection/connect nil (assoc conn-opts :storage-write storage-write-fn :publish publish-fn :memory? memory?))
-                                                  (connection/connect (:fdb-group-servers-ports settings) (assoc conn-opts :memory? memory?)))
+                              conn-opts         (cond-> (get-in config [:conn :options])
+
+                                                        (= :memory storage-type)
+                                                        (assoc :memory? true)
+
+                                                        transactor?
+                                                        (assoc :storage-write storage-write-fn
+                                                               :publish publish-fn)
+
+                                                        group
+                                                        (assoc :group group))
+                              servers           (when-not transactor?
+                                                  (:fdb-query-peer-servers settings))
+                              conn-impl         (connection/connect servers conn-opts)
                               full-text-indexer (full-text/start-indexer conn-impl)]
                           ;; launch message consumer, handles messages back from ledger
                           (local-message-response conn-impl producer-chan)
-                          (-> conn-impl
-                              (assoc :group group)
-                              (assoc-some :full-text/indexer full-text-indexer)))
+
+                          (assoc-some conn-impl :full-text/indexer full-text-indexer))
          system         {:config    config
                          :conn      conn
                          :webserver nil
@@ -166,9 +175,10 @@
          webserver      (let [webserver-opts (-> (:webserver config)
                                                  (assoc :system system))]
                           (http-api/webserver-factory webserver-opts))
-         stats          (stats/initiate-stats-reporting system (-> config :stats :interval))
+         ;; we are not a transacting peer in query mode, don't bother with this
+         stats          (when transactor? (stats/initiate-stats-reporting system (-> config :stats :interval)))
          system*        (assoc system :webserver webserver
-                                      :stats stats)
+                               :stats stats)
          _              (when (and (or memory? (= consensus-type :in-memory))
                                    (not (and memory? (= consensus-type :in-memory))))
                           (log/warn "Error during start-up. Currently if storage-type is 'memory', then consensus-type has to be 'in-memory' and vice versa.")

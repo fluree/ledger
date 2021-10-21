@@ -318,6 +318,7 @@ or this server is not responsible for this ledger, will return false. Else true 
 
 
 (defn block-height*
+  "Returns block height given the group's state atom."
   [group-state network ledger-id]
   (get-in group-state [:networks network :dbs ledger-id :block]))
 
@@ -339,18 +340,6 @@ or this server is not responsible for this ledger, will return false. Else true 
    (register-genesis-block-async group network ledger-id 1))
   ([group network ledger-id block]
    (kv-assoc-in-async group [:networks network :dbs ledger-id :block] block)))
-
-(defn next-block
-  "Returns next block for given ledger if one is proposed."
-  [group network ledger-id]
-  (get-in (-local-state group) [:networks network :dbs ledger-id :next-block]))
-
-(defn set-next-block-async
-  "Sets next block, ensures current state is still at existing block."
-  [raft network ledger-id next-block-data current-block]
-  (let [compare-ks [network :dbs ledger-id :block]
-        compare-v  current-block]
-    (kv-cas-in-async raft [:networks network :dbs ledger-id :next-block] next-block-data compare-ks compare-v)))
 
 
 ;; storage commands

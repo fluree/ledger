@@ -182,6 +182,34 @@
 
 (def subscription-auth (atom {}))
 
+(defn ledger-info
+  "Returns basic ledger information for incoming requests."
+  [system network dbid]
+  (if (and network dbid)
+    (-> (txproto/ledger-info (:group system) network dbid)
+        (select-keys [:indexes :block :index :status]))
+    {}))
+
+(defn ledger-stats
+  "Returns more detailed statistics about ledger than base ledger-info"
+  [system ledger success! error!]
+  (async/go
+    (let [[network dbid] (session/resolve-ledger (:conn system) ledger)]
+      (if-not (and network dbid)
+        (error! (ex-info (str "Invalid ledger: " ledger)
+                         {:status 400 :error :db/invalid-ledger}))
+        (let [ledger-info (ledger-info system network dbid)
+              db-stat     (when (and (seq ledger-info)      ;; skip stats if db is still initializing
+                                     (not= :initialize (:status ledger-info)))
+
+                            (let [session-db (async/<! (session/db (:conn system) ledger {}))]
+                              (if (util/exception? session-db)
+                                session-db
+                                (get session-db :stats))))]
+          (if (util/exception? db-stat)
+            (error! db-stat)
+            (success! (merge ledger-info db-stat))))))))
+
 (defn message-handler
   "Response messages are [operation subject data opts]"
   ([system producer-chan msg]
@@ -352,23 +380,11 @@
                                            :db  db}]
                            (success! (process-command system signed-cmd))))
 
-         :ledger-info (let [[network dbid] (session/resolve-ledger (:conn system) arg)
-                            response (if (and network dbid)
-                                       (-> (txproto/ledger-info (:group system) network dbid)
-                                           (select-keys [:indexes :block :index :status]))
-                                       {})]
-                        (success! response))
+         :ledger-info (let [[network dbid] (session/resolve-ledger (:conn system) arg)]
+                        (success! (ledger-info system network dbid)))
 
-         :ledger-stats (let [[network dbid] (session/resolve-ledger (:conn system) arg)
-                             ledger   (str network "/" dbid)
-                             response (if (and network dbid)
-                                        (let [db-info (-> (txproto/ledger-info (:group system) network dbid)
-                                                          (select-keys [:indexes :block :index :status]))
-                                              db-stat (-> (async/<!! (session/db (:conn system) ledger {}))
-                                                          (get-in [:stats]))]
-                                          (merge db-info db-stat))
-                                        {})]
-                         (success! response))
+         :ledger-stats (future                              ;; as thread/future - otherwise if this needs to load new db will have new requests and will permanently block
+                         (ledger-stats system arg success! error!))
 
          ;; TODO - change command and all internal calls to :ledger-list, deprecate :db-list
          :db-list (let [response (txproto/ledger-list (:group system))]
