@@ -677,7 +677,7 @@
                    :meta        {:hostname hostname}}
      ;:version  fdb-version
 
-     :group       (build-group-settings settings group-servers)
+     :group       (when is-ledger? (build-group-settings settings group-servers))
      :consensus   (when is-ledger? {:type    consensus-type
                                     :options (case consensus-type
                                                :raft (raft-transactor-settings settings)
