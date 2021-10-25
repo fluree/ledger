@@ -1,7 +1,6 @@
 (ns fluree.db.ledger.upgrade.tspo
   (:require [fluree.db.flake :as flake]
-            [fluree.db.serde.avro :as serde]
-            [fluree.db.serde.protocol :as serdeproto]
+            [fluree.db.ledger.upgrade.tspo.serde :as tspo-serde]
             [fluree.db.storage.core :as storage]
             [fluree.db.index :as index]
             [fluree.db.ledger.indexing :as indexing]

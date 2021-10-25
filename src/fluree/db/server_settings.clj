@@ -6,7 +6,7 @@
             [fluree.db.ledger.storage.filestore :as filestore]
             [fluree.db.ledger.storage.memorystore :as memorystore]
             [fluree.db.ledger.storage.s3store :as s3store]
-            [fluree.db.ledger.upgrade.tspo :as tspo-upgrade]
+            [fluree.db.ledger.upgrade.tspo.serde :as tspo-upgrade-serde]
             [fluree.db.serde.avro :as avro]
             [fluree.db.serde.none :as none]
             [clojure.core.async :as async]
@@ -327,7 +327,7 @@
       (avro/map->Serializer serde-opts)
 
       :tspo-upgrade
-      (tspo-upgrade/->LegacySerializer)
+      (tspo-upgrade-serde/->LegacySerializer)
 
       :none
       (none/map->Serializer serde-opts))))
