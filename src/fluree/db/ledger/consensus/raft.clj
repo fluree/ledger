@@ -824,7 +824,7 @@
                  (let [config-private-key (:tx-private-key conn)
                        generated-key      (when-not config-private-key
                                             (crypto/generate-key-pair))
-                       private-key        (or (:tx-private-key conn)
+                       private-key        (or config-private-key
                                               (:private generated-key))]
                    (log/info "Brand new Fluree instance.")
                    (if config-private-key
