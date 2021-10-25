@@ -16,7 +16,8 @@
             [fluree.db.ledger.consensus.dbsync2 :as dbsync2]
             [fluree.crypto :as crypto]
             [fluree.db.ledger.storage :as ledger-storage]
-            [fluree.db.constants :as const])
+            [fluree.db.constants :as const]
+            [fluree.db.util.core :as util])
   (:import (java.util UUID)
            (fluree.db.flake Flake)))
 
@@ -755,6 +756,40 @@
                 (recur (inc next-block))))))))))
 
 
+(defn check-existing-ledgers-on-disk
+  [{:keys [group] :as conn}]
+  (go-try
+    (try
+      (let [ledgers (async/<! (ledger-storage/ledgers conn))
+            time    (System/currentTimeMillis)]
+        (when (util/exception? ledgers)
+          (log/error ledgers (str "EXITING: No raft state, and error reading existing ledger files: " (ex-message ledgers)
+                                  ". If you don't want ledgers included please move the ledger directory or the ledger files."))
+          (System/exit 1))
+        (when (seq ledgers)
+          (log/warn "Found existing ledgers on disk, attempting to rebuild state.")
+          (doseq [[[network ledger] {:keys [block index indexes]}] ledgers]
+            (log/warn (str "--> " network "/" ledger " block: " block " last index: " index "."))
+            (let [ledger-state {:block   block
+                                :index   index
+                                :indexes (into {} (map #(vector % time) indexes))
+                                :status  :ready}
+                  resp         (async/<! (new-entry-async group [:assoc-in
+                                                                 [:networks network :dbs ledger]
+                                                                 ledger-state]))]
+              (when (util/exception? resp)
+                (log/error resp (str "EXITING: Unexpected raft error syncing existing ledgers at startup. "
+                                     "Error occurred when syncing ledger: " network "/" ledger
+                                     " with ledger state: " ledger-state "."))
+                (System/exit 1))))
+          (log/warn (str "State for ledgers rebuilt. If you previously deleted ledgers still on disk, "
+                         "verify they don't need to be removed again."))))
+      (catch Exception e
+        (log/error e (str "EXITING: Unexpected error trying to synchronize existing ledgers on disk with current "
+                          "raft state: " (ex-message e)))
+        (System/exit 1)))))
+
+
 (defn raft-start-up
   [group conn system* shutdown _]
   (async/go
@@ -786,12 +821,17 @@
            (when (async/<! (is-leader?-async group))
              (let [new-instance? (empty? (txproto/get-shared-private-key group))]
                (if new-instance?
-                 (do
-                   (log/info "Brand new Fluree instance, establishing default shared private key.")
-                   ;; TODO - check environment to see if a private key was supplied
-                   (let [private-key (or (:tx-private-key conn)
-                                         (:private (crypto/generate-key-pair)))]
-                     (txproto/set-shared-private-key (:group conn) private-key)))
+                 (let [config-private-key (:tx-private-key conn)
+                       generated-key      (when-not config-private-key
+                                            (crypto/generate-key-pair))
+                       private-key        (or (:tx-private-key conn)
+                                              (:private generated-key))]
+                   (log/info "Brand new Fluree instance.")
+                   (if config-private-key
+                     (log/info "Using default private key obtained from configuration settings.")
+                     (log/info (str "Generating brand new default key pair, public key is: " (:public generated-key))))
+                   (txproto/set-shared-private-key (:group conn) private-key)
+                   (<? (check-existing-ledgers-on-disk conn)))
                  ;; not a new instance, but just started as leader - could have old
                  ;; raft files that don't have latest blocks. Check, and potentially add latest block
                  ;; files to network.
