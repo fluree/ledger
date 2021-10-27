@@ -229,7 +229,7 @@
 
 (defn write-if-novel
   "Writes `node` to storage if it has been updated"
-  [{:keys [conn network dbid] :as db} idx node]
+  [conn network dbid idx node]
   (if (novel? node)
     (if (index/leaf? node)
       (storage/write-leaf conn network dbid idx node)
@@ -237,22 +237,22 @@
     (go node)))
 
 (defn write-child-nodes
-  [db idx parent child-nodes]
+  [conn network dbid idx parent child-nodes]
   (let [cmp (:comparator parent)]
     (->> child-nodes
          (map (fn [child]
-                (write-if-novel db idx child)))
+                (write-if-novel conn network dbid idx child)))
          (async/map (fn [& written-nodes]
                       (apply index/child-map cmp written-nodes))))))
 
 (defn write-descendants
   "Writes the `descendants` of the branch node `parent`, adding new branch levels
   if any branch node is too large"
-  [db idx parent descendants]
-  (go-loop [children (<! (write-child-nodes db idx parent descendants))]
+  [conn network dbid idx parent descendants]
+  (go-loop [children (<! (write-child-nodes conn network dbid idx parent descendants))]
     (if (overflow-children? children)
       (let [child-branches (rebalance-children parent children)]
-        (recur (<! (write-child-nodes db idx parent child-branches))))
+        (recur (<! (write-child-nodes conn network dbid idx parent child-branches))))
       children)))
 
 (defn descendant?
@@ -277,7 +277,7 @@
         [child-nodes stack]))))
 
 (defn write-tree
-  [db idx node-stream]
+  [conn network dbid idx node-stream]
   (let [out (async/chan)]
     (go-loop [stack []]
       (if-let [node (<! node-stream)]
@@ -290,14 +290,14 @@
                                              ;; `node-stream` is in depth-first
                                              ;; order
 
-                children    (<! (write-descendants db idx node descendants))
+                children    (<! (write-descendants conn network dbid idx node descendants))
                 first-flake (-> children first key)
                 branch      (-> node
                                 (dissoc :id)
                                 (assoc :first    first-flake
                                        :children children))]
             (recur (conj stack* branch))))
-        (async/pipe (write-if-novel db idx (peek stack))
+        (async/pipe (write-if-novel conn network dbid idx (peek stack))
                     out)))
     out))
 
@@ -309,13 +309,13 @@
       (assoc stats :idx idx, :root new-root))))
 
 (defn refresh-root
-  [{:keys [conn novelty block t network dbid] :as db} remove-preds idx]
+  [{:keys [conn novelty t network dbid] :as db} remove-preds idx]
   (let [index-root        (get db idx)
         index-novelty     (get novelty idx)
         [tree-ch stat-ch] (resolve-tree conn index-root index-novelty t remove-preds)
         index-ch          (->> tree-ch
                                rebalance-leaves
-                               (write-tree db idx))]
+                               (write-tree conn network dbid idx))]
     (tally idx index-ch stat-ch)))
 
 (defn update-refresh-status
