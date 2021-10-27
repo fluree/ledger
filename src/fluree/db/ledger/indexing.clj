@@ -357,17 +357,15 @@
       (if (or (dirty? db)
               (seq remove-preds))
         (do (log/info "Refreshing Index:" init-stats)
-            (let [{:keys [indexes stale] :as status}
+            (let [{:keys [stale], refreshed-db :db, :as status}
                   (<! (refresh-all db remove-preds))
 
-                  refreshed-db (:db status)
+                  indexed-db (-> refreshed-db
+                                 empty-novelty
+                                 (assoc-in [:stats :indexed] block))
 
-                  indexed-db   (-> refreshed-db
-                                   empty-novelty
-                                   (assoc-in [:stats :indexed] block))
-
-                  block-file   (storage/ledger-block-key network dbid block)
-                  garbage      (conj stale block-file)]
+                  block-file (storage/ledger-block-key network dbid block)
+                  garbage    (conj stale block-file)]
 
               ;; wait until confirmed writes before returning
               (<? (storage/write-db-root indexed-db ecount))
