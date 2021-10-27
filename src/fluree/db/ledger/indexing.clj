@@ -128,21 +128,20 @@
        (async/map vector)))
 
 (defn resolve-tree
-  "Returns a channel that will eventually contain a stream of index nodes for the
-  index type `idx` in depth-first order. Only nodes with associated novelty
-  flakes from `db` will be resolved."
-  [{:keys [conn novelty block t network dbid] :as db} idx remove-preds]
-  (let [index-root   (get db idx)
-        novelty-root (get novelty idx)
-        tree-ch      (async/chan 4)
+  "Returns a channel that will eventually contain a stream of index nodes in
+  depth-first order. Only nodes with associated flakes from `index-novelty` will
+  be resolved."
+  [conn index-root index-novelty t remove-preds]
+  (let [tree-ch      (async/chan 4)
         stat-ch      (async/chan 1)]
     (go
-      (let [root-node (<! (resolve-if-novel conn index-root t novelty-root
+      (let [root-node (<! (resolve-if-novel conn index-root t index-novelty
                                             remove-preds))]
         (loop [stack [root-node]
-               stats {:idx idx, :novel 0, :unchanged 0, :stale []}]
+               stats {:novel 0, :unchanged 0, :stale []}]
           (if (empty? stack)
-            (do (async/put! stat-ch stats)
+            (do (>! stat-ch stats)
+                (async/close! stat-ch)
                 (async/close! tree-ch))
             (let [node   (peek stack)
                   stack* (pop stack)]
@@ -154,7 +153,7 @@
                                (update stats :unchanged inc))]
                   (>! tree-ch node)
                   (recur stack* stats*))
-                (let [children (<? (resolve-children conn node t novelty-root remove-preds))
+                (let [children (<? (resolve-children conn node t index-novelty remove-preds))
                       stack**  (-> stack*
                                    (conj (mark-expanded node))
                                    (into (rseq children)))]
@@ -303,19 +302,21 @@
     out))
 
 (defn tally
-  [index-ch stat-ch]
+  [idx index-ch stat-ch]
   (go
     (let [new-root (<! index-ch)
           stats    (<! stat-ch)]
-      (assoc stats :root new-root))))
+      (assoc stats :idx idx, :root new-root))))
 
 (defn refresh-root
   [{:keys [conn novelty block t network dbid] :as db} remove-preds idx]
-  (let [[tree-ch stat-ch] (resolve-tree db idx remove-preds)
+  (let [index-root        (get db idx)
+        index-novelty     (get novelty idx)
+        [tree-ch stat-ch] (resolve-tree conn index-root index-novelty t remove-preds)
         index-ch          (->> tree-ch
                                rebalance-leaves
                                (write-tree db idx))]
-    (tally index-ch stat-ch)))
+    (tally idx index-ch stat-ch)))
 
 (defn update-refresh-status
   [db-status {:keys [idx root stale]}]
@@ -364,15 +365,14 @@
                                  empty-novelty
                                  (assoc-in [:stats :indexed] block))
 
-                  block-file (storage/ledger-block-key network dbid block)
-                  garbage    (conj stale block-file)]
+                  block-file (storage/ledger-block-key network dbid block)]
 
               ;; wait until confirmed writes before returning
               (<? (storage/write-db-root indexed-db ecount))
 
               ;; TODO - ideally issue garbage/root writes to RAFT together as a tx,
               ;;        currently requires waiting for both through raft sync
-              (<? (storage/write-garbage indexed-db garbage))
+              (<? (storage/write-garbage indexed-db stale))
               (let [end-time  (Instant/now)
                     duration  (- (.toEpochMilli ^Instant end-time)
                                  (.toEpochMilli ^Instant start-time))
