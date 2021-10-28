@@ -34,8 +34,8 @@
   [{:keys [client bucket]} base-path k]
   (with-open [out (ByteArrayOutputStream.)]
     (let [s3-key (key->unix-path base-path k)
-          resp (aws/invoke client {:op      :GetObject
-                                   :request {:Bucket bucket, :Key s3-key}})]
+          resp   (aws/invoke client {:op      :GetObject
+                                     :request {:Bucket bucket, :Key s3-key}})]
       (log/debug "Reading" s3-key "in bucket" bucket)
       (if (:cognitect.anomalies/category resp)
         (if (:cognitect.aws.client/throwable resp)
@@ -99,34 +99,38 @@
 
 (defn- s3-list
   [{:keys [client bucket]} path]
+  ;; handy for debugging but probably don't want it in production
+  ;(aws/validate-requests client true)
   (let [base-req {:op      :ListObjectsV2
                   :request {:Bucket bucket}}
-        req (if (= path "/")
-              base-req
-              (assoc-in base-req [:request :Prefix] path))
-        resp (aws/invoke client req)]
+        req      (if (= path "/")
+                   base-req
+                   (assoc-in base-req [:request :Prefix] path))
+        resp     (aws/invoke client req)]
     (if (:cognitect.anomalies/category resp)
       (if (:cognitect.aws.client/throwable resp)
         resp
         (ex-info "S3 list failed" {:response resp}))
-      (:Contents resp))))
+      resp)))
 
 
+;; TODO: ListObjectsV2 maxes out at 1000 results and you have to use
+;; continuation tokens beyond that. Need to account for that here.
 (defn list
   "Returns a sequence of data maps with keys `#{:name :size :url}` representing
   the files in this store's S3 bucket."
   [{:keys [bucket] :as conn} & [path]]
   (let [path' (or path "/")]
     (log/debug "Listing files in bucket" bucket "at" path')
-    (let [objects (s3-list conn path')
+    (let [objects    (:Contents (s3-list conn path'))
           bucket-url (partial key->url conn)
-          result (map (fn [{key :Key, size :Size}]
-                        {:name (strip-path-prefix path' key)
-                         :url  (bucket-url key)
-                         :size size})
-                      objects)]
+          result     (map (fn [{key :Key, size :Size}]
+                            {:name (strip-path-prefix path' key)
+                             :url  (bucket-url key)
+                             :size size})
+                          objects)]
       (log/debug (format "Objects found in %s bucket at %s: %s"
-                           bucket path' (pr-str result)))
+                         bucket path' (pr-str result)))
       result)))
 
 
@@ -143,13 +147,11 @@
   "Returns `true` if there is an object under key `k` (converted to a
   UNIX-style path with key->unix-path) of this conn's S3 bucket."
   [conn base-path k]
-  (let [s3-key (key->unix-path base-path k)]
-    (log/debug "Checking for existence of" s3-key "in bucket" (:bucket conn))
-    (->> base-path
-         (s3-list conn)
-         (map :Key)
-         (some #{s3-key})
-         boolean)))
+  (let [s3-key (key->unix-path base-path k)
+        list   (s3-list conn s3-key)
+        result (< 0 (:KeyCount list))]
+    (log/debug "Checking for existence of" s3-key "in bucket" (:bucket conn) "-" result)
+    result))
 
 
 (defn connection-storage-exists?
@@ -169,7 +171,7 @@
     (log/debug "Deleting" s3-key "in bucket" bucket)
     (aws/invoke client {:op      :DeleteObject
                         :request {:Bucket bucket,
-                                  :Key s3-key}})))
+                                  :Key    s3-key}})))
 
 
 (defn connection-storage-delete
