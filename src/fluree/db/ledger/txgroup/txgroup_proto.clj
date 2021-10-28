@@ -196,25 +196,22 @@ or this server is not responsible for this ledger, will return false. Else true 
   [group network ledger-id]
   (boolean (latest-index group network ledger-id)))
 
-(defn all-ledger-block
-  "Returns a list of all ready or initialized ledgers for all networks as a two-tuple, [network ledger-id]."
-  [current-state]
-  (let [networks (-> current-state :networks (keys))]
-    (reduce
-      (fn [acc network]
-        (let [ledgers  (get-in current-state [:networks network :dbs])
-              ledgers' (reduce (fn [acc ledger]
-                                 (if (#{:ready :initialize :reindex}
-                                      (:status (get ledgers ledger)))
-                                   (conj acc [(str network "/" ledger) (:block (get ledgers ledger))])
-                                   acc)) [] (keys ledgers))]
-          (concat acc ledgers')))
-      [] networks)))
-
 (defn ledger-info
   "Returns all info we have on given ledger."
   [group network ledger-id]
   (kv-get-in group [:networks network :dbs ledger-id]))
+
+(defn ledgers-info-map
+  "Returns vector of maps with include 'ledger-info' data
+  with :network :ledger keys added in."
+  [conn]
+  (let [group-raft    (:group conn)
+        current-state @(:state-atom group-raft)
+        db-list       (ledger-list* current-state)]
+    (mapv (fn [[network ledger]]
+            (-> (ledger-info group-raft network ledger)
+                (assoc :network network :ledger ledger)))
+          db-list)))
 
 (defn update-ledger-status
   [group network ledger-id status-msg]

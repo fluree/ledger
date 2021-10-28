@@ -421,6 +421,7 @@
                      :from   this-server
                      :to     server
                      :msg-id msg-id}]
+    (log/trace "send-rpc start:" {:op operation :data data :header header})
     (when (fn? callback)
       (swap! pending-responses assoc msg-id callback))
     (let [success? (ftcp/send-rpc this-server server header data)]
@@ -690,12 +691,16 @@
   Exception doesn't throw, be sure to check for it."
   ([raft] (index-fully-committed? raft false))
   ([raft leader-only?]
-   (async/go-loop [retries 0]
+   (async/go-loop [retries 0
+                   last-status nil]
      (let [rs (async/<! (get-raft-state-async raft))
            {:keys [commit index status latest-index]} rs]
+       (when (not= last-status [commit index status latest-index])
+         (log/trace (str "index-fully-committed?: retry: " retries
+                         " [commit index status latest-index] is: " [commit index status latest-index])))
        (cond
 
-         (>= index latest-index)
+         (and (>= index latest-index) status)               ;; status will be 'nil' until leader or follower initiating
          (if (or (not leader-only?)
                  (= :leader status))
            commit
@@ -709,7 +714,7 @@
          :else
          (do
            (async/<! (async/timeout 100))
-           (recur (inc retries))))))))
+           (recur (inc retries) [commit index status latest-index])))))))
 
 
 (defn register-server-lease-async
@@ -800,23 +805,20 @@
              (System/exit 1))
 
            ;; do an initial file sync... the committed raft may contain blocks that end up leaving gaps
-           (let [sync-finished? (async/<! (dbsync2/consistency-full-check conn (:other-servers (:raft group))))
-                 ;; then check the full-text index is up-to-date
-                 storage-path   (-> conn :meta :file-storage-path)
-                 group-raft     (:group conn)
-                 current-state  @(:state-atom group-raft)
-                 ledgers-info   (txproto/all-ledger-block current-state)]
-             (when-not (nil? storage-path)                  ; TODO: Support full-text indexes on s3 storage too
-               (async/<! (dbsync2/check-full-text-synced conn ledgers-info)))
-             (if (instance? Exception sync-finished?)
-               (dbsync2/terminate! conn
-                                   "Terminating due to file syncing error, unable to sync required files with other servers."
-                                   sync-finished?)
-               (log/debug "All database files synchronized.")))
+           (let [file-storage? (some? (-> conn :meta :file-storage-path))]
+             (when file-storage?                            ; TODO: Support full-text indexes on s3 storage too
+               (let [ledgers-info (txproto/ledgers-info-map conn)
+                     sync-res     (<! (dbsync2/consistency-full-check conn ledgers-info (:other-servers (:raft group))))]
+                 (if (instance? Exception sync-res)
+                   (dbsync2/terminate! conn (str "Terminating due to file syncing error, "
+                                                 "unable to sync required files with other servers.")
+                                       sync-res)
+                   (log/debug "All database files synchronized."))
+                 ;; TODO - below was swallowing an error previously, error now surfaced, but needs to get addressed
+                 #_(<? (dbsync2/check-full-text-synced conn ledgers-info)))))
 
            ;; register on the network
            (async/<! (register-server-lease-async group 5000))
-
 
            (when (async/<! (is-leader?-async group))
              (let [new-instance? (empty? (txproto/get-shared-private-key group))]
@@ -911,7 +913,8 @@
         leader-change-fn      (:leader-change-fn raft-configs)
         leader-change-fn*     (fn [change-map]
                                 (let [{:keys [new-raft-state old-raft-state]} change-map]
-                                  (log/info "Ledger group leader change:" (dissoc change-map :key :new-raft-state :old-raft-state))
+                                  (log/info "Ledger group leader change:"
+                                            (dissoc change-map :key :new-raft-state :old-raft-state))
                                   (log/debug "Old raft state: \n" (pr-str old-raft-state) "\n"
                                              "New raft state: \n" (pr-str new-raft-state))
                                   (when (not (nil? new-raft-state))
@@ -929,11 +932,13 @@
                                           (async/put! raft-initialized-chan :follower)))
                                   (when (fn? leader-change-fn)
                                     (leader-change-fn change-map))))
-        raft-instance         (start-instance (merge raft-configs
-                                                     {:port             (:port this-server-cfg)
-                                                      :servers          raft-servers
-                                                      :this-server      this-server
-                                                      :leader-change-fn leader-change-fn*}))
+        raft-configs*         (merge raft-configs
+                                     {:port             (:port this-server-cfg)
+                                      :servers          raft-servers
+                                      :this-server      this-server
+                                      :leader-change-fn leader-change-fn*})
+        _                     (log/debug "Starting raft instance with config: " raft-configs*)
+        raft-instance         (start-instance raft-configs*)
         close-fn              (fn []
                                 ;; close raft
                                 (raft/close (:raft raft-instance))
@@ -950,6 +955,7 @@
       ;; If joining an existing network, connects to all other servers
       (let [connect-servers (filter #(not= this-server (:server-id %)) server-configs)
             handler-fn      (partial message-consume (:raft raft-instance) (:storage-ledger-read raft-configs))]
+        (log/debug "Raft: join? is true, joining all other servers: " connect-servers)
         (doseq [connect-to connect-servers]
           (ftcp/launch-client-connection this-server-cfg connect-to handler-fn)))
 
@@ -957,6 +963,7 @@
       (let [connect-servers (filter #(> 0 (compare this-server (:server-id %))) server-configs)
             handler-fn      (partial message-consume (:raft raft-instance) (:storage-ledger-read raft-configs))]
         (doseq [connect-to connect-servers]
+          (log/debug "Raft: connecting to server: " connect-to)
           (ftcp/launch-client-connection this-server-cfg connect-to handler-fn))))
 
 
