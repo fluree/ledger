@@ -90,8 +90,8 @@
 
 
 (defn- return-snapshot-id
-  "Takes java file and returns log id (typically same as start index)
-  from the file name as a long integer."
+  "Takes file map (from storage subsystem) and returns log id (typically same
+  as start index) from the file name as a long integer."
   [file]
   (when-let [match (re-find #"^([0-9]+)\.snapshot$" (:name file))]
     (Long/parseLong (second match))))

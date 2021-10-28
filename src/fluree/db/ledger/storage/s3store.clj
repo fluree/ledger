@@ -98,14 +98,19 @@
 
 
 (defn- s3-list
-  [{:keys [client bucket]} path]
+  [{:keys [client bucket]} path & [continuation-token]]
   ;; handy for debugging but probably don't want it in production
   ;(aws/validate-requests client true)
   (let [base-req {:op      :ListObjectsV2
                   :request {:Bucket bucket}}
-        req      (if (= path "/")
-                   base-req
-                   (assoc-in base-req [:request :Prefix] path))
+        req      (cond-> base-req
+
+                         (not= path "/")
+                         (assoc-in [:request :Prefix] path)
+
+                         continuation-token
+                         (assoc-in [:request :ContinuationToken]
+                                   continuation-token))
         resp     (aws/invoke client req)]
     (if (:cognitect.anomalies/category resp)
       (if-let [err (:cognitect.aws.client/throwable resp)]
@@ -114,26 +119,43 @@
       resp)))
 
 
-;; TODO: ListObjectsV2 maxes out at 1000 results and you have to use
-;; continuation tokens beyond that. Need to account for that here.
+(defn- list*
+  ([conn path]
+   (list* conn path nil))
+  ([{:keys [bucket] :as conn} path continuation-token]
+   (let [path' (or path "/")]
+     (print ". ") (flush)
+     (log/debug "Listing files in bucket" bucket "at" path')
+     (let [{objects :Contents :as s3-result} (s3-list conn path'
+                                                      continuation-token)
+           bucket-url (partial key->url conn)
+           result     (map (fn [{key :Key, size :Size}]
+                             {:name (strip-path-prefix path' key)
+                              :url  (bucket-url key)
+                              :size size})
+                           objects)]
+       (log/trace (format "Objects found in %s bucket at %s: %s"
+                          bucket path' (pr-str result)))
+       (with-meta result (dissoc s3-result :Contents))))))
+
+
 (defn list
-  "Returns a sequence of data maps with keys `#{:name :size :url}` representing
+  "Returns a lazy seq of data maps with keys `#{:name :size :url}` representing
   the files in this store's S3 bucket."
-  [{:keys [bucket] :as conn} & [path]]
-  (let [path' (or path "/")]
-    (log/debug "Listing files in bucket" bucket "at" path')
-    (let [objects    (:Contents (s3-list conn path'))
-          bucket-url (partial key->url conn)
-          result     (map (fn [{key :Key, size :Size}]
-                            {:name (strip-path-prefix path' key)
-                             :url  (bucket-url key)
-                             :size size})
-                          objects)]
-      (log/debug (format "Objects found in %s bucket at %s: %s"
-                         bucket path' (pr-str result)))
-      result)))
+  ([conn & [path continuation-token]]
+   (lazy-seq
+     (let [s3-objects (list* conn path continuation-token)
+           {truncated?         :IsTruncated
+            continuation-token :NextContinuationToken} (meta s3-objects)]
+       (if truncated?
+         (concat s3-objects (list conn path continuation-token))
+         s3-objects)))))
 
 
+;; NB: Currently this realizes the entire lazy seq for listing buckets
+;; or prefixes with >1000 objects. This shouldn't be much of an issue in our
+;; current usage, but be aware of this if those requirements ever change.
+;; - WSM 2021-10-28
 (defn connection-storage-list
   "Returns an async fn that closes over the AWS client and base bucket URL for
   list ops."
