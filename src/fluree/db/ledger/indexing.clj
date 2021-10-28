@@ -309,14 +309,22 @@
       (assoc stats :idx idx, :root new-root))))
 
 (defn refresh-root
-  [{:keys [conn novelty t network dbid] :as db} remove-preds idx]
-  (let [index-root        (get db idx)
-        index-novelty     (get novelty idx)
-        [tree-ch stat-ch] (resolve-tree conn index-root index-novelty t remove-preds)
+  [conn network dbid {::keys [idx root novelty t remove-preds]}]
+  (let [[tree-ch stat-ch] (resolve-tree conn root novelty t remove-preds)
         index-ch          (->> tree-ch
                                rebalance-leaves
                                (write-tree conn network dbid idx))]
     (tally idx index-ch stat-ch)))
+
+(defn extract-root
+  [{:keys [novelty t] :as db} remove-preds idx]
+  (let [index-root    (get db idx)
+        index-novelty (get novelty idx)]
+    {::idx          idx
+     ::root         index-root
+     ::novelty      index-novelty
+     ::t            t
+     ::remove-preds remove-preds}))
 
 (defn update-refresh-status
   [db-status {:keys [idx root stale]}]
@@ -328,9 +336,10 @@
 (defn refresh-all
   ([db]
    (refresh-all db #{}))
-  ([db remove-preds]
+  ([{:keys [conn network dbid] :as db} remove-preds]
    (->> index/types
-        (map (partial refresh-root db remove-preds))
+        (map (partial extract-root db remove-preds))
+        (map (partial refresh-root conn network dbid))
         async/merge
         (async/reduce update-refresh-status {:db db, :indexes [], :stale []}))))
 
