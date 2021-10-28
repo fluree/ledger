@@ -108,9 +108,9 @@
                    (assoc-in base-req [:request :Prefix] path))
         resp     (aws/invoke client req)]
     (if (:cognitect.anomalies/category resp)
-      (if (:cognitect.aws.client/throwable resp)
-        resp
-        (ex-info "S3 list failed" {:response resp}))
+      (if-let [err (:cognitect.aws.client/throwable resp)]
+        (throw err)
+        (throw (ex-info "S3 list failed" {:response resp})))
       resp)))
 
 
