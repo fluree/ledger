@@ -1,8 +1,12 @@
 (ns fluree.db.ledger.upgrade.tspo
-  (:require [fluree.db.flake :as flake]
+  (:require [fluree.db.api :as fdb]
+            [fluree.db.flake :as flake]
             [fluree.db.ledger.upgrade.tspo.serde :as tspo-serde]
+            [fluree.db.serde.avro :as serde]
+            [fluree.db.serde.protocol :as serdeproto]
             [fluree.db.storage.core :as storage]
             [fluree.db.index :as index]
+            [fluree.db.ledger.indexing :as indexing]
             [fluree.db.ledger.indexing :as indexing]
             [fluree.db.query.range :as range]
             [fluree.db.ledger.storage.filestore :as filestore]
@@ -25,10 +29,10 @@
                  {:name "stats", :type {:type "map", :values :long}}
                  {:name "fork", :type [:null :string]}
                  {:name "forkBlock", :type [:null :long]}
-                 {:name "spot", :type "fluree.FdbChildNode"} ;; spot
-                 {:name "psot" :type "fluree.FdbChildNode"} ;; psot
-                 {:name "post" :type "fluree.FdbChildNode"} ;; post
-                 {:name "opst" :type "fluree.FdbChildNode"} ;; opst
+                 {:name "spot", :type "fluree.FdbChildNode"}
+                 {:name "psot" :type "fluree.FdbChildNode"}
+                 {:name "post" :type "fluree.FdbChildNode"}
+                 {:name "opst" :type "fluree.FdbChildNode"}
                  {:name "timestamp" :type [:null :long]}
                  {:name "prevIndex" :type [:null :long]}]}))
 
@@ -182,3 +186,16 @@
        (mapv (partial convert-idx db chunk-size))
        async/merge
        (async/reduce conj [])))
+
+(defn read-blocks
+  [conn network dbid]
+  (let [out (async/chan)]
+    (go
+      (let [{last-block :block, :as db} (<! (fdb/db conn [network dbid]))]
+        (loop [current-block 1]
+          (if-not (> current-block last-block)
+            (let [block (<! (storage/read-block conn network dbid current-block))]
+              (>! out block)
+              (recur (inc current-block)))
+            (async/close! out)))))
+    out))
