@@ -82,6 +82,13 @@
       storage-exists))
 
 
+(defn index-root-exists?
+  "Returns core async channel with true if index root exist for given ledger on disk."
+  [{:keys [storage-exists] :as conn} network dbid index-point]
+  (-> (storage/ledger-root-key network dbid index-point)
+      storage-exists))
+
+
 (defn- ledger-file-data
   "Returns map of data for ledger if it matches."
   [file]
