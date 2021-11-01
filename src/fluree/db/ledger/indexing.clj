@@ -1,14 +1,13 @@
 (ns fluree.db.ledger.indexing
   (:require [clojure.data.avl :as avl]
             [clojure.tools.logging :as log]
-            [clojure.core.async :as async :refer [>! <! chan go go-loop]]
             [fluree.db.dbproto :as dbproto]
             [fluree.db.flake :as flake]
             [fluree.db.index :as index]
             [fluree.db.storage.core :as storage]
             [fluree.db.session :as session]
-            [clojure.core.async :as async :refer [>! <! chan go go-loop]]
             [fluree.db.util.async :refer [<? go-try]]
+            [clojure.core.async :as async :refer [>! <! chan go go-loop]]
             [fluree.db.util.core :as util]
             [fluree.db.ledger.txgroup.txgroup-proto :as txproto])
   (:import (fluree.db.flake Flake)
@@ -81,6 +80,10 @@
 (defn mark-expanded
   [node]
   (assoc node ::expanded true))
+
+(defn unmark-expanded
+  [node]
+  (dissoc node ::expanded))
 
 (defn expanded?
   [node]
@@ -293,6 +296,7 @@
                 children    (<! (write-descendants conn network dbid idx node descendants))
                 first-flake (-> children first key)
                 branch      (-> node
+                                unmark-expanded
                                 (dissoc :id)
                                 (assoc :first    first-flake
                                        :children children))]
