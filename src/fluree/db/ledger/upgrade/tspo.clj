@@ -199,3 +199,46 @@
               (recur (inc current-block)))
             (async/close! out)))))
     out))
+
+(defn empty-root-map
+  [network dbid]
+  (reduce-kv (fn [m idx cmp]
+               (assoc m idx (index/empty-branch network dbid cmp)))
+             {} index/default-comparators))
+
+(defn index-flake?
+  [db idx f]
+  (case idx
+    :spot true
+    :psot true
+    :tspo true
+    :opst (dbproto/-p-prop db :ref? (flake/p f))
+    :post (dbproto/-p-prop db :idx? (flake/p f))))
+
+(defn index-flakes
+  [conn network dbid idx root t flakes]
+  (let [cmp     (get index/default-comparators idx)
+        novelty (apply flake/sorted-set-by cmp flakes)]
+    (indexing/refresh-root conn network dbid
+                           #::indexing {:idx          idx
+                                        :root         root
+                                        :novelty      novelty
+                                        :t            t
+                                        :remove-preds #{}})))
+
+(defn index-blocks
+  [conn network dbid block-ch]
+  (go-loop [root-map (reduce-kv (fn [m idx cmp]
+                                  (assoc m idx (index/empty-branch network dbid cmp)))
+                                {} index/default-comparators)]
+    (if-let [{:keys [t flakes] :as next-block} (<! block-ch)]
+      (let [idx-map-ch (->> root-map
+                            (map (fn [[idx root]]
+                                   (index-flakes conn network dbid
+                                                 idx root t flakes)))
+                            (async/map (fn [& tallies]
+                                         (reduce (fn [m {:keys [idx root]}]
+                                                   (assoc m idx root))
+                                                 {} tallies))))]
+        (recur (<! idx-map-ch)))
+      root-map)))
