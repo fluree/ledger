@@ -1,4 +1,4 @@
-FROM clojure:tools-deps-1.10.3.967-slim-bullseye AS builder
+FROM clojure:tools-deps-1.10.3.998-slim-bullseye AS builder
 
 RUN apt-get update && apt-get install --assume-yes --no-install-recommends curl
 
