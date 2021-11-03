@@ -1,7 +1,10 @@
 (ns fluree.db.ledger.upgrade.tspo
-  (:require [fluree.db.api :as fdb]
+  (:require [fluree.db.dbproto :as dbproto]
+            [fluree.db.api :as fdb]
             [fluree.db.flake :as flake]
             [fluree.db.ledger.upgrade.tspo.serde :as tspo-serde]
+            [fluree.db.ledger.txgroup.txgroup-proto :as txproto :refer [TxGroup]]
+            [fluree.db.ledger.consensus.raft :as raft]
             [fluree.db.serde.avro :as serde]
             [fluree.db.serde.protocol :as serdeproto]
             [fluree.db.storage.core :as storage]
@@ -84,6 +87,24 @@
     (serde/serialize-db-pointer pointer))
   (-deserialize-db-pointer [_ pointer]
     (serde/deserialize-db-pointer pointer)))
+
+(defrecord LegacyRaft [state-atom event-chan command-chan server this-server port
+                       close raft raft-initialized open-api private-keys]
+  TxGroup
+  (-add-server-async [group server] (raft/add-server-async group server))
+  (-remove-server-async [group server] (raft/remove-server-async group server))
+  (-new-entry-async [group entry] (raft/new-entry-async group entry))
+  (-local-state [group] (raft/local-state group))
+  (-state [group] (raft/state group))
+  (-is-leader? [group] (raft/is-leader? group))
+  (-active-servers [group] (let [server-map   (txproto/kv-get-in group [:leases :servers])
+                                 current-time (System/currentTimeMillis)]
+                             (reduce-kv (fn [acc server lease-data]
+                                          (if (>= (:expire lease-data) current-time)
+                                            (conj acc server)
+                                            acc))
+                                        #{} server-map)))
+  (-start-up-activities [group conn system shutdown join?] (raft/raft-start-up group conn system shutdown join?)))
 
 (defn index-chunks
   [{:keys [conn block t network dbid] :as db} idx chunk-ch]
