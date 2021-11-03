@@ -64,8 +64,9 @@
   Should return exception if exhausts all options for remote copying."
   [conn remote-sync-servers server-timeout]
   (let [{:keys [group meta]} conn
-        {:keys [storage-path encryption-secret]} meta
-        storage-write (filestore/connection-storage-write storage-path encryption-secret)
+        {:keys [file-storage-path encryption-secret]} meta
+        ;; Note - do not use storage-write on the connection, as that will write through consensus layer - we just want to write locally here
+        storage-write (filestore/connection-storage-write file-storage-path encryption-secret)
         raft          (:raft group)
         ;; send-rpc has args: [raft server operation data callback]
         send-rpc-fn   (get-in raft [:config :send-rpc-fn])]
@@ -91,6 +92,7 @@
                               (async/close! finished?-port))
                             (async/put! result-ch ex)
                             (async/close! result-ch)))]
+        (log/debug (str "Remote file copy request outgoing for: " file-key))
         (go
           (loop [[server & r] server-list]
             (let [resp-chan    (async/chan 1)
@@ -122,10 +124,12 @@
 
                 ;; we have a result!
                 (not (nil? result))
-                (do
-                  (try
-                    (storage-write file-key result)
-                    (catch Exception e (raise e nil server)))
+                (let [write-res (<! (storage-write file-key result))]
+                  (when (instance? Exception write-res)
+                    (raise write-res
+                           (str "Unexpected error, unable to write file " file-key " to local storage.")
+                           server))
+                  (log/debug (str "Remote file copy request complete for: " file-key))
                   (when finished?-port
                     (async/put! finished?-port file-key)
                     (async/close! finished?-port))
@@ -133,101 +137,112 @@
                   (async/close! result-ch))))))))))
 
 
-(defn get-file-local
-  "Returns core async channel, will return true (or exception)
-  when file is already in local storage (i.e. local to this node; could be an S3 bucket)"
-  [conn port file-key]
-  (util/go-try
-    (let [file-exists? (:storage-exists conn)
-          exists?      (<? (file-exists? file-key))]
-      (if exists?
-        true
-        (let [result-ch (async/chan)]
-          ;; queue request for file
-          (>! port [file-key result-ch])
-          ;; wait until we have confirmation it is in place.
-          (<? result-ch))))))
+(defn read-file-local
+  "Returns core async channel with file's contents.
 
-
-(defn get-index-leaf-if-needed
-  [conn port child-key]
+  If file is not yet local, tries to retrieve it and then returns."
+  [conn sync-chan stats-atom file-key]
   (go-try
-    (let [child-his-key        (str child-key "-his")
-          storage-exists?      (:storage-exists conn)
-          child-exists?-ch     (storage-exists? child-key)
-          child-his-exists?-ch (storage-exists? child-his-key)
-          ;; pull both files in parallel to speed things up
-          child-exists?        (<? child-exists?-ch)
-          child-his-exists?    (<? child-his-exists?-ch)]
-      (when-not child-exists?
-        (>! port child-key))
-      (when-not child-his-exists?
-        (>! port child-his-key))
-      :done)))
+    (if-let [data (<? (storage/read-branch conn file-key))]
+      data
+      (let [result-ch (async/chan)]
+        (swap! stats-atom update :missing inc)
+        ;; queue request for file
+        (>! sync-chan [file-key result-ch])
+        ;; wait until we have confirmation it is in place.
+        (<? result-ch)
+        ;; once in place, read
+        (or (<? (storage/read-branch conn file-key))
+            (terminate! conn (str "Retrieved index file " file-key
+                                  " however unable to read file from disk.")
+                        (ex-info (str "Cannot read file from disk: " file-key)
+                                 {:status 500 :error :db/invalid-file})))))))
+
+
+(defn ensure-all-leaf-nodes-on-disk
+  [{:keys [storage-exists] :as conn} sync-chan stats-atom leaf-keys]
+  (go-try
+    (loop [[leaf-key & r] leaf-keys]
+      (if (nil? leaf-key)
+        ::done
+        (let [leaf-his-key (str leaf-key "-his")]
+          (swap! stats-atom update :files #(+ % 2))
+          (when-not (<? (storage-exists leaf-key))
+            (swap! stats-atom update :missing inc)
+            (>! sync-chan leaf-key))
+          (when-not (<? (storage-exists leaf-his-key))
+            (swap! stats-atom update :missing inc)
+            (>! sync-chan leaf-his-key))
+          (recur r))))))
 
 
 (defn sync-index-branch
   "Starts an index branch, and synchronizes all the way to the data leafs,
   ensuring they are all on disk. If a leaf is not on disk, adds it to the port for
   retrieval."
-  [conn port branch-id]
-  (util/go-try
-   (when branch-id
+  ([conn sync-chan stats-atom branch-id]
+   (sync-index-branch conn sync-chan stats-atom branch-id []))
+  ([conn sync-chan stats-atom branch-id parent]
+   (log/debug "Start index branch node: " (conj parent branch-id))
+   (go-try
      ;; first get file local if not already here. Will throw if an error occurs
-     (util/<? (get-file-local conn port branch-id))
-     ;; with file local, we can load and check children
-     (let [branch      (<? (storage/read-branch conn branch-id))
+     (swap! stats-atom update :files inc)                   ;; branch file
+     (let [branch      (<? (read-file-local conn sync-chan stats-atom branch-id))
            children    (:children branch)
-           child-leaf? (true? (-> children first :leaf))]
-
-       (loop [[c & r] children]
-         (cond
-
-           (and c child-leaf?)
-           (do (<? (get-index-leaf-if-needed conn port (:id c)))
-               (recur r))
-
-           ;; child is another branch node
-           c
-           (do (<? (sync-index-branch conn port (:id c)))
-               (recur r))
-
-           ;; no more children, return
-           (nil? c)
-           ::done))))))
+           child-leaf? (true? (-> children first :leaf))
+           child-ids   (map :id children)]
+       (if child-leaf?
+         (<? (ensure-all-leaf-nodes-on-disk conn sync-chan stats-atom child-ids))
+         (loop [[child-id & r] child-ids]
+           (if (nil? child-id)
+             ::done
+             (let [done? (<? (sync-index-branch conn sync-chan stats-atom child-id))]
+               (log/debug "Index branch node complete: " (conj parent branch-id child-id))
+               (recur r)))))))))
 
 
-(defn sync-index-point
+(defn sync-ledger-index
   "Does a 100% sync of a db to a given index point.
 
   Returns core async channel with either ::done, or an exception if
   an error occurs during sync."
-  [conn network dbid index-point port]
+  [{:keys [storage-exists] :as conn} network dbid index-point sync-chan]
   (go-try
-    ;; will get index root local if not there already... throws on error
-    (->> (storage/ledger-root-key network dbid index-point)
-         (get-file-local conn port)
-         <?)
-    (let [db-root          (storage/read-db-root conn network dbid index-point)
-          {:keys [spot psot post opst tspo]} (<? db-root)
-          sync-spot-ch     (sync-index-branch conn port (:id spot))
-          sync-psot-ch     (sync-index-branch conn port (:id psot))
-          sync-post-ch     (sync-index-branch conn port (:id post))
-          sync-opst-ch     (sync-index-branch conn port (:id opst))
-          sync-tspo-ch     (sync-index-branch conn port (:id tspo))
-          garbage-file-key (storage/ledger-garbage-key network dbid index-point)
-          storage-exists?  (:storage-exists conn)
-          garbage-exists?  (<? (storage-exists? garbage-file-key))]
+    (let [start-time       (System/currentTimeMillis)
+          db-root          (<? (storage/read-db-root conn network dbid index-point))
+          _                (when-not db-root
+                             (terminate! conn (str "Unable to read index root for ledger: " network "/" dbid
+                                                   " at index point: " index-point ".")
+                                         (ex-info "Unable to read index root file"
+                                                  {:network network :ledger dbid :index index-point})))
+          stats-atom       (atom {:files   1
+                                  :missing 0})
+          {:keys [spot psot post opst tspo]} db-root
 
-      ;; kick off 4 indexes in parallel...  will throw if an error occurs
+          sync-spot-ch     (sync-index-branch conn sync-chan stats-atom (:id spot))
+          sync-psot-ch     (sync-index-branch conn sync-chan stats-atom (:id psot))
+          sync-post-ch     (sync-index-branch conn sync-chan stats-atom (:id post))
+          sync-opst-ch     (sync-index-branch conn sync-chan stats-atom (:id opst))
+          sync-tspo-ch     (sync-index-branch conn sync-chan stats-atom (:id tspo))
+          garbage-file-key (storage/ledger-garbage-key network dbid index-point)
+          garbage-exists?  (<? (storage-exists garbage-file-key))]
+      (when-not garbage-exists?
+        (swap! stats-atom update :missing inc)
+        (>! sync-chan garbage-file-key))
+
+      ;; kick off 5 indexes in parallel...  will throw if an error occurs
       (<? sync-spot-ch)
       (<? sync-psot-ch)
       (<? sync-post-ch)
       (<? sync-opst-ch)
       (<? sync-tspo-ch)
-      (when-not garbage-exists?
-        (>! port garbage-file-key))
-      ::done)))
+      (let [total-missing (:missing @stats-atom)]
+        (when (> total-missing 0)
+          (log/info (str "-- missing index files for ledger: " network "/" dbid ". "
+                         "Retrieved " total-missing " missing files of "
+                         (:files @stats-atom) " total in "
+                         (- (System/currentTimeMillis) start-time) " milliseconds.")))
+        total-missing))))
 
 
 (defn check-all-blocks-consistency
@@ -242,62 +257,197 @@
           ::finished
           (do
             (when-not (contains? blocks block-n)
-              (log/info (str "Block " block-n " missing for ledger: " network "/" dbid
-                             ". Attempting to retrieve from other ledger server"))
+              (log/warn (str "Block " block-n " missing for ledger: " network "/" dbid
+                             ". Attempting to retrieve."))
               ;; block is missing, or file is empty... add to files we need to sync
               (>! port (storage/ledger-block-key network dbid block-n)))
             (recur (dec block-n))))))))
 
 
-(defn check-db-full-consistency
-  "First checks every block, then checks all DB indexes."
-  [conn current-state port network dbid]
+(defn missing-blocks
+  "Given a list of blocks for a ledger and block-height, returns a
+  list of missing blocks if any."
+  [block-list block-height]
+  (let [sorted-blocks (sort block-list)]
+    (loop [[block & r] (range 1 (inc block-height))
+           next-existing (first sorted-blocks)
+           rest-existing (rest sorted-blocks)
+           missing       []]
+      (cond
+        (nil? block)
+        missing
+
+        (nil? next-existing)
+        (into missing (range block (inc block-height)))
+
+        (= block next-existing)
+        (recur r (first rest-existing) (rest rest-existing) missing)
+
+        :else
+        (recur r next-existing rest-existing (conj missing block))))))
+
+
+(defn monitor-responses
+  [conn responses-ch]
+  (go
+    (loop []
+      (if-let [res-ch-or-msg (<! responses-ch)]
+        (do
+          (if (sequential? res-ch-or-msg)
+            ;; a message passed through
+            (let [[msg [network ledger] data] res-ch-or-msg]
+              (case msg
+                :complete-blocks (log/info (str "-- fully synchronized ledger blocks for "
+                                                network "/" ledger " in "
+                                                (- (System/currentTimeMillis) (:start data)) " milliseconds. "
+                                                "Retrieved " (:missing data) " missing of " (:blocks data)
+                                                " total blocks."))
+                :complete-root (log/debug (str "Fully synchronized ledger index roots in "
+                                               (- (System/currentTimeMillis) data) " milliseconds."))))
+            ;; else an async chan
+            (let [res (<! res-ch-or-msg)]
+              (when (instance? Exception res)
+                (let [ex-msg (ex-message res)
+                      {:keys [file server server-list]} (ex-data res)
+                      msg    (str "EXITING: Unable to retrieve block file: " file
+                                  " from server: " server " of servers: " server-list
+                                  " with error: " ex-msg ". "
+                                  "Either find missing file and place on server,
+                                  delete ledger if no longer used, and then restart.")]
+                  (terminate! conn msg res)))))
+          (recur))
+        (do
+          (log/debug "-------- All files synchronized.")
+          ::done)))))
+
+
+(defn verify-all-blocks
+  "Prioritize all block files for all ledgers."
+  [conn ledgers-info sync-chan]
   (go-try
-    (let [latest-block (txproto/block-height* current-state network dbid)
-          last-index   (txproto/latest-index* current-state network dbid)
-          ;; wait to sync all blocks until we start checking latest index file
-          block-result (<? (check-all-blocks-consistency conn network dbid latest-block port))
-          index-result (when last-index
-                         (<? (sync-index-point conn network dbid last-index port)))]
-      (log/debug (str network "/" dbid ": block-sync complete to: " latest-block
-                      ": index-sync complete for: " last-index ". "
-                      "Block-sync result: " block-result ", Index-sync result: " index-result "."))
-      ::done)))
+    (let [start-time            (System/currentTimeMillis)
+          responses             (async/chan)
+          responses-complete-ch (monitor-responses conn responses)]
+      (loop [[{:keys [network ledger] :as ledger-info} & r] ledgers-info
+             total-missing 0]
+        (if (nil? network)
+          (do
+            (async/close! responses)
+            (<? responses-complete-ch)                      ;; wait for all block responses before proceeding
+            (if (> total-missing 0)
+              (log/info (str "Fetched total of " total-missing " missing block files across "
+                             (count ledgers-info) " ledgers in "
+                             (- (System/currentTimeMillis) start-time) " milliseconds."))
+              (log/debug (str "Block consistency check completed in "
+                              (- (System/currentTimeMillis) start-time) " milliseconds.")))
+            ::done)
+          (let [block-height (:block ledger-info)
+                all-blocks   (<? (ledger-storage/blocks conn network ledger))
+                missing      (missing-blocks all-blocks block-height)]
+            (if (seq missing)
+              (let [ledger-start-time (System/currentTimeMillis)]
+
+                (log/debug (str (count missing) " of " block-height " blocks missing for ledger: "
+                                network "/" ledger ", attempting to retrieve."
+                                (when (not= (count missing) block-height) "Missing blocks: " missing)))
+                (doseq [missing-block missing]
+                  (let [res-chan (async/chan)]
+                    (>! sync-chan [(storage/ledger-block-key network ledger missing-block) res-chan])
+                    ;; put eventual response on responses channel to monitor for completeness.
+                    (>! responses res-chan)))
+                (>! responses [:complete-blocks [network ledger] {:start   ledger-start-time
+                                                                  :blocks  block-height
+                                                                  :missing (count missing)}]))
+              (log/debug (str "All block files on disk for ledger: " network "/" ledger)))
+            (recur r (+ total-missing (count missing)))))))))
+
+
+(defn verify-all-index-roots
+  [conn ledgers-info sync-chan]
+  (go-try
+    (let [start-time            (System/currentTimeMillis)
+          responses             (async/chan)
+          responses-complete-ch (monitor-responses conn responses)]
+      (loop [[{:keys [network ledger index] :as ledger-info} & r] ledgers-info
+             total-missing 0]
+        (if (nil? network)
+          (do
+            (>! responses [:complete-root nil start-time])
+            (async/close! responses)
+            (<? responses-complete-ch)                      ;; wait for all block responses before proceeding
+            (if (> total-missing 0)
+              (log/info (str "Fetched total of " total-missing " missing index root files across "
+                             (count ledgers-info) " ledgers in "
+                             (- (System/currentTimeMillis) start-time) " milliseconds."))
+              (log/debug (str "Index root consistency check completed in "
+                              (- (System/currentTimeMillis) start-time) " milliseconds.")))
+            ::done)
+          (cond
+            (nil? index)                                    ;; ledger might not yet be created
+            (recur r total-missing)
+
+            (<? (ledger-storage/index-root-exists? conn network ledger index))
+            (recur r total-missing)
+
+            :else
+            (let [res-ch (async/chan)]
+              (>! sync-chan [(storage/ledger-root-key network ledger index) res-ch])
+              (>! responses res-ch)
+              (recur r (inc total-missing)))))))))
+
+
+(defn verify-all-index-data
+  [conn ledgers-info sync-chan]
+  (go-try
+    (let [start-time (System/currentTimeMillis)]
+      (loop [[{:keys [network ledger index] :as ledger-info} & r] ledgers-info
+             missing-files 0]
+        (if (nil? network)
+          (do
+            (when (> missing-files 0)
+              (log/info "Retrieved a total of" missing-files "index files across all ledgers."))
+            (log/info  "All ledger indexes verified in"
+                      (- (System/currentTimeMillis) start-time) "milliseconds.")
+            ::done)
+          (let [ledger-start-time (System/currentTimeMillis)]
+            (log/debug (str "Index syncing starting for: " network "/" ledger
+                            " @ index point: " index "."))
+            (if (nil? index)                                ;; ledger might not yet be created
+              (recur r missing-files)
+              (let [missing (<? (sync-ledger-index conn network ledger index sync-chan))]
+                (log/debug (str "Index syncing complete for: " network "/" ledger
+                                " @ index point: " index " in "
+                                (- (System/currentTimeMillis) ledger-start-time) " milliseconds."))
+                (recur r (+ missing-files missing))))))))))
+
+
+(defn check-all-ledgers-consistency
+  [{:keys [group] :as conn} ledgers-info sync-chan]
+  (go-try
+    ;; prioritize retrieving all block files for all ledgers
+    (<? (verify-all-blocks conn ledgers-info sync-chan))
+
+    ;; second priority is all index root files
+    (<? (verify-all-index-roots conn ledgers-info sync-chan))
+
+    ;; third priority is actual index files
+    (<? (verify-all-index-data conn ledgers-info sync-chan))
+
+    (async/close! sync-chan)))
 
 
 (defn consistency-full-check
-  [conn remote-sync-servers]
-  (let [group-raft         (:group conn)
-        current-state      @(:state-atom group-raft)
-        db-list            (txproto/ledger-list* current-state)
-        sync-chan          (async/chan)                     ;; files to sync are placed on this channel
-        res-chan           (async/chan)                     ;; results file sync (error/success) are placed on this channel
-        parallelism        8
-        ;; kick off all db syncs in parallel. will put all missing files onto sync-chan
-        find-files-results (mapv (fn [[network dbid]]
-                                   (check-db-full-consistency conn current-state sync-chan network dbid))
-                                 db-list)]
-    (if (empty? db-list)
+  [conn ledgers-info remote-sync-servers]
+  (let [sync-chan     (async/chan)                          ;; files to sync are placed on this channel
+        res-chan      (async/chan)                          ;; results file sync (error/success) are placed on this channel
+        parallelism   8]
+    (if (empty? ledgers-info)
       (go ::done)
       (let [remote-copy-fn (remote-copy-fn* conn remote-sync-servers 3000)]
+        (check-all-ledgers-consistency conn ledgers-info sync-chan)
 
         ;; kick off pipeline of file copying, results of every operation will be placed on res-chan
         (async/pipeline-async parallelism res-chan remote-copy-fn sync-chan)
-
-        ;; each db sync may have errors, check and throw/exit if we hit any
-        (go
-          (try
-            (loop [[c & r] find-files-results]
-              (if (nil? c)
-                (do
-                  (async/close! sync-chan)                  ;; close sync-chan so pipeline will close
-                  ::done)
-                (do
-                  (<? c)
-                  (recur r))))
-            (catch Exception e
-              (async/close! sync-chan)
-              (terminate! conn "Error synchronizing files, fatal error - exiting." e))))
 
         ;; the file retrieval process queues up, and may also have an error... throw if we have a problem
         (go
@@ -320,14 +470,14 @@
 
 
 (defn check-full-text-synced
-  "Takes an array of arrays.
-  [ [nw/ledger block] [nw/ledger block] [nw/ledger block] ]"
-  [conn ledger-block-arr]
+  "Takes ledger-info array that includes keys:
+  :network, :ledger, :block, :index ...."
+  [conn ledgers-info]
   (go-try
-    (loop [[[ledger block] & r] ledger-block-arr]
+    (loop [[{:keys [network ledger block]} & r] ledgers-info]
       (if ledger
         (do (when (> block 1)
-              (let [db      (util/<? (fdb/db conn ledger))
+              (let [db      (util/<? (fdb/db conn (str network "/" ledger)))
                     indexer (:full-text/indexer conn)]
                 (<! (indexer {:action :sync, :db db}))))
             (recur r))

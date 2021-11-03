@@ -1,7 +1,7 @@
 {:deps {org.clojure/clojure               {:mvn/version "1.10.3"}
         org.clojure/data.xml              {:mvn/version "0.2.0-alpha6"}
         com.fluree/alphabase              {:mvn/version "3.2.1"}
-        com.fluree/db                     {:mvn/version "1.0.0-rc31"}
+        com.fluree/db                     {:mvn/version "1.0.0-rc33"}
         com.fluree/raft                   {:mvn/version "1.0.0-beta1"}
         com.fluree/crypto                 {:mvn/version "0.3.6"}
 
@@ -13,7 +13,7 @@
 
         ;; AWS S3 API
         com.cognitect.aws/api             {:mvn/version "0.8.524"}
-        com.cognitect.aws/endpoints       {:mvn/version "1.1.12.69"}
+        com.cognitect.aws/endpoints       {:mvn/version "1.1.12.93"}
         com.cognitect.aws/s3              {:mvn/version "814.2.991.0"}
 
         ;; web server
@@ -35,7 +35,7 @@
  :aliases
  {:mvn/group-id com.fluree
   :mvn/artifact-id ledger
-  :mvn/version "1.0.0-beta16"
+  :mvn/version "1.0.0-beta17"
 
   :dev
   {:extra-paths ["dev", "test"]
@@ -113,5 +113,5 @@
    :main-opts ["-m" "antq.core" "--skip=github-action"]}
 
   :clj-kondo
-  {:extra-deps {clj-kondo/clj-kondo {:mvn/version "2021.09.15"}}
+  {:extra-deps {clj-kondo/clj-kondo {:mvn/version "2021.10.19"}}
    :main-opts ["-m" "clj-kondo.main" "--lint" "src" "--config" ".clj-kondo/config.edn"]}}}

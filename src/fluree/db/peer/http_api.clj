@@ -164,7 +164,7 @@
 
 (defn open-api?
   [system]
-  (-> system :group :open-api))
+  (-> system :config :webserver :open-api))
 
 
 (defn authenticated?

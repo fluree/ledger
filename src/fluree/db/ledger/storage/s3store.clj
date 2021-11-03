@@ -1,5 +1,5 @@
 (ns fluree.db.ledger.storage.s3store
-  (:refer-clojure :exclude [read list])
+  (:refer-clojure :exclude [read list list*])
   (:require [clojure.core.async :as async]
             [clojure.java.io :as io]
             [clojure.string :as str]
@@ -34,8 +34,8 @@
   [{:keys [client bucket]} base-path k]
   (with-open [out (ByteArrayOutputStream.)]
     (let [s3-key (key->unix-path base-path k)
-          resp (aws/invoke client {:op      :GetObject
-                                   :request {:Bucket bucket, :Key s3-key}})]
+          resp   (aws/invoke client {:op      :GetObject
+                                     :request {:Bucket bucket, :Key s3-key}})]
       (log/debug "Reading" s3-key "in bucket" bucket)
       (if (:cognitect.anomalies/category resp)
         (if (:cognitect.aws.client/throwable resp)
@@ -98,38 +98,64 @@
 
 
 (defn- s3-list
-  [{:keys [client bucket]} path]
+  [{:keys [client bucket]} path & [continuation-token]]
+  ;; handy for debugging but probably don't want it in production
+  ;(aws/validate-requests client true)
   (let [base-req {:op      :ListObjectsV2
                   :request {:Bucket bucket}}
-        req (if (= path "/")
-              base-req
-              (assoc-in base-req [:request :Prefix] path))
-        resp (aws/invoke client req)]
+        req      (cond-> base-req
+
+                         (not= path "/")
+                         (assoc-in [:request :Prefix] path)
+
+                         continuation-token
+                         (assoc-in [:request :ContinuationToken]
+                                   continuation-token))
+        resp     (aws/invoke client req)]
     (if (:cognitect.anomalies/category resp)
-      (if (:cognitect.aws.client/throwable resp)
-        resp
-        (ex-info "S3 list failed" {:response resp}))
-      (:Contents resp))))
+      (if-let [err (:cognitect.aws.client/throwable resp)]
+        (throw err)
+        (throw (ex-info "S3 list failed" {:response resp})))
+      resp)))
+
+
+(defn- list*
+  ([conn path]
+   (list* conn path nil))
+  ([{:keys [bucket] :as conn} path continuation-token]
+   (let [path' (or path "/")]
+     (print ". ") (flush)
+     (log/debug "Listing files in bucket" bucket "at" path')
+     (let [{objects :Contents :as s3-result} (s3-list conn path'
+                                                      continuation-token)
+           bucket-url (partial key->url conn)
+           result     (map (fn [{key :Key, size :Size}]
+                             {:name (strip-path-prefix path' key)
+                              :url  (bucket-url key)
+                              :size size})
+                           objects)]
+       (log/trace (format "Objects found in %s bucket at %s: %s"
+                          bucket path' (pr-str result)))
+       (with-meta result (dissoc s3-result :Contents))))))
 
 
 (defn list
-  "Returns a sequence of data maps with keys `#{:name :size :url}` representing
+  "Returns a lazy seq of data maps with keys `#{:name :size :url}` representing
   the files in this store's S3 bucket."
-  [{:keys [bucket] :as conn} & [path]]
-  (let [path' (or path "/")]
-    (log/debug "Listing files in bucket" bucket "at" path')
-    (let [objects (s3-list conn path')
-          bucket-url (partial key->url conn)
-          result (map (fn [{key :Key, size :Size}]
-                        {:name (strip-path-prefix path' key)
-                         :url  (bucket-url key)
-                         :size size})
-                      objects)]
-      (log/debug (format "Objects found in %s bucket at %s: %s"
-                           bucket path' (pr-str result)))
-      result)))
+  ([conn & [path continuation-token]]
+   (lazy-seq
+     (let [s3-objects (list* conn path continuation-token)
+           {truncated?         :IsTruncated
+            continuation-token :NextContinuationToken} (meta s3-objects)]
+       (if truncated?
+         (concat s3-objects (list conn path continuation-token))
+         s3-objects)))))
 
 
+;; NB: Currently this realizes the entire lazy seq for listing buckets
+;; or prefixes with >1000 objects. This shouldn't be much of an issue in our
+;; current usage, but be aware of this if those requirements ever change.
+;; - WSM 2021-10-28
 (defn connection-storage-list
   "Returns an async fn that closes over the AWS client and base bucket URL for
   list ops."
@@ -143,13 +169,11 @@
   "Returns `true` if there is an object under key `k` (converted to a
   UNIX-style path with key->unix-path) of this conn's S3 bucket."
   [conn base-path k]
-  (let [s3-key (key->unix-path base-path k)]
-    (log/debug "Checking for existence of" s3-key "in bucket" (:bucket conn))
-    (->> base-path
-         (s3-list conn)
-         (map :Key)
-         (some #{s3-key})
-         boolean)))
+  (let [s3-key (key->unix-path base-path k)
+        list   (s3-list conn s3-key)
+        result (< 0 (:KeyCount list))]
+    (log/debug "Checking for existence of" s3-key "in bucket" (:bucket conn) "-" result)
+    result))
 
 
 (defn connection-storage-exists?
@@ -169,7 +193,7 @@
     (log/debug "Deleting" s3-key "in bucket" bucket)
     (aws/invoke client {:op      :DeleteObject
                         :request {:Bucket bucket,
-                                  :Key s3-key}})))
+                                  :Key    s3-key}})))
 
 
 (defn connection-storage-delete

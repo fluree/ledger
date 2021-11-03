@@ -1,8 +1,8 @@
-FROM clojure:tools-deps-1.10.3.967-slim-bullseye AS builder
+FROM clojure:tools-deps-1.10.3.998-slim-bullseye AS builder
 
 RUN apt-get update && apt-get install --assume-yes --no-install-recommends curl
 
-RUN curl -sL https://deb.nodesource.com/setup_14.x | bash -
+RUN curl -sL https://deb.nodesource.com/setup_16.x | bash -
 RUN apt-get update && apt-get install --assume-yes --no-install-recommends nodejs zip git
 
 RUN mkdir -p /usr/src/fluree-ledger
