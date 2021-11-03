@@ -1,5 +1,5 @@
 (ns fluree.db.ledger.storage.s3store
-  (:refer-clojure :exclude [read list])
+  (:refer-clojure :exclude [read list list*])
   (:require [clojure.core.async :as async]
             [clojure.java.io :as io]
             [clojure.string :as str]
