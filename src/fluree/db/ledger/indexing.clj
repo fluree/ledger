@@ -286,14 +286,11 @@
       (if-let [node (<! node-stream)]
         (if (index/leaf? node)
           (recur (conj stack node))
-          (let [[descendants stack*]
-                (pop-descendants node stack) ;; all descendants of a branch node
-                                             ;; should be at the top of the
-                                             ;; stack as long as the
-                                             ;; `node-stream` is in depth-first
-                                             ;; order
-
-                children    (<! (write-descendants conn network dbid idx node descendants))
+          (let [;; all descendants of a branch node should be at the top of the
+                ;; stack as long as the `node-stream` is in depth-first order
+                [descendants stack*] (pop-descendants node stack)
+                children    (<! (write-descendants conn network dbid idx
+                                                   node descendants))
                 first-flake (-> children first key)
                 branch      (-> node
                                 unmark-expanded
