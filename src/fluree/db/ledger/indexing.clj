@@ -173,7 +173,7 @@
            cur-first f
            leaves    []]
       (if (empty? r)
-        (let [subrange  (flake/subrange flakes >= cur-first < flake/maximum)
+        (let [subrange  (flake/subrange flakes >= cur-first)
               last-leaf (-> leaf
                             (assoc :flakes subrange
                                    :first cur-first
