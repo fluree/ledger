@@ -476,7 +476,7 @@
       (if ledger
         (do (when (> block 1)
               (let [db      (util/<? (fdb/db conn (str network "/" ledger)))
-                    indexer (:full-text/indexer conn)]
-                (<! (indexer {:action :sync, :db db}))))
+                    indexer (-> conn :full-text/indexer :process)]
+                (<? (indexer {:action :sync, :db db}))))
             (recur r))
         true))))

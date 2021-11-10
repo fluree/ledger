@@ -814,8 +814,7 @@
                                                  "unable to sync required files with other servers.")
                                        sync-res)
                    (log/debug "All database files synchronized."))
-                 ;; TODO - below was swallowing an error previously, error now surfaced, but needs to get addressed
-                 #_(<? (dbsync2/check-full-text-synced conn ledgers-info)))))
+                 (<? (dbsync2/check-full-text-synced conn ledgers-info)))))
 
            ;; register on the network
            (async/<! (register-server-lease-async group 5000))
