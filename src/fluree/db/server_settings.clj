@@ -445,39 +445,37 @@
                                    :s3 #(s3store/close s3-conn))]
     {:storage-type storage-type
      :servers      (:fdb-conn-servers settings)
-     :options      (cond-> {:transactor?    is-transactor?
-                            :tx-private-key (get-or-generate-tx-private-key settings)}
+     :options      {:transactor?    is-transactor?
+                    :tx-private-key (get-or-generate-tx-private-key settings)
+                    :storage-read storage-read
+                    :storage-exists storage-exists
+                    ;; Storage write is overwritten in the default transactor to
+                    ;; use the RAFT group as part of the write process
+                    :storage-write storage-write
+                    :storage-rename storage-rename
+                    :storage-list storage-list
 
-                           is-transactor?
-                           (assoc :storage-read storage-read
-                                  :storage-exists storage-exists
-                                  ;; Storage write is overwritten in the default transactor to
-                                  ;; use the RAFT group as part of the write process
-                                  :storage-write storage-write
-                                  :storage-rename storage-rename
-                                  :storage-list storage-list
+                    ;; create our own request channel so we can monitor it if in 'dev' mode
+                    :req-chan (async/chan)
 
-                                  ;; create our own request channel so we can monitor it if in 'dev' mode
-                                  :req-chan (async/chan)
-
-                                  :memory (some-> settings :fdb-memory-cache env-bytes)
-                                  :close-fn close-fn
-                                  :serializer serializer
-                                  ;; ledger-specific settings meta is a map of settings that
-                                  ;; are implementation-specific, i.e.  a transactor needs
-                                  ;; novelty-min and novelty-max, a web browser connection
-                                  ;; might need some different info
-                                  :meta {:novelty-min       (-> settings :fdb-memory-reindex env-bytes)
-                                         :novelty-max       (-> settings :fdb-memory-reindex-max env-bytes)
-                                         :dev?              dev?
-                                         :password-auth     (password-feature-settings settings)
-                                         :open-api          (-> settings :fdb-api-open env-boolean)
-                                         :file-storage-path (when (= :file storage-type)
-                                                              file-ledger-storage-path)
-                                         :s3-storage        (when (= :s3 storage-type)
-                                                              {:bucket (:bucket s3-conn)
-                                                               :prefix s3-ledger-storage-prefix})
-                                         :encryption-secret encryption-key}))}))
+                    :memory (some-> settings :fdb-memory-cache env-bytes)
+                    :close-fn close-fn
+                    :serializer serializer
+                    ;; ledger-specific settings meta is a map of settings that
+                    ;; are implementation-specific, i.e.  a transactor needs
+                    ;; novelty-min and novelty-max, a web browser connection
+                    ;; might need some different info
+                    :meta {:novelty-min       (-> settings :fdb-memory-reindex env-bytes)
+                           :novelty-max       (-> settings :fdb-memory-reindex-max env-bytes)
+                           :dev?              dev?
+                           :password-auth     (password-feature-settings settings)
+                           :open-api          (-> settings :fdb-api-open env-boolean)
+                           :file-storage-path (when (= :file storage-type)
+                                                file-ledger-storage-path)
+                           :s3-storage        (when (= :s3 storage-type)
+                                                {:bucket (:bucket s3-conn)
+                                                 :prefix s3-ledger-storage-prefix})
+                           :encryption-secret encryption-key}}}))
 
 
 (defn- build-group-server-configs
@@ -653,7 +651,7 @@
         ;fdb-version         (util/get-version "fluree" "db")
         consensus-type (-> settings :fdb-consensus-type str/lower-case keyword)
         hostname       (-> settings :hostname)
-        group-servers  (when is-ledger? (build-group-server-configs settings))]
+        group-servers  (build-group-server-configs settings)]
 
     {:transactor? is-ledger?
      :join?       fdb-join
@@ -677,11 +675,11 @@
                    :meta        {:hostname hostname}}
      ;:version  fdb-version
 
-     :group       (when is-ledger? (build-group-settings settings group-servers))
-     :consensus   (when is-ledger? {:type    consensus-type
-                                    :options (case consensus-type
-                                               :raft (raft-transactor-settings settings)
-                                               :in-memory {})})}))
+     :group       (build-group-settings settings group-servers)
+     :consensus   {:type    consensus-type
+                   :options (case consensus-type
+                              :raft (raft-transactor-settings settings)
+                              :in-memory {})}}))
 
 
 (comment

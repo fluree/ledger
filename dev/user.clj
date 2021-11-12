@@ -242,9 +242,13 @@
 
 
   ;; Query Peer
-  (start {:fdb-query-peer-servers "localhost:8090"
-          :fdb-api-port            8080
-          :fdb-mode                "query"})
+  (start {:fdb-api-port 8080
+          :fdb-mode "query"
+          :fdb-query-peer-servers "localhost:8090"
+          :fdb-group-servers "query-server@localhost:11002"
+          :fdb-group-this-server "query-server"
+          :fdb-storage-type "memory"
+          :fdb-consensus-type "in-memory"})
 
   (stop)
 
