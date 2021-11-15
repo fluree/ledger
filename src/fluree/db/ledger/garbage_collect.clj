@@ -30,8 +30,7 @@
       (<? (delete-file-raft conn (storage/ledger-root-key network dbid idx-point)))
       ;; remove all index segments that were garbage collected
       (doseq [k garbage-keys]
-        (let [k (str/replace k #"_his$" "-his")]            ;; TODO - temporary fix for add-garbage in indexing.clj added wrong post-fix for history files, remove in future versions!!
-          (<? (delete-file-raft conn k))))
+        (<? (delete-file-raft conn k)))
       ;; remove garbage file
       (<? (delete-file-raft conn (storage/ledger-garbage-key network dbid idx-point)))
       (log/info "Finished garbage collecting index point " idx-point " for ledger " network "/" dbid "."))))
