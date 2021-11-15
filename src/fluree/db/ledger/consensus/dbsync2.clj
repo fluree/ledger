@@ -165,14 +165,11 @@
     (loop [[leaf-key & r] leaf-keys]
       (if (nil? leaf-key)
         ::done
-        (let [leaf-his-key (str leaf-key "-his")]
-          (swap! stats-atom update :files #(+ % 2))
+        (do
+          (swap! stats-atom update :files #(+ % 1))
           (when-not (<? (storage-exists leaf-key))
             (swap! stats-atom update :missing inc)
             (>! sync-chan leaf-key))
-          (when-not (<? (storage-exists leaf-his-key))
-            (swap! stats-atom update :missing inc)
-            (>! sync-chan leaf-his-key))
           (recur r))))))
 
 
