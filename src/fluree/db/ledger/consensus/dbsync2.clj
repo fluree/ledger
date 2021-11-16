@@ -474,8 +474,8 @@
     (loop [[{:keys [network ledger block]} & r] ledgers-info]
       (if ledger
         (do (when (> block 1)
-              (let [db      (util/<? (fdb/db conn (str network "/" ledger)))
-                    indexer (:full-text/indexer conn)]
-                (<! (indexer {:action :sync, :db db}))))
+              (let [db      (<? (fdb/db conn (str network "/" ledger)))
+                    indexer (-> conn :full-text/indexer :process)]
+                (<? (indexer {:action :sync, :db db}))))
             (recur r))
         true))))
