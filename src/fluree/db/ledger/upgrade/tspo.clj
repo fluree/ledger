@@ -91,20 +91,30 @@
 (defrecord LegacyRaft [state-atom event-chan command-chan server this-server port
                        close raft raft-initialized open-api private-keys]
   TxGroup
-  (-add-server-async [group server] (raft/add-server-async group server))
-  (-remove-server-async [group server] (raft/remove-server-async group server))
-  (-new-entry-async [group entry] (raft/new-entry-async group entry))
-  (-local-state [group] (raft/local-state group))
-  (-state [group] (raft/state group))
-  (-is-leader? [group] (raft/is-leader? group))
-  (-active-servers [group] (let [server-map   (txproto/kv-get-in group [:leases :servers])
-                                 current-time (System/currentTimeMillis)]
-                             (reduce-kv (fn [acc server lease-data]
-                                          (if (>= (:expire lease-data) current-time)
-                                            (conj acc server)
-                                            acc))
-                                        #{} server-map)))
-  (-start-up-activities [group conn system shutdown join?] (raft/raft-start-up group conn system shutdown join?)))
+  (-add-server-async [group server]
+    (raft/add-server-async group server))
+  (-remove-server-async [group server]
+    (raft/remove-server-async group server))
+  (-new-entry-async [group entry]
+    (raft/new-entry-async group entry))
+  (-local-state [group]
+    (raft/local-state group))
+  (-state [group]
+    (raft/state group))
+  (-is-leader? [group]
+    (raft/is-leader? group))
+  (-active-servers [group]
+    (let [server-map   (txproto/kv-get-in group [:leases :servers])
+          current-time (System/currentTimeMillis)]
+      (reduce-kv (fn [acc server lease-data]
+                   (if (>= (:expire lease-data) current-time)
+                     (conj acc server)
+                     acc))
+                 #{} server-map)))
+  (-start-up-activities [group conn system shutdown join?]
+    (let [startup-opts {:skip-consistency-check? true, :join? join?}]
+      (raft/raft-start-up group conn system shutdown {:join? join?
+                                                      :skip-consistency-check? true)}))))
 
 (defn index-chunks
   [{:keys [conn block t network dbid] :as db} idx chunk-ch]
