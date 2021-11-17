@@ -232,7 +232,7 @@
                          dbid))
           (write-range idx wrtr db first-block last-block))
       (do (log/info "Full text index up to date")
-          (async/to-chan [])))))
+          (async/to-chan! [])))))
 
 (defn full-reset
   [idx wrtr db]
