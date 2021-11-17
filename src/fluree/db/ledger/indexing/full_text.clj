@@ -226,10 +226,13 @@
                          (or 0))
         first-block  (inc last-indexed)
         last-block   block]
-    (log/info (str "Syncing full text index from block: " first-block
-                   " to block " last-block " for ledger " network "/"
-                   dbid))
-    (write-range idx wrtr db first-block last-block)))
+    (if (<= first-block last-block)
+      (do (log/info (str "Syncing full text index from block: " first-block
+                         " to block " last-block " for ledger " network "/"
+                         dbid))
+          (write-range idx wrtr db first-block last-block))
+      (do (log/info "Full text index up to date")
+          (async/to-chan [])))))
 
 (defn full-reset
   [idx wrtr db]
