@@ -215,6 +215,17 @@
 
   (async/poll! vres))
 
+(defn start-one
+  ([] (start {}))
+  ([override-settings]
+   (let [settings (-> (settings/build-env environ/env)
+                      (merge override-settings))]
+     (server/startup settings))))
+
+
+(defn stop-one [s]
+  (when s (server/shutdown s))
+  :stopped)
 
 
 
@@ -251,6 +262,25 @@
           :fdb-consensus-type "in-memory"})
 
   (stop)
+
+  (def ledger-peer (start-one {:fdb-api-port 8090
+                               :fdb-mode "ledger"
+                               :fdb-group-servers "ledger-server@localhost:11001"
+                               :fdb-group-this-server "ledger-server"
+                               :fdb-group-log-directory "./build/data/group"
+                               :fdb-storage-file-root "./build/data"
+                               #_#_:fdb-storage-type "memory"
+                               #_#_:fdb-consensus-type "in-memory"}))
+  (def query-peer (start-one {:fdb-api-port 8099
+                              :fdb-mode "query"
+                              :fdb-query-peer-servers (str "localhost:" 8090)
+                              :fdb-group-servers "query-server@localhost:11002"
+                              :fdb-group-this-server "query-server"
+                              :fdb-storage-type "memory"
+                              :fdb-consensus-type "in-memory"}))
+
+  (stop-one ledger-peer)
+  (stop-one query-peer)
 
 
   ;; Three servers
