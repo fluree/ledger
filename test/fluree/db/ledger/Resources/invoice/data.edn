@@ -1,0 +1,90 @@
+[{
+  :_id "org$TechCo",
+  :name "TechCo",
+  :employees ["_user$antonio"]
+  },
+ {
+  :_id "org$Fluree",
+  :name "Fluree",
+  :employees ["_user$freddie"]
+  },
+ {
+  :_id "org$NewCo",
+  :name "NewCo",
+  :employees ["_user$scott"]
+  },
+ {
+  :_id "_user$freddie",
+  :username "freddie",
+  :auth ["_auth$freddie"],
+  :ethID "0x4C3F081c0a2a3AB3faa90C2D6e2EFd7fdB6e0429"
+  },
+ {
+  :_id "_user$scott",
+  :username "scott",
+  :auth ["_auth$scott"],
+  :ethID "0x18C5B16138bcE633Af84b30250a4104d85434A23"
+  },
+ {
+  :_id "_user$antonio",
+  :username "antonio",
+  :auth ["_auth$antonio"],
+  :ethID "0x981ACbf8CFA4049FD3c71231F60a5Cfc9a0424A5"
+  },
+ {
+  :_id "_auth$freddie",
+  :id "TfKqMRbSU7cFzX9UthQ7Ca4GoEZg7KJWue9",
+  :roles [["_role/id", "root"]]
+  },
+ {
+  :_id "_auth$scott",
+  :id "TfCFawNeET5FFHAfES61vMf9aGc1vmehjT2",
+  :roles [["_role/id", "level1User"]]
+  },
+ {
+  :_id "_auth$antonio",
+  :id "TfLK8tUpjYpabx7p64c9ZRwSgNUCCvxAAWG",
+  :roles [["_role/id", "level1User"]]
+  },
+ {
+  :_id "invoice",
+  :id "A-000",
+  :buyer  "org$NewCo",
+  :seller "org$Fluree",
+  :items  ["database", "app"]
+  },
+ {
+  :_id "invoice",
+  :id "B-000",
+  :buyer  "org$TechCo",
+  :seller "org$Fluree",
+  :items  ["database", "app", "mobile app", "kafka service"]
+  },
+ {
+  :_id "_rule$viewOrgs",
+  :id "viewOrgs",
+  :doc "Can view all orgs.",
+  :collection "org",
+  :collectionDefault true,
+  :fns [["_fn/name", "true"]],
+  :ops ["query"]
+  },
+ {
+  :_id "_rule$invoiceBuyer",
+  :_rule/id "invoiceBuyer",
+  :_rule/doc "Only allow access if an employee of invoice buyer.",
+  :_rule/collection "invoice",
+  :_rule/fns ["_fn$invoiceBuyer"],
+  :_rule/ops ["query"],
+  :_rule/collectionDefault true
+  },
+ {
+  :_id "_fn$invoiceBuyer",
+  :_fn/name "invoiceBuyer",
+  :_fn/code "(relationship? (?sid) [\"invoice/buyer\", \"org/employees\", \"_user/auth\"] (?auth_id))",
+  :_fn/doc "Only allow access if an employee of invoice buyer."
+  },
+ {
+  :_id ["_role/id", "level1User"],
+  :rules ["_rule$viewOrgs", "_rule$invoiceBuyer"]
+  }]

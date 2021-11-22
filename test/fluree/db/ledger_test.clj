@@ -33,7 +33,9 @@
             [fluree.db.ledger.docs.examples.supply-chain :as supply-chain]
             [fluree.db.ledger.docs.examples.voting :as voting]
             [fluree.db.ledger.general.todo-permissions :as todo-perm]
-            [fluree.db.peer.server-health-tests :as sh-test]))
+            [fluree.db.ledger.general.invoice-tests :as invoice]
+            [fluree.db.peer.server-health-tests :as sh-test]
+            [fluree.db.peer.http-api-tests :as http-api-test]))
 
 ;; TODO - tests fail - commented out for convenience:
 ;; API - (test-gen-flakes-query-transact-with)
@@ -108,11 +110,17 @@
              ;; 9- General
              (test/print-banner "General Tests")
              (todo-perm/todo-auth-tests)
+             (invoice/invoice-tests)
+
+
+             ;; 10-Passwword Auth
+             (test/print-banner "Password Authentication Tests")
+             (http-api-test/http-api-tests)
+
 
              ;; 10- Server health
              (test/print-banner "Server Health")
-             (sh-test/server-health-tests)
-             )))))
+             (sh-test/server-health-tests))))))
 
 (comment
 
