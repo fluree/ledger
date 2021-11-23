@@ -1,0 +1,91 @@
+[{
+  :_id "_collection",
+  :name "invoice"
+  },
+ {
+  :_id "_predicate",
+  :name "invoice/id",
+  :type "string",
+  :unique true
+  },
+ {
+  :_id "_predicate",
+  :name "invoice/buyer",
+  :type "ref",
+  :restrictCollection "org"
+  },
+ {
+  :_id "_predicate",
+  :name "invoice/seller",
+  :type "ref",
+  :restrictCollection "org"
+  },
+ {
+  :_id "_predicate",
+  :name "invoice/items",
+  :multi true,
+  :type "tag"
+  },
+ {
+  :_id "_predicate",
+  :name "invoice/cost",
+  :type "int",
+  :index true
+  },
+ {
+  :_id "_predicate",
+  :name "invoice/receipt",
+  :type "ref",
+  :component true,
+  :multi true,
+  :restrictCollection "invoiceReceipt"
+  },
+
+ {
+  :_id "_collection",
+  :name "org"
+  },
+ {
+  :_id "_predicate",
+  :name "org/name",
+  :type "string",
+  :unique true
+  },
+ {
+  :_id "_predicate",
+  :name "org/employees",
+  :type "ref",
+  :multi true,
+  :restrictCollection "_user"
+  },
+
+ {
+  :_id "_collection",
+  :name "invoiceReceipt",
+  :doc "Receipt acknowledgment of an invoice."
+  },
+ {
+  :_id "_predicate",
+  :name "invoiceReceipt/date",
+  :type "instant",
+  :index true
+  },
+ {
+  :_id "_predicate",
+  :name "invoiceReceipt/by",
+  :doc "Who received the invoice.",
+  :type "ref",
+  :restrictCollection "_user"
+  },
+ {
+  :_id "_predicate",
+  :name "_user/ethID",
+  :type "string",
+  :unique true,
+  :upsert true
+  },
+ {
+  :_id "_role",
+  :id  "level1User",
+  :doc "A level 1 user. Can view orgs, some invoices."
+  }]

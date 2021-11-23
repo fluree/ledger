@@ -465,9 +465,10 @@
     (let [dbRes  @(http/post (str endpoint-url-short "dbs"))
           dbBody (-> dbRes :body bs/to-string json/parse)]
 
-      (is (= #{["fluree" "api"] ["fluree" "querytransact"]
+      (is (= #{["fluree" "api"] ["fluree" "querytransact"] ["fluree" "invoice"]
                ["fluree" "chat"] ["fluree" "voting"] ["fluree" "crypto"]
-               ["test" "three"] ["fluree" "supplychain"] ["fluree" "todo"]} (set dbBody))))))
+               ["test" "three"] ["fluree" "supplychain"] ["fluree" "todo"]}
+             (set dbBody))))))
 
 
 ;; ENDPOINT TEST: /transact
