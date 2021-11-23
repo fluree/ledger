@@ -9,12 +9,12 @@
 (def ^:const instant-now (System/currentTimeMillis))
 (def ^:const instant-oldest-txn (- instant-now 5000))
 (def ^:const state-leases {:servers {:server-id {:id :DEF :expire (+ instant-now 300000)}}})
-(def ^:const state-cmd-queue {"test" {"txid" {:data    {:cmd "" :sig ""}
-                                              :size    400
-                                              :txid    "txid"
-                                              :network "network"
-                                              :dbid    "dbid"
-                                              :instant instant-oldest-txn}}
+(def ^:const state-cmd-queue {"test"   {"txid" {:data    {:cmd "" :sig ""}
+                                                :size    400
+                                                :txid    "txid"
+                                                :network "network"
+                                                :dbid    "dbid"
+                                                :instant instant-oldest-txn}}
                               "fluree" {"txid" {:data    {:cmd "" :sig ""}
                                                 :size    2400
                                                 :txid    "txid"
@@ -27,8 +27,8 @@
 
 (deftest server-health-tests
   (testing "remove-deep"
-    (let [original {:level-1 {:level-2 {:private-key "abcd" :other "1234"}
-                              :private-key "4567"}
+    (let [original {:level-1     {:level-2     {:private-key "abcd" :other "1234"}
+                                  :private-key "4567"}
                     :private-key "7890"}
           expected {:level-1 {:level-2 {:other "1234"}}}]
       (is (= expected (srv-health/remove-deep [:private-key] original)))))
