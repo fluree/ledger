@@ -117,7 +117,7 @@
             res         (srv-health/nw-state-handler slow-system {:headers {:request-timeout 1}})
             _           (future
                           (Thread/sleep 1000)
-                          (deliver slow-state group-state))
+                          (deliver slow-state @group-state))
             body        (-> res :body bs/to-string json/parse)]
         (is (= srv-health/http-timeout (:status res)))
         (is (string? body))
