@@ -111,8 +111,14 @@
         (is (test/contains-many? body :open-api :raft :svr-state :oldest-pending-txn-instant))
         (is (= instant-oldest-txn (:oldest-pending-txn-instant body)))))
     (testing "timeout"
-      (let [res  (srv-health/nw-state-handler test/system {:headers {:request-timeout 0}})
-            body (-> res :body bs/to-string json/parse)]
+      (let [group-state (get-in test/system [:group :state-atom])
+            slow-state  (promise)
+            slow-system (assoc-in test/system [:group :state-atom] slow-state)
+            res         (srv-health/nw-state-handler slow-system {:headers {:request-timeout 1}})
+            _           (future
+                          (Thread/sleep 1000)
+                          (deliver slow-state group-state))
+            body        (-> res :body bs/to-string json/parse)]
         (is (= srv-health/http-timeout (:status res)))
         (is (string? body))
         (is (str/starts-with? body "Client Timeout."))))))
