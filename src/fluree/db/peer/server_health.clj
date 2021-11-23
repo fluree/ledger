@@ -66,8 +66,8 @@
       (let [[k v] cq
             acc* (into acc [{(keyword k) (count v)
                              :txn-count  (count v)
-                             :txn-oldest-instant (some->> v vals (map :instant) (apply min))
-                             }])]
+                             :txn-oldest-instant (some->> v vals (map :instant) (apply min))}])]
+
         (recur r acc*))
       acc)))
 
@@ -188,5 +188,5 @@
       {:status  http-timeout
        :headers {"Content-Type" "text/plain"}
        :body    (->> timeout
-                     (format "Client Timeout. Request did not complete in %d ms" )
+                     (format "Client Timeout. Request did not complete in %d ms")
                      json/stringify-UTF8)})))
