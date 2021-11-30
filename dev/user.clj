@@ -253,31 +253,31 @@
 
 
   ;; Query Peer
-  (start {:fdb-api-port 8080
-          :fdb-mode "query"
+  (start {:fdb-api-port           8080
+          :fdb-mode               "query"
           :fdb-query-peer-servers "localhost:8090"
-          :fdb-group-servers "query-server@localhost:11002"
-          :fdb-group-this-server "query-server"
-          :fdb-storage-type "memory"
-          :fdb-consensus-type "in-memory"})
+          :fdb-group-servers      "query-server@localhost:11002"
+          :fdb-group-this-server  "query-server"
+          :fdb-storage-type       "memory"
+          :fdb-consensus-type     "in-memory"})
 
   (stop)
 
-  (def ledger-peer (start-one {:fdb-api-port 8090
-                               :fdb-mode "ledger"
-                               :fdb-group-servers "ledger-server@localhost:11001"
-                               :fdb-group-this-server "ledger-server"
+  (def ledger-peer (start-one {:fdb-api-port            8090
+                               :fdb-mode                "ledger"
+                               :fdb-group-servers       "ledger-server@localhost:11001"
+                               :fdb-group-this-server   "ledger-server"
                                :fdb-group-log-directory "./build/data/group"
-                               :fdb-storage-file-root "./build/data"
-                               #_#_:fdb-storage-type "memory"
-                               #_#_:fdb-consensus-type "in-memory"}))
-  (def query-peer (start-one {:fdb-api-port 8099
-                              :fdb-mode "query"
+                               :fdb-storage-file-root   "./build/data"
+                               #_#_:fdb-storage-type    "memory"
+                               #_#_:fdb-consensus-type  "in-memory"}))
+  (def query-peer (start-one {:fdb-api-port           8099
+                              :fdb-mode               "query"
                               :fdb-query-peer-servers (str "localhost:" 8090)
-                              :fdb-group-servers "query-server@localhost:11002"
-                              :fdb-group-this-server "query-server"
-                              :fdb-storage-type "memory"
-                              :fdb-consensus-type "in-memory"}))
+                              :fdb-group-servers      "query-server@localhost:11002"
+                              :fdb-group-this-server  "query-server"
+                              :fdb-storage-type       "memory"
+                              :fdb-consensus-type     "in-memory"}))
 
   (stop-one ledger-peer)
   (stop-one query-peer)
