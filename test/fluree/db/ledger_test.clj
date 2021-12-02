@@ -35,6 +35,7 @@
             [fluree.db.ledger.general.todo-permissions :as todo-perm]
             [fluree.db.ledger.general.invoice-tests :as invoice]
             [fluree.db.peer.server-health-tests :as sh-test]
+            [fluree.db.peer.query-peer-tests :as query-peer-test]
             [fluree.db.peer.http-api-tests :as http-api-test]))
 
 ;; TODO - tests fail - commented out for convenience:
@@ -120,7 +121,12 @@
 
              ;; 10- Server health
              (test/print-banner "Server Health")
-             (sh-test/server-health-tests))))))
+             (sh-test/server-health-tests)
+
+             ;; 11- Query Peer
+             (test/print-banner "Query Peer")
+             (query-peer-test/query-peer-tests)
+             )))))
 
 (comment
 
