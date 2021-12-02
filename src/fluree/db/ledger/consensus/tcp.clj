@@ -200,28 +200,29 @@
               (recur conn))))))))
 
 ;; store client event loop here to be shared across all client connections
-(def client-event-loop (atom nil))
+(def client-event-loops (atom {}))
 
 (defn get-client-event-loop
   "Will create a new client event loop if one doesn't already exist."
-  []
-  (or @client-event-loop
-      (let [new-state (swap! client-event-loop
-                             (fn [existing]
-                               (if existing
-                                 existing
-                                 (ntcp/event-loop))))]
-        new-state)))
+  [this-server]
+  (or (get @client-event-loops this-server)
+      (let [new-state (swap! client-event-loops
+                             (fn [loops]
+                               (if-let [existing (get loops this-server)]
+                                 loops
+                                 (assoc loops this-server (ntcp/event-loop)))))]
+        (get new-state this-server))))
 
 
 (defn shutdown-client-event-loop
   "Shuts down client event loop if it exists, returns true."
-  []
-  (swap! client-event-loop
-         (fn [cel]
-           (when cel
-             (ntcp/shutdown! cel))
-           nil))
+  [this-server]
+  (swap! client-event-loops
+         (fn [loops]
+           (if-let [cel (get loops this-server)]
+             (do (ntcp/shutdown! cel)
+                 (dissoc loops this-server))
+             loops)))
   true)
 
 
@@ -229,8 +230,8 @@
   "Launches a connection from a client to a server."
   [this-server-cfg remote-server-cfg handler]
   (async/go
-    (let [event-loop  (get-client-event-loop)
-          this-server (:server-id this-server-cfg)
+    (let [this-server (:server-id this-server-cfg)
+          event-loop  (get-client-event-loop this-server)
           {:keys [host port server-id]} remote-server-cfg
           _           (assert (string? host))
           _           (assert (int? port))
