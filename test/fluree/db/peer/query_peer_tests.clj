@@ -48,7 +48,7 @@
             ledger-list-resp1 @(http/post (str "http://localhost:" query-port "/fdb/dbs"))
             ledger-list-resp2 @(http/post (str "http://localhost:" ledger-port "/fdb/dbs"))
             ;; wait for initialization!
-            _                 (Thread/sleep 2000)
+            _                 (Thread/sleep 4000)
             ledger1-ready?    @(http/post (str "http://localhost:" query-port "/fdb/test/test1/ledger-stats"))
             ledger2-ready?    @(http/post (str "http://localhost:" ledger-port "/fdb/test/test2/ledger-stats"))]
         (is (= 200 (:status new-ledger1)))
