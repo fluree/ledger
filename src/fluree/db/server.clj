@@ -130,12 +130,7 @@
          consensus-type (:type consensus)
          storage-type   (:storage-type conn)
          memory?        (= :memory storage-type)
-         group          (let [group-opts (:group config)]
-                          (if transactor?
-                            (txgroup/start group-opts consensus-type join?)
-                            ;; TODO - currently if query-peer, we use a dummy group obj. Change this?
-                            group-opts))
-
+         group          (txgroup/start (:group config) consensus-type join?)
          remote-writer  (fn [k data]
                           (txproto/storage-write-async group k data))
          conn           (let [storage-write-fn  (case storage-type
