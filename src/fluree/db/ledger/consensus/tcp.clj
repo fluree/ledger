@@ -4,7 +4,7 @@
             [taoensso.nippy :as nippy]
             [fluree.db.util.async :refer [go-try]]
             [clojure.tools.logging :as log])
-  (:import (java.net BindException)))
+  (:import (java.net BindException InetSocketAddress)))
 
 (set! *warn-on-reflection* true)
 
@@ -29,9 +29,9 @@
         (recur)))
     ;; return shutdown function
     (fn []
+      (log/info "Shutting down tcp server on port" port)
       (async/close! accept-chan)
       (ntcp/shutdown! evt-loop))))
-
 
 ;;; implementation
 
@@ -220,10 +220,26 @@
   (swap! client-event-loops
          (fn [loops]
            (if-let [cel (get loops this-server)]
-             (do (ntcp/shutdown! cel)
+             (do (log/debug "Shutting down tcp client event loop" this-server)
+                 (ntcp/shutdown! cel)
                  (dissoc loops this-server))
              loops)))
   true)
+
+(defn validate-remote-address!
+  "Validates that we are given a server address that we can connect to. Will spin until
+  the address is resolvable to facilitate startup in environments that don't have a DNS
+  entry for a given hostname."
+  [host port]
+  (assert (string? host))
+  (assert (int? port))
+  (loop [retries 0]
+    (let [addr (InetSocketAddress. ^String host ^Integer port)]
+      (if (.isUnresolved addr)
+        (do (log/warn (str "Remote server address is not resolvable:" host ":" port ". Retrying (" retries ").") )
+            (Thread/sleep 5000)
+            (recur (inc retries)))
+        addr))))
 
 
 (defn launch-client-connection
@@ -233,8 +249,7 @@
     (let [this-server (:server-id this-server-cfg)
           event-loop  (get-client-event-loop this-server)
           {:keys [host port server-id]} remote-server-cfg
-          _           (assert (string? host))
-          _           (assert (int? port))
+          _           (validate-remote-address! host port)
           client      (ntcp/connect event-loop {:host       host
                                                 :port       port
                                                 :write-chan (async/chan (async/dropping-buffer 10))})]
