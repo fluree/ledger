@@ -4,7 +4,7 @@
             [taoensso.nippy :as nippy]
             [fluree.db.util.async :refer [go-try]]
             [clojure.tools.logging :as log])
-  (:import (java.net BindException)))
+  (:import (java.net BindException InetSocketAddress)))
 
 (set! *warn-on-reflection* true)
 
@@ -29,9 +29,9 @@
         (recur)))
     ;; return shutdown function
     (fn []
+      (log/info "Shutting down tcp server on port" port)
       (async/close! accept-chan)
       (ntcp/shutdown! evt-loop))))
-
 
 ;;; implementation
 
@@ -200,40 +200,56 @@
               (recur conn))))))))
 
 ;; store client event loop here to be shared across all client connections
-(def client-event-loop (atom nil))
+(def client-event-loops (atom {}))
 
 (defn get-client-event-loop
   "Will create a new client event loop if one doesn't already exist."
-  []
-  (or @client-event-loop
-      (let [new-state (swap! client-event-loop
-                             (fn [existing]
-                               (if existing
-                                 existing
-                                 (ntcp/event-loop))))]
-        new-state)))
+  [this-server]
+  (or (get @client-event-loops this-server)
+      (let [new-state (swap! client-event-loops
+                             (fn [loops]
+                               (if-let [existing (get loops this-server)]
+                                 loops
+                                 (assoc loops this-server (ntcp/event-loop)))))]
+        (get new-state this-server))))
 
 
 (defn shutdown-client-event-loop
   "Shuts down client event loop if it exists, returns true."
-  []
-  (swap! client-event-loop
-         (fn [cel]
-           (when cel
-             (ntcp/shutdown! cel))
-           nil))
+  [this-server]
+  (swap! client-event-loops
+         (fn [loops]
+           (if-let [cel (get loops this-server)]
+             (do (log/debug "Shutting down tcp client event loop" this-server)
+                 (ntcp/shutdown! cel)
+                 (dissoc loops this-server))
+             loops)))
   true)
+
+(defn validate-remote-address!
+  "Validates that we are given a server address that we can connect to. Will spin until
+  the address is resolvable to facilitate startup in environments that don't have a DNS
+  entry for a given hostname."
+  [host port]
+  (assert (string? host))
+  (assert (int? port))
+  (loop [retries 0]
+    (let [addr (InetSocketAddress. ^String host ^Integer port)]
+      (if (.isUnresolved addr)
+        (do (log/warn (str "Remote server address is not resolvable:" host ":" port ". Retrying (" retries ").") )
+            (Thread/sleep 5000)
+            (recur (inc retries)))
+        addr))))
 
 
 (defn launch-client-connection
   "Launches a connection from a client to a server."
   [this-server-cfg remote-server-cfg handler]
   (async/go
-    (let [event-loop  (get-client-event-loop)
-          this-server (:server-id this-server-cfg)
+    (let [this-server (:server-id this-server-cfg)
+          event-loop  (get-client-event-loop this-server)
           {:keys [host port server-id]} remote-server-cfg
-          _           (assert (string? host))
-          _           (assert (int? port))
+          _           (validate-remote-address! host port)
           client      (ntcp/connect event-loop {:host       host
                                                 :port       port
                                                 :write-chan (async/chan (async/dropping-buffer 10))})]
