@@ -53,31 +53,6 @@
         (some (partial dirty? db))
         boolean)))
 
-(defn mark-novel
-  "Mark that there are flakes in novelty within the subrange of the index node map
-  `node`"
-  [node]
-  (assoc node ::novel true))
-
-(defn novel?
-  "Returns true if the index node map `node` was marked novel because there were
-  flakes in novelty within the subrange of `node` when it was resolved"
-  [node]
-  (-> node ::novel true?))
-
-(defn mark-unchanged
-  "Mark that there are not any flakes in novelty within the subrange of the index
-  node map `node`"
-  [node]
-  (assoc node ::novel false))
-
-(defn unchanged?
-  "Returns true if the index node map `node` was not marked novel because there
-  weren't any flakes in novelty within the subrange of `node` when it was
-  resolved"
-  [node]
-  (-> node ::novel false?))
-
 (defn mark-expanded
   [node]
   (assoc node ::expanded true))
@@ -115,9 +90,7 @@
     (let [node-novelty (index/novelty-subrange node t novelty)]
       (if (or (seq node-novelty) (seq remove-preds))
         (try* (let [resolved-node (<? (index/resolve conn node))]
-                (-> resolved-node
-                    (update-node t novelty remove-preds)
-                    mark-novel))
+                (update-node resolved-node t novelty remove-preds))
               (catch* e
                       (log/error e
                                  "Error resolving novel index node:"
@@ -155,7 +128,7 @@
             (let [node   (peek stack)
                   stack* (pop stack)]
               (if (expanded? node)
-                (let [stats* (if (novel? node)
+                (let [stats* (if (index/resolved? node)
                                (-> stats
                                    (update :novel inc)
                                    (update :stale add-garbage node))
@@ -241,7 +214,7 @@
   `error-ch`"
   [conn network dbid idx error-ch node]
   (go
-    (if (novel? node)
+    (if (index/resolved? node)
       (try* (if (index/leaf? node)
               (<? (storage/write-leaf conn network dbid idx node))
               (<? (storage/write-branch conn network dbid idx node)))
