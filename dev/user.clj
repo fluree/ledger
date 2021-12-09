@@ -279,6 +279,30 @@
   (stop-one ledger-peer)
   (stop-one query-peer)
 
+  (def ledger1 (start-one {:fdb-api-port            8091
+                           :fdb-mode                "ledger"
+                           :fdb-group-servers       "ledger1@server1.local:9791,ledger2@server2.local:9792,ledger3@server3.local:9793"
+                           :fdb-group-this-server   "ledger1"
+                           :fdb-group-log-directory "./data/ledger1/data/group"
+                           :fdb-storage-file-root   "./data/ledger1/data"}))
+  (def ledger2 (start-one {:fdb-api-port            8092
+                           :fdb-mode                "ledger"
+                           :fdb-group-servers       "ledger1@server1.local:9791,ledger2@server2.local:9792,ledger3@server3.local:9793"
+                           :fdb-group-this-server   "ledger2"
+                           :fdb-group-log-directory "./data/ledger2/data/group"
+                           :fdb-storage-file-root   "./data/ledger2/data"}))
+  (def ledger3 (start-one {:fdb-api-port            8093
+                           :fdb-mode                "ledger"
+                           :fdb-group-servers       "ledger1@server1.local:9791,ledger2@server2.local:9792,ledger3@server3.local:9793"
+                           :fdb-group-this-server   "ledger3"
+                           :fdb-group-log-directory "./data/ledger3/data/group"
+                           :fdb-storage-file-root   "./data/ledger3/data"}))
+
+  (stop-one ledger1)
+  (stop-one ledger2)
+  (stop-one ledger3)
+
+
 
   ;; Three servers
   (start {:fdb-group-servers       "ABC@localhost:9790,DEF@localhost:9791,GHI@localhost:9792"

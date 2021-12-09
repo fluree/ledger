@@ -73,7 +73,7 @@
       (try-continue (:close full-text-indexer)))
     (when (fn? (:close conn))
       (try-continue (:close conn)))
-    (ftcp/shutdown-client-event-loop)))
+    (ftcp/shutdown-client-event-loop (:this-server group))))
 
 
 (defn check-version-upgrade-fn
@@ -171,7 +171,7 @@
                                                  (assoc :system system))]
                           (http-api/webserver-factory webserver-opts))
          ;; we are not a transacting peer in query mode, don't bother with this
-         stats          (when transactor? (stats/initiate-stats-reporting system (-> config :stats :interval)))
+         stats          (stats/initiate-stats-reporting system (-> config :stats :interval))
          system*        (assoc system :webserver webserver
                                :stats stats)
          _              (when (and (or memory? (= consensus-type :in-memory))

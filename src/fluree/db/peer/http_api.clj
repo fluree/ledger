@@ -878,7 +878,7 @@
       ignore-trailing-slash))
 
 
-(defonce web-server (atom nil))
+(defonce web-server (atom {}))
 
 (defrecord WebServer [close])
 
@@ -898,9 +898,9 @@
                                     :open-api open-api)
           _           (try
                         (json/encode-BigDecimal-as-string json-bigdec-string)
-                        (reset! web-server (http/run-server
-                                             (make-handler system*)
-                                             {:port port}))
+                        (swap! web-server assoc port (http/run-server
+                                                       (make-handler system*)
+                                                       {:port port}))
                         (catch BindException _
                           (log/error (str "Cannot start. Port binding failed, address already in use. Port: " port "."))
                           (log/error "FlureeDB Exiting. Adjust your config, or shut down other service using port.")
@@ -911,7 +911,8 @@
                           (System/exit 1)))
           close-fn    (fn []
                         ;; shut down the web server but give existing connections 1s to finish
-                        (@web-server :timeout 1000)
-                        (reset! web-server nil))]
+                        (let [server-close-fn (get @web-server port)]
+                          (server-close-fn :timeout 1000))
+                        (swap! web-server dissoc port))]
       (map->WebServer {:close close-fn}))))
 
