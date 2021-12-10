@@ -5,6 +5,7 @@
             [clojure.core.async :as async]
 
             [fluree.db.util.core :as util]
+            [fluree.db.util.async :refer [<??]]
             [fluree.crypto :as crypto]
             [fluree.db.connection :as connection]
 
@@ -14,6 +15,7 @@
             [fluree.db.peer.messages :as messages]
 
             [fluree.db.ledger.indexing.full-text :as full-text]
+            [fluree.db.ledger.reindex :refer [reindex]]
             [fluree.db.ledger.stats :as stats]
             [fluree.db.ledger.storage.memorystore :as memorystore]
             [fluree.db.ledger.txgroup.core :as txgroup]
@@ -195,6 +197,18 @@
       (println "Private:" (:private acct-keys))
       (println "Public:" (:public acct-keys))
       (println "Account id:" account-id))
+
+    :reindex
+    (let [{:keys [conn] :as system} (startup)]
+      (try (doseq [[network dbid] (->> conn
+                                       txproto/ledgers-info-map
+                                       (map (juxt :network :ledger)))]
+             (log/info "Rebuilding indexes for ledger [" network dbid "]")
+             (<?? (reindex conn network dbid)))
+           (catch Exception e
+             (log/error e "Failed to rebuild indexes."))
+           (finally
+             (shutdown system))))
 
     ;; else
     (println (str "Unknown command: " command)))
