@@ -1,4 +1,4 @@
-FROM clojure:tools-deps-1.10.3.998-slim-bullseye AS builder
+FROM --platform=$BUILDPLATFORM clojure:openjdk-11-tools-deps-1.10.3.1040-slim-bullseye AS builder
 
 RUN apt-get update && apt-get install --assume-yes --no-install-recommends curl
 
@@ -20,7 +20,7 @@ COPY . ./
 RUN make uberjar
 RUN make stage-release
 
-FROM openjdk:11 AS runner
+FROM openjdk:17-slim-bullseye AS runner
 
 RUN mkdir -p /opt/fluree
 COPY --from=builder /usr/src/fluree-ledger/build/* /opt/fluree/
