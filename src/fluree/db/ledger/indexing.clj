@@ -209,6 +209,21 @@
                                      :first    first-flake))]
           (conj new-branches last-child))))))
 
+(defn reconcile-leaf-size
+  [{:keys [flakes] :as leaf}]
+  (let [total-size (->> flakes
+                        (map flake/size-flake)
+                        (reduce +))]
+    (assoc leaf :size total-size)))
+
+(defn reconcile-branch-size
+  [{:keys [children] :as branch}]
+  (let [total-size (->> children
+                        vals
+                        (map :size)
+                        (reduce +))]
+    (assoc branch :size total-size)))
+
 (defn write-if-novel
   "Writes `node` to storage if it has been updated, and puts any errors onto the
   `error-ch`"
@@ -216,8 +231,10 @@
   (go
     (if (index/resolved? node)
       (try* (if (index/leaf? node)
-              (<? (storage/write-leaf conn network dbid idx node))
-              (<? (storage/write-branch conn network dbid idx node)))
+              (let [leaf (reconcile-leaf-size node)]
+                (<? (storage/write-leaf conn network dbid idx leaf)))
+              (let [branch (reconcile-branch-size node)]
+                (<? (storage/write-branch conn network dbid idx branch))))
             (catch* e
                     (log/error e
                                "Error writing novel index node:"
