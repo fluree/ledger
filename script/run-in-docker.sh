@@ -6,6 +6,8 @@ image=fluree/${PWD##*/}
 
 builder_image=${image}:builder
 
+export DOCKER_BUILDKIT=1
+
 # output build stdout to /dev/null b/c even with --quiet it still outputs
 # sha256:blahblahblah and we sometimes want to consume the docker run output
 # in another script
