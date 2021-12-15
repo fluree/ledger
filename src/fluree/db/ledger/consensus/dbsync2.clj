@@ -166,7 +166,7 @@
       (if (nil? leaf-key)
         ::done
         (do
-          (swap! stats-atom update :files #(+ % 1))
+          (swap! stats-atom update :files inc)
           (when-not (<? (storage-exists leaf-key))
             (swap! stats-atom update :missing inc)
             (>! sync-chan leaf-key))
