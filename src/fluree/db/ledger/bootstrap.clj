@@ -186,7 +186,7 @@
          {:keys [fparts index-pred ref-pred pred->id ident->id]} (bootstrap-data->fparts bootstrap-txn)
          flakes               (reduce (fn [acc [s p o]]
                                         (conj acc (flake/new-flake s p o t true)))
-                                      (flake/sorted-set-by flake/cmp-flakes-spot-novelty) fparts)
+                                      (flake/sorted-set-by flake/cmp-flakes-spot) fparts)
          authority-flakes     (master-auth-flake t pred->id ident->id auth-subid master-auth-id*)
          flakes*              (-> (into flakes authority-flakes)
                                   (conj (flake/new-flake t (get pred->id "_tx/id") txid* t true)
