@@ -10,6 +10,9 @@ jobs:
     runs-on: [self-hosted, docker]
     steps:
       - uses: actions/checkout@v2
+      - uses: docker/setup-buildx-action@v1
+        with:
+          install: true
       - name: Run integration tests
         run: script/run-in-docker.sh make ci
       - name: Notify Slack fail
