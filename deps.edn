@@ -1,20 +1,19 @@
 {:deps {org.clojure/clojure               {:mvn/version "1.10.3"}
         org.clojure/data.xml              {:mvn/version "0.2.0-alpha6"}
-        com.fluree/alphabase              {:mvn/version "3.2.1"}
+        com.fluree/alphabase              {:mvn/version "3.2.2"}
         com.fluree/db                     {:git/url "https://github.com/fluree/db.git"
-                                           :sha     "619f957278d4de7897f4975607b198f68c9c9d35"}
         com.fluree/raft                   {:mvn/version "1.0.0-beta1"}
-        com.fluree/crypto                 {:mvn/version "0.3.6"}
+        com.fluree/crypto                 {:mvn/version "0.3.7"}
 
         ;; network comm
-        net.async/async                   {:mvn/version "0.1.0"}
+        net.async/async                   {:mvn/version "0.1.1"}
 
         ;; Lucene
         clucie/clucie                     {:mvn/version "0.4.2"}
 
         ;; AWS S3 API
-        com.cognitect.aws/api             {:mvn/version "0.8.524"}
-        com.cognitect.aws/endpoints       {:mvn/version "1.1.12.93"}
+        com.cognitect.aws/api             {:mvn/version "0.8.539"}
+        com.cognitect.aws/endpoints       {:mvn/version "1.1.12.129"}
         com.cognitect.aws/s3              {:mvn/version "814.2.991.0"}
 
         ;; web server
@@ -24,7 +23,7 @@
         compojure/compojure               {:mvn/version "1.6.2"}
 
         ;; logging
-        ch.qos.logback/logback-classic    {:mvn/version "1.2.6"}
+        ch.qos.logback/logback-classic    {:mvn/version "1.2.9"}
 
         ;; config
         environ/environ                   {:git/url   "https://github.com/cap10morgan/environ.git"
@@ -36,17 +35,17 @@
  :aliases
  {:mvn/group-id com.fluree
   :mvn/artifact-id ledger
-  :mvn/version "1.0.0-beta17"
+  :mvn/version "1.0.0-beta18"
 
   :dev
   {:extra-paths ["dev", "test"]
-   :extra-deps  {org.clojure/tools.namespace {:mvn/version "1.1.0"}}}
+   :extra-deps  {org.clojure/tools.namespace {:mvn/version "1.2.0"}}}
 
   :test
   {:extra-paths ["test" "test-resources"]
    :extra-deps  {com.cognitect/test-runner
                  {:git/url "https://github.com/cognitect-labs/test-runner.git"
-                  :sha "dd6da11611eeb87f08780a30ac8ea6012d4c05ce"}}
+                  :sha "cc75980b43011773162b485f46f939dc5fba91e4"}}
    :exec-fn     cognitect.test-runner.api/test}
 
   :jar
@@ -106,7 +105,7 @@
    :main-opts   ["-m" "cloverage.coverage" "-p" "src" "-s" "test" "--test-ns-regex" "^fluree\\.db\\.ledger\\.ledger-test*$" "--output" "scanning_results/coverage"]}
 
   :eastwood
-  {:extra-deps {jonase/eastwood {:mvn/version "0.9.9"}}
+  {:extra-deps {jonase/eastwood {:mvn/version "1.0.0"}}
    :main-opts ["-m" "eastwood.lint" {:source-paths ["src"] :test-paths ["test"]}]}
 
   :ancient
@@ -114,5 +113,5 @@
    :main-opts ["-m" "antq.core" "--skip=github-action"]}
 
   :clj-kondo
-  {:extra-deps {clj-kondo/clj-kondo {:mvn/version "2021.10.19"}}
+  {:extra-deps {clj-kondo/clj-kondo {:mvn/version "2021.12.16"}}
    :main-opts ["-m" "clj-kondo.main" "--lint" "src" "--config" ".clj-kondo/config.edn"]}}}

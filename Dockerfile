@@ -2,7 +2,7 @@ FROM --platform=$BUILDPLATFORM clojure:openjdk-11-tools-deps-1.10.3.1040-slim-bu
 
 RUN apt-get update && apt-get install --assume-yes --no-install-recommends curl
 
-RUN curl -sL https://deb.nodesource.com/setup_16.x | bash -
+RUN curl -sL https://deb.nodesource.com/setup_14.x | bash -
 RUN apt-get update && apt-get install --assume-yes --no-install-recommends nodejs zip git
 
 RUN mkdir -p /usr/src/fluree-ledger
