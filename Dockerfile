@@ -46,5 +46,8 @@ EXPOSE 8090
 # Point runtime data paths at volume
 ENV FLUREE_ARGS="-Dfdb-storage-file-root=/var/lib/fluree/ -Dfdb-group-log-directory=/var/lib/fluree/group/"
 
+# Persist default-private-key.txt in the same volume as the data
+ENV FLUREE_ARGS="${FLUREE_ARGS} -Dfdb-group-config-path=/var/lib/fluree/"
+
 ENTRYPOINT ["./fluree_start.sh"]
 CMD []
