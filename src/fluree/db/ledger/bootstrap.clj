@@ -154,7 +154,7 @@
      (flake/new-flake role-sid (get pred->id "_role/doc") "Root role." t true)
      (flake/new-flake role-sid (get pred->id "_role/rules") rule-sid t true)
 
-     ;; add auth record, and assign root rule
+     ;; add auth record, and assign root role
      (flake/new-flake auth-subid (get pred->id "_auth/id") master-authority t true)
      (flake/new-flake auth-subid (get pred->id "_auth/roles") role-sid t true)
 
