@@ -3,9 +3,10 @@
   (:require [environ.core :as environ]
             [clojure.tools.logging :as log]
             [clojure.core.async :as async]
+            [clojure.string :as str]
 
             [fluree.db.util.core :as util]
-            [fluree.db.util.async :refer [<??]]
+            [fluree.db.util.async :refer [<? <?? go-try]]
             [fluree.crypto :as crypto]
             [fluree.db.connection :as connection]
 
@@ -111,6 +112,23 @@
     m))
 
 
+(defn migrated?
+  [{:keys [storage-list] :as conn} [network dbid]]
+  (go-try
+    (let [tspo-dir (str/join "/" [network dbid "tspo"])
+          list-res (<? (storage-list tspo-dir))]
+      (-> list-res seq boolean))))
+
+(defn all-migrated?
+  [{:keys [conn] :as system}]
+  (go-try
+   (loop [[ledger & rst] (-> conn :group txproto/all-ledger-list)]
+     (if-not ledger
+       true
+       (if-not (<? (migrated? conn ledger))
+         false
+         (recur rst))))))
+
 (defn startup
   ([] (startup (settings/build-env @environ/runtime-env)))
   ([settings]
@@ -175,16 +193,24 @@
          ;; we are not a transacting peer in query mode, don't bother with this
          stats          (stats/initiate-stats-reporting system (-> config :stats :interval))
          system*        (assoc system :webserver webserver
-                               :stats stats)
-         _              (when (and (or memory? (= consensus-type :in-memory))
-                                   (not (and memory? (= consensus-type :in-memory))))
-                          (log/warn "Error during start-up. Currently if storage-type is 'memory', then consensus-type has to be 'in-memory' and vice versa.")
-                          (shutdown system*)
-                          (System/exit 1))]
+                               :stats stats)]
+
+     (when (and (or memory? (= consensus-type :in-memory))
+                (not (and memory? (= consensus-type :in-memory))))
+       (log/warn "Error during start-up. Currently if storage-type is 'memory', then consensus-type has to be 'in-memory' and vice versa.")
+       (shutdown system*)
+       (System/exit 1))
+
+     (when-not (<?? (all-migrated? system))
+       (log/error "Error starting system. Index format out of date. Please upgrade indexes using the :reindex command")
+       (shutdown system*)
+       (System/exit 1))
 
      ;; wait for initialization, and kick off some startup activities
      (when transactor?
-       (txproto/-start-up-activities group conn system* shutdown join?)) system*)))
+       (txproto/-start-up-activities group conn system* shutdown join?))
+
+     system*)))
 
 (defn- execute-command
   "Execute some arbitrary commands on FlureeDB (then exit)"
@@ -204,7 +230,9 @@
                                        txproto/ledgers-info-map
                                        (map (juxt :network :ledger)))]
              (log/info "Rebuilding indexes for ledger [" network dbid "]")
-             (<?? (reindex conn network dbid)))
+             (let [status (<?? (reindex conn network dbid))]
+               (log/info "Ledger rebuilding complete for ledger [" network dbid "]"
+                         status)))
            (catch Exception e
              (log/error e "Failed to rebuild indexes."))
            (finally
