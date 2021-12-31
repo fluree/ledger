@@ -168,14 +168,14 @@
 
 
 (defn authenticated?
-  "Returns truthy if either open-api is enable or user is authenticated"
+  "Returns truthy if either open-api is enabled or user is authenticated"
   [system auth-map]
   (or (open-api? system)
       (:auth auth-map)))
 
 
 (defn- require-authentication
-  "Will throw if request if not authenticated"
+  "Will throw if request is not authenticated"
   [system auth-map]
   (when-not (authenticated? system auth-map)
     (throw (ex-info (str "Request requires authentication.")
@@ -184,7 +184,7 @@
 
 
 (defn- strict-authentication
-  "Will throw if request if not authenticated, and if the auth-id isn't
+  "Will throw if request is not authenticated, and if the auth-id isn't
   currently within the system. Returns a core async channel."
   [system auth-map]
   (go-try
@@ -734,16 +734,11 @@
                         auth-id          (cond
 
                                            signature
-                                           (let [this-server (get-in system [:group :this-server])
-                                                 servers     (get-in system [:config :group :server-configs])
-                                                 host        (-> (filter (fn [n] (= (:server-id n) this-server)) servers)
-                                                                 first :host)
-
-                                                 {:keys [auth authority]} (http-signatures/verify-request*
+                                           (let [{:keys [auth authority]} (http-signatures/verify-request*
                                                                             {:headers headers} :get
                                                                             (str "/fdb/storage/" network "/" db
                                                                                  (when type (str "/" type))
-                                                                                 (when key (str "/" key))) host)
+                                                                                 (when key (str "/" key))))
                                                  db          (<? (fdb/db (:conn system) db-name))]
                                              (<? (verify-auth db auth authority)))
 
