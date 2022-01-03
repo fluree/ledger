@@ -8,19 +8,19 @@
 (use-fixtures :once test/test-system)
 
 (deftest test-str-?pO
-  (testing "Test the str and ?pO functions in a transaction")
-  (let [long-desc-txn [{:_id ["person/handle" "jdoe"], :fullName "#(str (?pO) \", Sr.\")"}]
-        res  (async/<!! (fdb/transact-async (basic/get-conn) test/ledger-chat long-desc-txn))
-        flakes (-> res :flakes)
-        pos-flakes (filter #(< 0 (first %)) flakes)]
+  (testing "Test the str and ?pO functions in a transaction"
+    (let [long-desc-txn [{:_id ["person/handle" "jdoe"], :fullName "#(str (?pO) \", Sr.\")"}]
+          res  (async/<!! (fdb/transact-async (basic/get-conn) test/ledger-chat long-desc-txn))
+          flakes (-> res :flakes)
+          pos-flakes (filter #(< 0 (first %)) flakes)]
 
-    (is (= 200 (:status res)))
+      (is (= 200 (:status res)))
 
-    (is (= 0 (-> res :tempids count)))
+      (is (= 0 (-> res :tempids count)))
 
-    (is (= 8 (-> res :flakes count)))
+      (is (= 8 (-> res :flakes count)))
 
-    (= #{"Jane Doe" "Jane Doe, Sr."}   (-> (map #(nth % 2) pos-flakes) set))))
+      (= #{"Jane Doe" "Jane Doe, Sr."}   (-> (map #(nth % 2) pos-flakes) set)))))
 
 
 (deftest test-max

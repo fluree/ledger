@@ -290,7 +290,8 @@
 
 
 ;; TODO - need to detect and propagate errors
-;; TODO - need way for leader to reject new block if we changed who is responsible for a network in-between, and detect + close here
+;; TODO - need way for leader to reject new block if we changed who is
+;;        responsible for a network in-between, and detect + close here
 (defn db-queue-loop
   "Runs a continuous loop for a db to process new blocks"
   [conn kick-chan network dbid queue-id]
@@ -407,11 +408,10 @@
             (session/close session))))
 
       :assoc-in
-      (when-let [queued-tx (queued-tx state-change)]
-        (let [[network dbid _] queued-tx]
-          (when (network-assigned-to? (:group conn) network)
-            (let [queue-chan (db-queue conn network dbid)]
-              (async/put! queue-chan ::kick)))))
+      (when-let [[network dbid _] (queued-tx state-change)]
+        (when (network-assigned-to? (:group conn) network)
+          (let [queue-chan (db-queue conn network dbid)]
+            (async/put! queue-chan ::kick))))
 
       :worker-assign
       (when (and (not (in-memory-db? (:group system)))

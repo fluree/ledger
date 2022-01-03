@@ -165,14 +165,11 @@
     (loop [[leaf-key & r] leaf-keys]
       (if (nil? leaf-key)
         ::done
-        (let [leaf-his-key (str leaf-key "-his")]
-          (swap! stats-atom update :files #(+ % 2))
+        (do
+          (swap! stats-atom update :files inc)
           (when-not (<? (storage-exists leaf-key))
             (swap! stats-atom update :missing inc)
             (>! sync-chan leaf-key))
-          (when-not (<? (storage-exists leaf-his-key))
-            (swap! stats-atom update :missing inc)
-            (>! sync-chan leaf-his-key))
           (recur r))))))
 
 
@@ -217,23 +214,25 @@
                                                   {:network network :ledger dbid :index index-point})))
           stats-atom       (atom {:files   1
                                   :missing 0})
-          {:keys [spot psot post opst]} db-root
+          {:keys [spot psot post opst tspo]} db-root
 
           sync-spot-ch     (sync-index-branch conn sync-chan stats-atom (:id spot))
           sync-psot-ch     (sync-index-branch conn sync-chan stats-atom (:id psot))
           sync-post-ch     (sync-index-branch conn sync-chan stats-atom (:id post))
           sync-opst-ch     (sync-index-branch conn sync-chan stats-atom (:id opst))
+          sync-tspo-ch     (sync-index-branch conn sync-chan stats-atom (:id tspo))
           garbage-file-key (storage/ledger-garbage-key network dbid index-point)
           garbage-exists?  (<? (storage-exists garbage-file-key))]
       (when-not garbage-exists?
         (swap! stats-atom update :missing inc)
         (>! sync-chan garbage-file-key))
 
-      ;; kick off 4 indexes in parallel...  will throw if an error occurs
+      ;; kick off 5 indexes in parallel...  will throw if an error occurs
       (<? sync-spot-ch)
       (<? sync-psot-ch)
       (<? sync-post-ch)
       (<? sync-opst-ch)
+      (<? sync-tspo-ch)
       (let [total-missing (:missing @stats-atom)]
         (when (> total-missing 0)
           (log/info (str "-- missing index files for ledger: " network "/" dbid ". "

@@ -460,7 +460,7 @@
             (let [file-key data]
               (log/debug "Storage read for key: " file-key)
               (async/go
-                (-> (storage/storage-read {:storage-read key-storage-read-fn} file-key)
+                (-> (storage/read {:storage-read key-storage-read-fn} file-key)
                     (async/<!)
                     (callback))))
 

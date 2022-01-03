@@ -696,9 +696,6 @@
     (serdeproto/-deserialize-branch serializer data)
 
     (str/ends-with? key "-l")
-    (serdeproto/-deserialize-leaf serializer data)
-
-    (str/ends-with? key "-l-his")
     (serdeproto/-deserialize-leaf serializer data)))
 
 

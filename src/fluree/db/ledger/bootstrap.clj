@@ -163,13 +163,14 @@
      (flake/new-flake db-setting-id (get pred->id "_setting/language") (get ident->id ["_tag/id" "_setting/language:en"]) t true)
      (flake/new-flake db-setting-id (get pred->id "_setting/id") "root" t true)]))
 
-(defn boostrap-memory-db
+(defn bootstrap-memory-db
   "Bootstraps a blank db fully in-memory.
   Does not attempt to create the db, or index the db to disk. Holds everything in memory.
 
   Returns a standard 'block' map, but also include the :db key that contains the newly created
   db."
-  ([conn ledger] (boostrap-memory-db conn ledger nil))
+  ([conn ledger]
+   (bootstrap-memory-db conn ledger nil))
   ([conn ledger {:keys [master-auth-id master-auth-private txid cmd sig]}]
    (let [blank-db             (session/blank-db conn ledger)
          timestamp            (System/currentTimeMillis)
@@ -185,7 +186,7 @@
          {:keys [fparts index-pred ref-pred pred->id ident->id]} (bootstrap-data->fparts bootstrap-txn)
          flakes               (reduce (fn [acc [s p o]]
                                         (conj acc (flake/new-flake s p o t true)))
-                                      (flake/sorted-set-by flake/cmp-flakes-spot-novelty) fparts)
+                                      (flake/sorted-set-by flake/cmp-flakes-spot) fparts)
          authority-flakes     (master-auth-flake t pred->id ident->id auth-subid master-auth-id*)
          flakes*              (-> (into flakes authority-flakes)
                                   (conj (flake/new-flake t (get pred->id "_tx/id") txid* t true)
@@ -199,7 +200,7 @@
                                (flake/new-flake block-t (get pred->id "_block/ledgers") auth-subid block-t true)]
          flakes+block         (into flakes* block-flakes)
 
-         {:keys [spot psot post opst]} novelty
+         {:keys [spot psot post opst tspo]} novelty
          db                   (assoc blank-db :block block
                                               :t block-t
                                               :ecount genesis-ecount
@@ -207,6 +208,7 @@
                                                                       :psot (into psot flakes+block)
                                                                       :post (into post (filter #(index-pred (.-p ^Flake %)) flakes+block))
                                                                       :opst (into opst (filter #(ref-pred (.-p ^Flake %)) flakes+block))
+                                                                      :tspo (into tspo flakes+block)
                                                                       :size (flake/size-bytes flakes+block))
                                               :stats (assoc stats :flakes (count flakes+block)
                                                                   :size (flake/size-bytes flakes+block)))]
@@ -222,37 +224,37 @@
 
 (defn bootstrap-db
   "Bootstraps a new db from a signed new-db message."
-  [{:keys [conn group]} command]
+  [{:keys [conn group]} {:keys [cmd sig]}]
   (go-try
-    (let [{:keys [cmd sig]} command
-          txid          (crypto/sha3-256 cmd)
-          new-db-name   (-> cmd
-                            (json/parse)
-                            :db)
-          [network dbid] (if (sequential? new-db-name)
-                           new-db-name
-                           (str/split new-db-name #"/"))
-          _             (when (or (txproto/ledger-exists? group network dbid)
-                                  ;; also check for block 1 on disk as a precaution
-                                  (<? (storage/block conn network dbid 1)))
-                          (throw (ex-info (str "Ledger " network "/$" dbid " already exists! Create unsuccessful.")
-                                          {:status 500
-                                           :error  :db/unexpected-error})))
-          master-authid (crypto/account-id-from-message cmd sig)
-          block         (boostrap-memory-db conn [network dbid] {:master-auth-id master-authid :txid txid :cmd cmd :sig sig})
-          new-db        (:db block)
-          block-data    (dissoc block :db)
-          _             (<? (storage/write-block conn network dbid block-data))
-          ;; todo - should create a new command to register new DB that first checks raft
-          _             (<? (txproto/register-genesis-block-async (:group conn) network dbid))
-          ;block-point-success? (async/<! (txproto/propose-new-block-async (:group conn) network dbid block-data))
-          indexed-db    (<? (indexing/index new-db))]
-      ;; write out new index point
-      (<? (txproto/initialized-ledger-async (-> indexed-db :conn :group) txid (:network indexed-db) (:dbid indexed-db)
-                                            (:block indexed-db) (:fork indexed-db) (get-in indexed-db [:stats :indexed])))
+   (let [txid          (crypto/sha3-256 cmd)
+         new-db-name   (-> cmd json/parse :db)
+         [network dbid] (if (sequential? new-db-name)
+                          new-db-name
+                          (str/split new-db-name #"/"))
+         _             (when (or (txproto/ledger-exists? group network dbid)
+                                 ;; also check for block 1 on disk as a precaution
+                                 (<? (storage/read-block conn network dbid 1)))
+                         (throw (ex-info (str "Ledger " network "/$" dbid " already exists! Create unsuccessful.")
+                                         {:status 500
+                                          :error  :db/unexpected-error})))
+         master-authid (crypto/account-id-from-message cmd sig)
+         block         (bootstrap-memory-db conn [network dbid] {:master-auth-id master-authid :txid txid :cmd cmd :sig sig})
+         new-db        (:db block)
+         block-data    (dissoc block :db)
+         _             (<? (storage/write-block conn network dbid block-data))
+         ;; todo - should create a new command to register new DB that first checks raft
+         _             (<? (txproto/register-genesis-block-async (:group conn) network dbid))
 
-      indexed-db)))
+         {:keys [network dbid block fork] :as indexed-db}
+         (<? (indexing/refresh new-db))
 
+         dbgroup       (-> indexed-db :conn :group)
+         indexed-block (get-in indexed-db [:stats :indexed])]
+
+     ;; write out new index point
+     (<? (txproto/initialized-ledger-async dbgroup txid network dbid block
+                                           fork indexed-block))
+     indexed-db)))
 
 (def bootstrap-txn
   [{:_id     ["_collection" const/$_predicate]
@@ -844,4 +846,3 @@
     :name "_shard/mutable"
     :doc  "Whether this shard is mutable. If not specified, defaults to 'false', meaning the data is immutable."
     :type "boolean"}])
-

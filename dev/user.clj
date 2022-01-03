@@ -82,10 +82,13 @@
   [resource-path]
   (-> resource-path io/resource slurp json/parse))
 
-(defn create-db [db-name]
-  @(-> system
-       :conn
-       (fdb/new-ledger db-name)))
+(defn create-ledger [db-name]
+  (log/info "Creating new ledger" db-name)
+  (let [cmd-id @(-> system
+                    :conn
+                    (fdb/new-ledger db-name))]
+    (Thread/sleep 1000)
+    cmd-id))
 
 (defn transact-db [db-name txns]
   @(-> system
@@ -103,31 +106,25 @@
       (recur rst))))
 
 (defn load-sample-db [db-name loader resource-paths]
-  (create-db db-name)
+  (create-ledger db-name)
   (Thread/sleep 1000)
   (load-ledger-resources db-name loader resource-paths))
 
 (defn load-chat-ledger
   []
-  (let [collection-txn  [{:_id  "_collection"
-                          :name "person"}
-                         {:_id  "_collection"
-                          :name "chat"}
-                         {:_id  "_collection"
-                          :name "comment"}
-                         {:_id  "_collection"
-                          :name "artist"}
-                         {:_id  "_collection"
-                          :name "movie"}]
+  (let [collection-txn  [{:_id  "_collection", :name "person"}
+                         {:_id  "_collection", :name "chat"}
+                         {:_id  "_collection", :name "comment"}
+                         {:_id  "_collection", :name "artist"}
+                         {:_id  "_collection", :name "movie"}]
 
         pred-filename   "../test/fluree/db/ledger/Resources/ChatApp/chatPreds.edn"
         predicate-txn   (edn/read-string (slurp (io/resource pred-filename)))
 
         data-filename   "../test/fluree/db/ledger/Resources/ChatApp/chatAppData.edn"
         data-txn        (edn/read-string (slurp (io/resource data-filename)))]
-    (log/info "Creating new ledger")
-    @(fdb/new-ledger (:conn system) test-helpers/ledger-chat)
-    (Thread/sleep 250)
+
+    (create-ledger test-helpers/ledger-chat)
 
     (log/info "Adding collections")
     @(fdb/transact (:conn system) test-helpers/ledger-chat collection-txn)

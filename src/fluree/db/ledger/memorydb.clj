@@ -4,6 +4,7 @@
             [fluree.db.query.schema :as schema]
             [fluree.db.util.async :refer [<?] :as async-util]
             [fluree.db.dbproto :as dbproto]
+            [fluree.db.index :as index]
             [fluree.db.flake :as flake]))
 
 (set! *warn-on-reflection* true)
@@ -15,11 +16,18 @@
 
 ;; For now, requires bootstrap and transact namespaces, which are only in fluree/ledger
 
+(defrecord FakeConnection [transactor?]
+  index/Resolver
+  (resolve [this node]
+    (let [out (async/chan)]
+      (async/put! out node)
+      out)))
+
 (defn fake-conn
   "Returns a fake connection object that is suitable for use with the memorydb if
   no other conn is available."
   []
-  {:transactor? false})
+  (map->FakeConnection {:transactor? false}))
 
 (defn new-db
   "Creates a local, in-memory but bootstrapped db (primarily for testing)."
@@ -27,7 +35,7 @@
   ([conn ledger bootstrap-opts]
    (let [pc (async/promise-chan)]
      (async/go
-       (let [block-data   (bootstrap/boostrap-memory-db conn ledger bootstrap-opts)
+       (let [block-data   (bootstrap/bootstrap-memory-db conn ledger bootstrap-opts)
              db-no-schema (:db block-data)
              schema       (<? (schema/schema-map db-no-schema))]
          (async/put! pc (assoc db-no-schema :schema schema))))
@@ -55,4 +63,3 @@
                     (map (fn [[s p o op]]
                            (flake/->Flake s p o t (if (false? op) false true) nil))))]
     (transact-flakes db* flakes)))
-

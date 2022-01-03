@@ -104,6 +104,7 @@
                      :psot (into (:psot novelty) flakes)
                      :post (into (:post novelty) post-flakes)
                      :opst (into (:opst novelty) opst-flakes)
+                     :tspo (into (:tspo novelty) flakes)
                      :size size}
         t           (apply min (map #(.-t ^Flake %) flakes))]
     (assoc blank-db :block 1
@@ -136,8 +137,8 @@
              db*               (with-genesis db flakes)
              schema            (<? (schema/schema-map db*))
              db**              (assoc db* :schema schema)
-             indexed-db        (<? (indexing/index db** {:status status :message message
-                                                         :ecount ecount}))
+             indexed-db        (<? (indexing/refresh db** {:status status :message message
+                                                           :ecount ecount}))
              group             (-> indexed-db :conn :group)
              network           (:network indexed-db)
              dbid              (:dbid indexed-db)
@@ -172,9 +173,9 @@
            (if (nil? block-data)
              (do (log/info (str "-->> Reindex finished dbid: " dbid " block: " (dec block)))
                  (if (> (get-in db [:novelty :size]) 0)
-                   (let [indexed-db        (async/<! (indexing/index db {:status  status
-                                                                         :message message
-                                                                         :ecount  ecount}))
+                   (let [indexed-db        (async/<! (indexing/refresh db {:status  status
+                                                                           :message message
+                                                                           :ecount  ecount}))
                          group             (-> indexed-db :conn :group)
                          network           (:network indexed-db)
                          dbid              (:dbid indexed-db)
@@ -189,10 +190,8 @@
                    novelty-size (get-in db* [:novelty :size])]
                (log/info (str "  -> Reindex dbid: " dbid " block: " block " containing " (count flakes) " flakes. Novelty size: " novelty-size "."))
                (if (>= novelty-size max-novelty)
-                 (let [db**  (async/<!! (indexing/index db*))
+                 (let [db**  (async/<!! (indexing/refresh db*))
                        group (-> db** :conn :group)]
                    (txproto/write-index-point-async group db**)
                    (recur (inc block) db**))
                  (recur (inc block) db*))))))))))
-
-

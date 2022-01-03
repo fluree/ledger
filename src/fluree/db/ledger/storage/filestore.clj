@@ -59,29 +59,25 @@
   (log/trace "Storage read: " {:base-path base-path :key key})
   (->> key
        (key->unix-path base-path)
-       (read-file)))
+       read-file))
 
 
 (defn storage-read-async
   [base-path key]
   (async/thread
-    (->> key
-         (key->unix-path base-path)
-         (read-file))))
+    (storage-read base-path key)))
 
 
 (defn storage-exists?
   [base-path key]
   (->> key
        (key->unix-path base-path)
-       (exists?)))
+       exists?))
 
 (defn storage-exists?-async
   [base-path key]
   (async/thread
-    (->> key
-         (key->unix-path base-path)
-         (exists?))))
+    (storage-exists? base-path key)))
 
 
 (defn connection-storage-read

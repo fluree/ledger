@@ -15,7 +15,7 @@
   [conn storage-block-key]
   (go-try (loop [n 1]
             (let [version-key (str storage-block-key "--v" n)]
-              (if (<? (storage/storage-exists? conn version-key))
+              (if (<? (storage/exists? conn version-key))
                 (recur (inc n))
                 n)))))
 
@@ -31,12 +31,11 @@
 
 (defn hide-block
   [conn nw ledger block flakes]
-  (go-try (let [conn-rename   (:storage-rename conn)
-                current-block (<? (storage/read-block conn nw ledger block))
+  (go-try (let [current-block (<? (storage/read-block conn nw ledger block))
                 new-block     (filter-flakes-from-block current-block flakes)
                 old-block-key (storage/ledger-block-file-path nw ledger block)
                 new-block-key (str old-block-key "--v" (<? (next-version conn old-block-key)))
-                _             (<?? (conn-rename old-block-key new-block-key))
+                _             (<?? (storage/rename conn old-block-key new-block-key))
                 _             (<?? (storage/write-block conn nw ledger new-block))]
             (log/debug (str "Flakes hidden in block " block))
             true)))
@@ -130,9 +129,5 @@
   (<?? (hide-flakes conn "fluree" "test" {:hide [87960930223081]}))
   (<?? (purge-flakes conn "fluree" "test" {:purge [422212465065991]}))
 
-  (->> (<?? (storage/storage-read conn "fluree_test_block_000000000000004:v2"))
+  (->> (<?? (storage/read conn "fluree_test_block_000000000000004:v2"))
        (serdeproto/-deserialize-block (:serializer conn))))
-
-
-
-

@@ -25,6 +25,7 @@
 ;; test unique values that have tempids for (a) single/multi cardinality, (b) where tempid gets resolved to existing subject with ':unique true', (c) where that resolved subject is already used for unique value
 
 
+#_#_#_#_#_#_#_
 (def private-key "c457227f6f7ee94c3b2a32fbf055b33df42578d34047c14b2c9fe64273dce957")
 (def fake-conn (memorydb/fake-conn))
 (def ledger "test/ledger223")
@@ -54,10 +55,10 @@
                               private-key))
 
 
-;(def tx-result (async/<!! (tjson/build-transaction nil memorydb {:command base-tx} (dec (:t memorydb)) (Instant/now))))
-;(def tx-result (async/<!! (tjson/build-transaction nil memorydb
-;                                                   {:command (fdb/tx->command ledger [{:_id "_collection", :name "person"}] private-key)}
-;                                                   (dec (:t memorydb)) (Instant/now))))
+(def tx-result (async/<!! (tjson/build-transaction nil memorydb {:command base-tx} (dec (:t memorydb)) (Instant/now))))
+(def tx-result (async/<!! (tjson/build-transaction nil memorydb
+                                                  {:command (fdb/tx->command ledger [{:_id "_collection", :name "person"}] private-key)}
+                                                  (dec (:t memorydb)) (Instant/now))))
 
 (comment
 

@@ -13,6 +13,7 @@ default-private-key.txt
 default_private_key.txt
 /.cpcache
 /data
+.dir-locals.el
 /resources/adminUI
 /node_modules
 /pom.xml
