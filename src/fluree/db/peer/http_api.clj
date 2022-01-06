@@ -115,7 +115,7 @@
   (let [body' (-> ^BytesInputStream body .bytes (String. "UTF-8"))]
     (case type
       :string body'
-      :json   (json/parse body'))))
+      :json (json/parse body'))))
 
 
 (defn- return-token
@@ -139,8 +139,8 @@
       (let [auth_id      (<? (dbproto/-subid db ["_auth/id" auth] true))
             _            (when (util/exception? auth_id)
                            (throw (ex-info (str "Auth id for transaction does not exist
-                                                    in the database: " auth) {:status 403 :error
-                                                                                      :db/invalid-auth})))
+                                                    in the database: " auth)
+                                           {:status 403 :error :db/invalid-auth})))
             authority_id (<? (dbproto/-subid db ["_auth/id" authority] true))
             _            (when (util/exception? authority_id)
                            (throw (ex-info (str "Authority " authority " does not exist.")
@@ -479,6 +479,13 @@
                          :error  :db/invalid-action}))))))
 
 
+(defn command-response-headers->http-headers [cmd-response-headers]
+  (reduce-kv (fn [acc k v]
+               (assoc acc (str "x-fdb-" (util/keyword->str k)) v))
+             {"Content-Type" "application/json; charset=utf-8"}
+             cmd-response-headers))
+
+
 (defn wrap-action-handler
   "Wraps a db request to facilitate proper response format"
   [system {:keys [headers body params remote-addr] :as request}]
@@ -494,15 +501,13 @@
                                (catch Exception _ 60000))
                           60000)
         opts            (assoc params :timeout request-timeout)
-        [header body]   (<?? (action-handler action* system action-param auth-map ledger opts))
+        [header body] (<?? (action-handler action* system action-param auth-map ledger opts))
         request-time    (- (System/nanoTime) start)
         resp-body       (json/stringify-UTF8 body)
-        resp-headers    (reduce-kv (fn [acc k v]
-                                     (assoc acc (str "x-fdb-" (util/keyword->str k)) v))
-                                   {"Content-Type" "application/json; charset=utf-8"
-                                    "x-fdb-time"   (format "%.2fms" (float (/ request-time 1000000)))
-                                    "x-fdb-fuel"   (or (get header :fuel) (get body :fuel) 0)}
-                                   header)
+        resp-headers    (-> header
+                            (assoc :time (format "%.2fms" (float (/ request-time 1000000)))
+                                   :fuel (or (:fuel header) (:fuel body) 0))
+                            command-response-headers->http-headers)
         resp            {:status  (or (:status header) 200)
                          :headers resp-headers
                          :body    resp-body}]
@@ -665,7 +670,7 @@
   (let [body-str     (when body (decode-body body :string))
         body'        (some-> body-str json/parse)
         ledger-ident (:db/id body')
-        [nw db]      (str/split ledger-ident #"/")
+        [nw db] (str/split ledger-ident #"/")
         ledger       (keyword nw db)
         auth-map     (auth-map system ledger request body-str)
         session      (session/session conn [nw db])
@@ -742,7 +747,7 @@
                                                                             (str "/fdb/storage/" network "/" db
                                                                                  (when type (str "/" type))
                                                                                  (when key (str "/" key))))
-                                                 db          (<? (fdb/db (:conn system) db-name))]
+                                                 db (<? (fdb/db (:conn system) db-name))]
                                              (<? (verify-auth db auth authority)))
 
                                            jwt
@@ -814,8 +819,28 @@
   (fn [request]
     (let [header-map (reduce (fn [m [k v]] (assoc m (name k) v))
                              {} (partition 2 headers))
-          response (handler request)]
+          response   (handler request)]
       (update response :headers merge header-map))))
+
+
+(defn command-handler [system {:keys [headers body] :as _request}]
+  (let [start        (System/nanoTime)
+        cmd          (decode-body body :json)
+        ledger       (some-> cmd :ledger keyword)
+        timeout      (or (:request-timeout headers) 60000)
+        opts         {:timeout timeout}
+        _            (log/info "Sending command:" (pr-str cmd))
+        [headers body] (<?? (action-handler :command system cmd nil ledger
+                                            opts))
+        request-time (- (System/nanoTime) start)]
+    (log/info "Command result:" (pr-str body))
+    (log/info "Command response headers:" (pr-str headers))
+    {:status  (or (:status headers) 200)
+     :headers (-> headers
+                  (assoc :time (format "%.2fms" (float (/ request-time 1000000)))
+                         :fuel (or (:fuel headers) (:fuel body) 0))
+                  command-response-headers->http-headers)
+     :body    (json/stringify-UTF8 body)}))
 
 
 (defn- api-routes
@@ -837,6 +862,7 @@
     (compojure/POST "/fdb/delete-db" request (delete-ledger system request))
     (compojure/POST "/fdb/:network/:db/pw/:action" request (password-handler system request))
     (compojure/POST "/fdb/:network/:db/:action" request (wrap-action-handler system request))
+    (compojure/POST "/fdb/command" request (command-handler system request))
 
     ;; fallback 404 for unknown API paths
     (compojure/ANY "/fdb/*" [] not-found)))
@@ -886,31 +912,31 @@
     (do (log/info "Web server disabled, not starting.")
         nil)
     (let [{:keys [port open-api system debug-mode? json-bigdec-string]} opts
-          _           (log/info (str "Starting web server on port: " port (if open-api " with an open API." "with a closed API.")))
-          _           (log/info "")
-          _           (log/info (str "http://localhost:" port))
-          _           (log/info "")
-          clients     (atom {})
-          system*     (assoc system :clients clients
-                                    :debug-mode? debug-mode?
-                                    :open-api open-api)
-          _           (try
-                        (json/encode-BigDecimal-as-string json-bigdec-string)
-                        (swap! web-server assoc port (http/run-server
-                                                       (make-handler system*)
-                                                       {:port port}))
-                        (catch BindException _
-                          (log/error (str "Cannot start. Port binding failed, address already in use. Port: " port "."))
-                          (log/error "FlureeDB Exiting. Adjust your config, or shut down other service using port.")
-                          (System/exit 1))
-                        (catch Exception e
-                          (log/error "Unable to start http API: " (.getMessage e))
-                          (log/error "FlureeDB Exiting.")
-                          (System/exit 1)))
-          close-fn    (fn []
-                        ;; shut down the web server but give existing connections 1s to finish
-                        (let [server-close-fn (get @web-server port)]
-                          (server-close-fn :timeout 1000))
-                        (swap! web-server dissoc port))]
+          _        (log/info (str "Starting web server on port: " port (if open-api " with an open API." "with a closed API.")))
+          _        (log/info "")
+          _        (log/info (str "http://localhost:" port))
+          _        (log/info "")
+          clients  (atom {})
+          system*  (assoc system :clients clients
+                                 :debug-mode? debug-mode?
+                                 :open-api open-api)
+          _        (try
+                     (json/encode-BigDecimal-as-string json-bigdec-string)
+                     (swap! web-server assoc port (http/run-server
+                                                    (make-handler system*)
+                                                    {:port port}))
+                     (catch BindException _
+                       (log/error (str "Cannot start. Port binding failed, address already in use. Port: " port "."))
+                       (log/error "FlureeDB Exiting. Adjust your config, or shut down other service using port.")
+                       (System/exit 1))
+                     (catch Exception e
+                       (log/error "Unable to start http API: " (.getMessage e))
+                       (log/error "FlureeDB Exiting.")
+                       (System/exit 1)))
+          close-fn (fn []
+                     ;; shut down the web server but give existing connections 1s to finish
+                     (let [server-close-fn (get @web-server port)]
+                       (server-close-fn :timeout 1000))
+                     (swap! web-server dissoc port))]
       (map->WebServer {:close close-fn}))))
 
