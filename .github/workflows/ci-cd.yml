@@ -95,7 +95,7 @@ jobs:
           context: .
           file: ./Dockerfile
           platforms: linux/amd64,linux/arm64
-          push: ${{ github.event_name != 'pull_request' && steps.prep.outputs.tags != 'none' }}
+          push: ${{ github.event_name != 'pull_request' && steps.prep.outputs.tags != 'fluree/ledger:none' }}
           tags: ${{ steps.prep.outputs.tags }}
           cache-from: type=local,src=/tmp/.buildx-cache
           cache-to: type=local,dest=/tmp/.buildx-cache
