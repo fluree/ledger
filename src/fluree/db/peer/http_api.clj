@@ -22,7 +22,7 @@
             [fluree.db.peer.websocket :as websocket]
             [ring.util.response :as resp]
             [ring.middleware.cors :as cors]
-            [fluree.db.util.async :refer [<?? <? go-try]]
+            [fluree.db.util.async :refer [<?? <? go-try alts??]]
             [fluree.db.ledger.txgroup.txgroup-proto :as txproto]
             [fluree.db.serde.protocol :as serdeproto]
             [fluree.db.permissions-validate :as permissions-validate]
@@ -783,7 +783,7 @@
                     {:status  status
                      :headers headers
                      :body    body}))]
-    (let [[resp ch] (async/alts!! [attempt (async/timeout storage-timeout)])]
+    (let [[resp ch] (alts?? [attempt (async/timeout storage-timeout)])]
       (if (= ch attempt)
         resp
         {:status  504
@@ -863,9 +863,9 @@
         ;; final 404 fallback
         (constantly not-found))
 
+      (->> (wrap-errors (:debug-mode? system)))
       (wrap-response-headers "X-Fdb-Version" (meta/version))
       params/wrap-params
-      (->> (wrap-errors (:debug-mode? system)))
       (cors/wrap-cors
         :access-control-allow-origin [#".+"]
         :access-control-expose-headers ["X-Fdb-Block" "X-Fdb-Fuel" "X-Fdb-Status" "X-Fdb-Time" "X-Fdb-Version"]
