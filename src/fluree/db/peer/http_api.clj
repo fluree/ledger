@@ -829,12 +829,12 @@
         ledger       (some-> cmd :ledger keyword)
         timeout      (or (:request-timeout headers) 60000)
         opts         {:timeout timeout}
-        _            (log/info "Sending command:" (pr-str cmd))
+        _            (log/debug "Sending command:" (pr-str cmd))
         [headers body] (<?? (action-handler :command system cmd nil ledger
                                             opts))
         request-time (- (System/nanoTime) start)]
-    (log/info "Command result:" (pr-str body))
-    (log/info "Command response headers:" (pr-str headers))
+    (log/debug "Command result:" (pr-str body))
+    (log/debug "Command response headers:" (pr-str headers))
     {:status  (or (:status headers) 200)
      :headers (-> headers
                   (assoc :time (format "%.2fms" (float (/ request-time 1000000)))
