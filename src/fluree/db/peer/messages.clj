@@ -42,6 +42,7 @@
         auth-id  (try
                    (crypto/account-id-from-message cmd sig)
                    (catch Exception _ (throw-invalid-command "Invalid signature on command.")))]
+    (log/trace "Processing signed command:" (pr-str cmd-data))
     (case cmd-type
       :tx (let [{:keys [db tx deps expire nonce]} cmd-data
                 _ (when-not db (throw-invalid-command "No db specified for transaction."))
