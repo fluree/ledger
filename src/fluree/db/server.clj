@@ -129,6 +129,14 @@
          false
          (recur rst))))))
 
+(defn reindex?
+  [{:keys [config] :as system}]
+  (-> config
+      :fdb-command
+      (or "none")
+      util/str->keyword
+      (= :reindex)))
+
 (defn startup
   ([] (startup (settings/build-env @environ/runtime-env)))
   ([settings]
@@ -201,7 +209,8 @@
        (shutdown system*)
        (System/exit 1))
 
-     (when-not (<?? (all-migrated? system))
+     (when-not (or (reindex? system*)
+                   (<?? (all-migrated? system*)))
        (log/error "Error starting system. Index format out of date. Please upgrade indexes using the :reindex command")
        (shutdown system*)
        (System/exit 1))
