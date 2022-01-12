@@ -1,7 +1,7 @@
 (ns fluree.db.peer.websocket
   (:require [org.httpkit.server :as http]
             [clojure.core.async :as async]
-            [clojure.tools.logging :as log]
+            [fluree.db.util.log :as log]
             [fluree.db.util.json :as json]
             [fluree.db.permissions-validate :as permissions-validate]
             [fluree.db.peer.messages :as messages]
@@ -84,15 +84,15 @@
                              ws-id))
           (http/close ch))
         (do
-          (log/trace "msg-producer received new msg:" (pr-str new-msg))
+          (log/trace "msg-producer received new msg:" new-msg)
           (let [enc-msg (try (if (= :block (first new-msg))
                                (-> (util/<? (filter-flakes (:conn system) ws-id new-msg))
                                    json/stringify)
                                (json/stringify new-msg))
                              (catch Exception _ (log/warn "Unable to json encode outgoing message, dropping: "
-                                                          (pr-str new-msg))))]
+                                                          new-msg)))]
             (when enc-msg
-              (log/trace "msg-producer sending encoded message:" (pr-str enc-msg))
+              (log/trace "msg-producer sending encoded message:" enc-msg)
               (http/send! ch enc-msg)))
           (recur))))))
 
@@ -137,7 +137,7 @@
           (http/send! ch (json/stringify [:set-ws-id nil ws-id]))
           (http/on-receive ch (fn [data]
                                 (log/trace (format "Received data on websocket id %s: %s"
-                                                   ws-id (pr-str data)))
+                                                   ws-id data))
                                 (when-not (async/put! consumer-chan data)
                                   (log/info "Web socket timeout - no pings received. Closing websocket id:" ws-id)
                                   (close-websocket ws-id producer-chan))))

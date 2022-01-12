@@ -3,7 +3,7 @@
             [taoensso.nippy :as nippy]
             [clojure.core.async :as async :refer [<! <!! go-loop]]
             [clojure.pprint :as cprint]
-            [clojure.tools.logging :as log]
+            [fluree.db.util.log :as log]
             [clojure.string :as str]
             [fluree.db.storage.core :as storage]
             [fluree.db.serde.avro :as avro]
@@ -84,7 +84,7 @@
             _     (log/debug "Reifying snapshot" file)
             data  (<?? (storage-read file))
             state (when data (nippy/thaw data))]
-        (log/debug "Read snapshot data:" (pr-str state))
+        (log/debug "Read snapshot data:" state)
         (reset! state-atom state))
       (catch Exception e (log/error e "Error reifying snapshot: " snapshot-id)))))
 
@@ -171,7 +171,7 @@
           file          (str path index ".snapshot")
           max-snapshots 6
           data          (nippy/freeze state)]
-      (log/debug "Writing raft snapshot" file "with contents" (pr-str state))
+      (log/debug "Writing raft snapshot" file "with contents" state)
       (try
         (<?? (storage-write file data))
         (catch Exception e (log/error e "Error writing snapshot index:" index)))
@@ -429,7 +429,7 @@
         (log/trace "send-rpc success:" {:op operation :data data :header header})
         (do
           (swap! pending-responses dissoc msg-id)
-          (log/debug "Connection to" server "is closed, unable to send rpc. " (pr-str header)))))))
+          (log/debug "Connection to" server "is closed, unable to send rpc." header))))))
 
 
 (defn message-consume
@@ -468,7 +468,7 @@
             (let [{:keys [id entry]} data
                   command (raft/map->RaftCommand {:entry entry
                                                   :id    id})]
-              (log/debug "Raft - new command:" (pr-str data))
+              (log/debug "Raft - new command:" data)
               (raft/new-command raft command callback))
 
             ;; else
@@ -513,7 +513,7 @@
                                  :snapshot-xfer (snapshot-xfer snapshot-config)
                                  :snapshot-install (snapshot-installer snapshot-config)
                                  :snapshot-list-indexes (snapshot-list-indexes snapshot-config))
-        _                      (log/debug "Starting Raft with config:" (pr-str raft-config*))
+        _                      (log/debug "Starting Raft with config:" raft-config*)
         raft                   (raft/start raft-config*)
         client-message-handler (partial message-consume raft storage-ledger-read) ; Or should it be group?
         new-client-handler     (fn [client]
@@ -524,7 +524,7 @@
     ;; handy for debugging
     ;(add-watch state-machine-atom :logger
     ;           (fn [_ _ _ nv]
-    ;             (log/debug "state atom changed to" (pr-str nv))))
+    ;             (log/debug "state atom changed to" nv))))
 
     {:raft            raft
      :state-atom      state-machine-atom
@@ -818,7 +818,7 @@
            (let [file-storage? (some? (-> conn :meta :file-storage-path))]
              (when file-storage?                            ; TODO: Support full-text indexes on s3 storage too
                (let [ledgers-info (txproto/ledgers-info-map conn)
-                     others       (-> group :raft :other-servers) ]
+                     others       (-> group :raft :other-servers)]
                  (when-let [exception (<! (filter-exception
                                            (dbsync2/consistency-full-check conn ledgers-info others)))]
                    (dbsync2/terminate! conn (str "Terminating due to file syncing error, "
@@ -929,8 +929,8 @@
                                 (let [{:keys [new-raft-state old-raft-state]} change-map]
                                   (log/info "Ledger group leader change:"
                                             (dissoc change-map :key :new-raft-state :old-raft-state))
-                                  (log/debug "Old raft state: \n" (pr-str old-raft-state) "\n"
-                                             "New raft state: \n" (pr-str new-raft-state))
+                                  (log/debug "Old raft state: \n" old-raft-state "\n"
+                                             "New raft state: \n" new-raft-state)
                                   (when (not (nil? new-raft-state))
                                     (cond (and join? (not (nil? (:leader new-raft-state)))
                                                (not= this-server (:leader new-raft-state)))

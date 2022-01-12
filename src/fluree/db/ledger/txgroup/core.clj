@@ -1,7 +1,7 @@
 (ns fluree.db.ledger.txgroup.core
   (:require [fluree.db.ledger.consensus.raft :as raft]
             [fluree.db.ledger.consensus.none :as none]
-            [clojure.tools.logging :as log]
+            [fluree.db.util.log :as log]
             [fluree.db.ledger.txgroup.txgroup-proto :as txproto]))
 
 (set! *warn-on-reflection* true)
@@ -101,7 +101,7 @@
                       :in-memory (none/launch-in-memory-server group-settings))]
 
 
-    (log/debug "Start-group. Settings are: " (pr-str group-settings))
+    (log/debug "Start-group. Settings are: " group-settings)
     group))
 
 (defn data-version

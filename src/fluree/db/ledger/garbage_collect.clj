@@ -1,6 +1,6 @@
 (ns fluree.db.ledger.garbage-collect
   (:require [fluree.db.storage.core :as storage]
-            [clojure.tools.logging :as log]
+            [fluree.db.util.log :as log]
             [clojure.string :as str]
             [fluree.db.util.async :refer [go-try <?]]
             [fluree.db.ledger.txgroup.txgroup-proto :as txproto]))

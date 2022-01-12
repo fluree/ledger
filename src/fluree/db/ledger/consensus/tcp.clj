@@ -3,7 +3,7 @@
             [clojure.core.async :as async]
             [taoensso.nippy :as nippy]
             [fluree.db.util.async :refer [go-try]]
-            [clojure.tools.logging :as log])
+            [fluree.db.util.log :as log])
   (:import (java.net BindException InetSocketAddress)))
 
 (set! *warn-on-reflection* true)
@@ -116,7 +116,7 @@
             :else
             (do
               (log/info "Waiting to initialize connection, but did not contain proper initialize message"
-                        (or data (pr-str initial-msg)))
+                        (or data initial-msg))
               (recur))))))))
 
 
@@ -195,8 +195,8 @@
               (try
                 (handler conn msg)
                 (catch Exception e
-                  (log/error e (str "Error executing handler function for incoming message from client: "
-                                    (or (:to conn) remote-server) ". Message: " (pr-str msg)))))
+                  (log/error e "Error executing handler function for incoming message from client:"
+                             (or (:to conn) remote-server) "Message:" msg)))
               (recur conn))))))))
 
 ;; store client event loop here to be shared across all client connections
@@ -236,7 +236,7 @@
   (loop [retries 0]
     (let [addr (InetSocketAddress. ^String host ^Integer port)]
       (if (.isUnresolved addr)
-        (do (log/warn (str "Remote server address is not resolvable:" host ":" port ". Retrying (" retries ").") )
+        (do (log/warn (str "Remote server address is not resolvable:" host ":" port ". Retrying (" retries ")."))
             (Thread/sleep 5000)
             (recur (inc retries)))
         addr))))

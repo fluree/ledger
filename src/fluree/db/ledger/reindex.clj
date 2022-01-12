@@ -1,5 +1,5 @@
 (ns fluree.db.ledger.reindex
-  (:require [clojure.tools.logging :as log]
+  (:require [fluree.db.util.log :as log]
             [fluree.db.storage.core :as storage]
             [fluree.db.dbproto :as dbproto]
             [fluree.db.flake :as flake]

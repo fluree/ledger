@@ -1,7 +1,7 @@
 (ns fluree.db.server-settings
   (:require [clojure.string :as str]
             [clojure.java.io :as io]
-            [clojure.tools.logging :as log]
+            [fluree.db.util.log :as log]
             [fluree.db.util.core :as util]
             [fluree.db.ledger.storage.filestore :as filestore]
             [fluree.db.ledger.storage.memorystore :as memorystore]

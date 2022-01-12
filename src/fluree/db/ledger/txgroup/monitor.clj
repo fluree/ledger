@@ -1,5 +1,5 @@
 (ns fluree.db.ledger.txgroup.monitor
-  (:require [clojure.tools.logging :as log]
+  (:require [fluree.db.util.log :as log]
             [clojure.set :as set]
             [clojure.core.async :as async]
             [fluree.db.session :as session]
@@ -386,7 +386,7 @@
   - command - the command data/payload which is a vector of [op & args]
   - result - the state-machines result response after applying this command"
   [system state-change]
-  (log/trace "State change in tx-group: " (pr-str state-change))
+  (log/trace "State change in tx-group:" state-change)
   (let [op   (get-in state-change [:command 0])
         conn (:conn system)]
     (case op

@@ -1,6 +1,6 @@
 (ns fluree.db.peer.messages
   (:require [alphabase.core :as ab-core]
-            [clojure.tools.logging :as log]
+            [fluree.db.util.log :as log]
             [clojure.core.async :as async]
             [clojure.string :as str]
             [fluree.db.util.json :as json]
@@ -29,7 +29,8 @@
   throws."
   [{:keys [conn] :as system}  {:keys [cmd sig] :as signed-cmd}]
   (when-not (and (string? cmd) (string? sig))
-    (throw-invalid-command (str "Command map requires keys of 'cmd' and 'sig', with a json string command map and signature of the command map respectively. Provided: " (pr-str signed-cmd))))
+    (throw-invalid-command (str "Command map requires keys of 'cmd' and 'sig', with a json string command map and signature of the command map respectively. Provided: "
+                                (pr-str signed-cmd))))
   (when (> (count cmd) 10000000)
     (throw-invalid-command (format "Command is %s bytes and exceeds the configured max size." (count cmd))))
   (let [id       (crypto/sha3-256 cmd)
@@ -226,9 +227,9 @@
                                       :error   error}]
                       ;; log any unexpected errors locally
                       (when (>= status 500)
-                        (log/error e (str "Unexpected error processing message: " (pr-str msg))))
+                        (log/error e "Unexpected error processing message:" msg))
                       (async/put! producer-chan [:response req-id nil error-resp])))]
-     (log/trace "Incoming message: " (pr-str msg))
+     (log/trace "Incoming message:" msg)
      (try
        (case (keyword operation)
          :close (do ;; close will trigger the on-closed callback and clean up all session info.

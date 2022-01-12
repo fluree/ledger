@@ -1,6 +1,6 @@
 (ns fluree.db.ledger.indexing
   (:require [clojure.data.avl :as avl]
-            [clojure.tools.logging :as log]
+            [fluree.db.util.log :as log]
             [fluree.db.dbproto :as dbproto]
             [fluree.db.flake :as flake]
             [fluree.db.index :as index]
@@ -11,9 +11,7 @@
             [clojure.core.async :as async :refer [>! <! chan go go-loop]]
             [fluree.db.util.core :as util]
             [fluree.db.ledger.txgroup.txgroup-proto :as txproto])
-  (:import (fluree.db.flake Flake)
-           (java.time Instant)
-           (clojure.lang Sorted)))
+  (:import (java.time Instant)))
 
 (set! *warn-on-reflection* true)
 
@@ -37,7 +35,7 @@
   list only if the id is not `:empty`."
   [garbage {id :id}]
   (cond-> garbage
-    (not= :empty id) (conj id)))
+          (not= :empty id) (conj id)))
 
 (defn dirty?
   "Returns `true` if the index for `db` of type `idx` is out of date, or if `db`
@@ -92,10 +90,10 @@
         (try* (let [resolved-node (<? (index/resolve conn node))]
                 (update-node resolved-node t novelty remove-preds))
               (catch* e
-                      (log/error e
-                                 "Error resolving novel index node:"
-                                 (select-keys node [:id :network :dbid]))
-                      (>! error-ch e)))
+                (log/error e
+                           "Error resolving novel index node:"
+                           (select-keys node [:id :network :dbid]))
+                (>! error-ch e)))
         node))))
 
 (defn resolve-children
@@ -114,8 +112,8 @@
   depth-first order. Only nodes with associated flakes from `index-novelty` will
   be resolved."
   [conn index-root index-novelty t remove-preds error-ch]
-  (let [tree-ch      (async/chan 4)
-        stat-ch      (async/chan 1)]
+  (let [tree-ch (async/chan 4)
+        stat-ch (async/chan 1)]
     (go
       (let [root-node (<! (resolve-if-novel conn index-root t index-novelty
                                             remove-preds error-ch))]
@@ -139,7 +137,7 @@
                       stack**  (-> stack*
                                    (conj (mark-expanded node))
                                    (into (rseq children)))]
-                (recur stack** stats))))))))
+                  (recur stack** stats))))))))
     [tree-ch stat-ch]))
 
 (defn rebalance-leaf
@@ -147,7 +145,7 @@
   `*overflow-bytes*`."
   [{:keys [flakes leftmost? rhs] :as leaf}]
   (let [target-size (/ *overflow-bytes* 2)]
-    (loop [[f & r]   flakes
+    (loop [[f & r] flakes
            cur-size  0
            cur-first f
            leaves    []]
@@ -199,14 +197,14 @@
               new-branch  (-> parent
                               (dissoc :id)
                               (assoc :children new-children
-                                     :first    first-flake
-                                     :rhs      rhs))]
+                                     :first first-flake
+                                     :rhs rhs))]
           (recur (conj new-branches new-branch) rst-children))
         (let [first-flake (-> remaining first key)
               last-child  (-> parent
                               (dissoc :id)
                               (assoc :children remaining
-                                     :first    first-flake))]
+                                     :first first-flake))]
           (conj new-branches last-child))))))
 
 (defn reconcile-leaf-size
@@ -236,10 +234,10 @@
               (let [branch (reconcile-branch-size node)]
                 (<? (storage/write-branch conn network dbid idx branch))))
             (catch* e
-                    (log/error e
-                               "Error writing novel index node:"
-                               (select-keys node [:id :network :dbid]))
-                    (>! error-ch e)))
+              (log/error e
+                         "Error writing novel index node:"
+                         (select-keys node [:id :network :dbid]))
+              (>! error-ch e)))
       node)))
 
 (defn write-child-nodes
@@ -298,7 +296,7 @@
                 branch      (-> node
                                 unmark-expanded
                                 (dissoc :id)
-                                (assoc :first    first-flake
+                                (assoc :first first-flake
                                        :children children))]
             (recur (conj stack* branch))))
         (async/pipe (write-if-novel conn network dbid idx error-ch (peek stack))
@@ -315,9 +313,9 @@
 (defn refresh-root
   [conn network dbid error-ch {::keys [idx root novelty t remove-preds]}]
   (let [[tree-ch stat-ch] (resolve-tree conn root novelty t remove-preds error-ch)
-        index-ch          (->> tree-ch
-                               rebalance-leaves
-                               (write-tree conn network dbid idx error-ch))]
+        index-ch (->> tree-ch
+                      rebalance-leaves
+                      (write-tree conn network dbid idx error-ch))]
     (tally idx index-ch stat-ch)))
 
 (defn extract-root
@@ -360,48 +358,48 @@
   ([{:keys [novelty block t network dbid] :as db}
     {:keys [ecount remove-preds]}]
    (go-try
-    (let [start-time   (Instant/now)
-          novelty-size (:size novelty)
-          init-stats   {:network      network
-                        :dbid         dbid
-                        :t            t
-                        :block        block
-                        :novelty-size novelty-size
-                        :start-time   start-time}]
-      (if (or (dirty? db)
-              (seq remove-preds))
-        (do (log/info "Refreshing Index:" init-stats)
-            (let [error-ch   (chan)
-                  refresh-ch (refresh-all db remove-preds error-ch)]
-              (async/alt!
-                error-ch
-                ([e]
-                 (throw e))
+     (let [start-time   (Instant/now)
+           novelty-size (:size novelty)
+           init-stats   {:network      network
+                         :dbid         dbid
+                         :t            t
+                         :block        block
+                         :novelty-size novelty-size
+                         :start-time   start-time}]
+       (if (or (dirty? db)
+               (seq remove-preds))
+         (do (log/info "Refreshing Index:" init-stats)
+             (let [error-ch   (chan)
+                   refresh-ch (refresh-all db remove-preds error-ch)]
+               (async/alt!
+                 error-ch
+                 ([e]
+                  (throw e))
 
-                refresh-ch
-                ([{:keys [stale], refreshed-db :db, :as status}]
-                 (let [indexed-db (-> refreshed-db
-                                      empty-novelty
-                                      (assoc-in [:stats :indexed] block))
+                 refresh-ch
+                 ([{:keys [stale], refreshed-db :db, :as status}]
+                  (let [indexed-db (-> refreshed-db
+                                       empty-novelty
+                                       (assoc-in [:stats :indexed] block))
 
-                       block-file (storage/ledger-block-key network dbid block)]
+                        block-file (storage/ledger-block-key network dbid block)]
 
-                   ;; wait until confirmed writes before returning
-                   (<? (storage/write-db-root indexed-db ecount))
+                    ;; wait until confirmed writes before returning
+                    (<? (storage/write-db-root indexed-db ecount))
 
-                   ;; TODO - ideally issue garbage/root writes to RAFT together
-                   ;;        as a tx, currently requires waiting for both
-                   ;;        through raft sync
-                   (<? (storage/write-garbage indexed-db stale))
-                   (let [end-time  (Instant/now)
-                         duration  (- (.toEpochMilli ^Instant end-time)
-                                      (.toEpochMilli ^Instant start-time))
-                         end-stats (assoc init-stats
-                                          :end-time end-time
-                                          :duration duration)]
-                     (log/info "Index refresh complete:" end-stats))
-                   indexed-db)))))
-        db)))))
+                    ;; TODO - ideally issue garbage/root writes to RAFT together
+                    ;;        as a tx, currently requires waiting for both
+                    ;;        through raft sync
+                    (<? (storage/write-garbage indexed-db stale))
+                    (let [end-time  (Instant/now)
+                          duration  (- (.toEpochMilli ^Instant end-time)
+                                       (.toEpochMilli ^Instant start-time))
+                          end-stats (assoc init-stats
+                                      :end-time end-time
+                                      :duration duration)]
+                      (log/info "Index refresh complete:" end-stats))
+                    indexed-db)))))
+         db)))))
 
 (defn novelty-min-max
   "Returns a two-tuple of novelty min and novelty max given the session object"
@@ -547,10 +545,10 @@
                     (not continuous?))
            (throw (Exception. (str "NOT CONTINUOUS!!!: " (pr-str {:id             id
                                                                   :idx            i
-                                                                  :last-rhs      last-rhs
+                                                                  :last-rhs       last-rhs
                                                                   :first          child-first
                                                                   :first-resolved resv-first
-                                                                  :rhs           rhs
+                                                                  :rhs            rhs
                                                                   :leftmost?      leftmost?})))))
          (if (= i last-i)
            (println "Done validating idx-continuity")
