@@ -195,3 +195,14 @@
                    (txproto/write-index-point-async group db**)
                    (recur (inc block) db**))
                  (recur (inc block) db*))))))))))
+
+(defn reindex-all
+  [conn]
+  (go-try
+   (doseq [[network dbid] (->> conn
+                               txproto/ledgers-info-map
+                               (map (juxt :network :ledger)))]
+     (log/info "Rebuilding indexes for ledger [" network dbid "]")
+     (let [status (<? (reindex conn network dbid))]
+       (log/info "Ledger rebuilding complete for ledger [" network dbid "]"
+                 status)))))

@@ -16,7 +16,7 @@
             [fluree.db.peer.messages :as messages]
 
             [fluree.db.ledger.indexing.full-text :as full-text]
-            [fluree.db.ledger.reindex :refer [reindex]]
+            [fluree.db.ledger.reindex :refer [reindex-all]]
             [fluree.db.ledger.stats :as stats]
             [fluree.db.ledger.storage.memorystore :as memorystore]
             [fluree.db.ledger.txgroup.core :as txgroup]
@@ -130,8 +130,8 @@
          (recur rst))))))
 
 (defn reindex?
-  [{:keys [config] :as system}]
-  (-> config
+  [settings]
+  (-> settings
       :fdb-command
       (or "none")
       util/str->keyword
@@ -209,7 +209,7 @@
        (shutdown system*)
        (System/exit 1))
 
-     (when-not (or (reindex? system*)
+     (when-not (or (reindex? settings)
                    (<?? (all-migrated? system*)))
        (log/error "Error starting system. Index format out of date. Please upgrade indexes using the :reindex command")
        (shutdown system*)
@@ -235,13 +235,7 @@
 
     :reindex
     (let [{:keys [conn] :as system} (startup)]
-      (try (doseq [[network dbid] (->> conn
-                                       txproto/ledgers-info-map
-                                       (map (juxt :network :ledger)))]
-             (log/info "Rebuilding indexes for ledger [" network dbid "]")
-             (let [status (<?? (reindex conn network dbid))]
-               (log/info "Ledger rebuilding complete for ledger [" network dbid "]"
-                         status)))
+      (try (<?? (reindex-all conn))
            (catch Exception e
              (log/error e "Failed to rebuild indexes."))
            (finally
