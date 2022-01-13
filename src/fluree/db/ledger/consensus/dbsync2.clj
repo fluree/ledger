@@ -2,7 +2,7 @@
   (:require [fluree.db.storage.core :as storage]
             [fluree.db.ledger.storage :as ledger-storage]
             [clojure.core.async :as async :refer [go <! >!]]
-            [clojure.tools.logging :as log]
+            [fluree.db.util.log :as log]
             [fluree.db.ledger.storage.filestore :as filestore]
             [fluree.db.ledger.util :as util :refer [go-try <?]]
             [fluree.db.ledger.txgroup.txgroup-proto :as txproto]

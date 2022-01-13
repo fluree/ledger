@@ -1,5 +1,5 @@
 (ns fluree.db.ledger.upgrade
-  (:require [clojure.tools.logging :as log]
+  (:require [fluree.db.util.log :as log]
             [fluree.db.api :as fdb]
             [fluree.db.storage.core :as storage]
             [fluree.db.flake :as flake]
@@ -9,11 +9,37 @@
             [fluree.db.constants :as const]
             [fluree.db.query.range :as query-range]
             [fluree.db.time-travel :as time-travel]
-            [clojure.string :as str])
-  (:import (fluree.db.flake Flake)))
+            [clojure.string :as str]))
 
 (set! *warn-on-reflection* true)
 
+
+(defn- new-children-for-branch [left-flake {:keys [children] :as _branch}]
+  (loop [[child & r] children
+         i           0
+         last-rhs    nil
+         acc         []]
+    (if-not child
+      acc
+      (let [new-child
+            (cond
+              ;; first segment, place in update farthest 'left-flake'
+              (and (zero? i) (not= left-flake (:first child)))
+              (do
+                (log/info "   -> Updating index segment: " (:id child)
+                          "(left flake)")
+                (assoc child :first left-flake))
+
+              ;; need to update child, out of sync
+              (and last-rhs (not= last-rhs (:first child)))
+              (do
+                (log/info "   -> Updating index segment: " (:id child))
+                (assoc child :first last-rhs))
+
+              ;; no change
+              :else
+              child)]
+        (recur r (inc i) (:rhs child) (conj acc new-child))))))
 
 (defn v1->v2
   "Modifies index segments where the 'rhs' does not match the next segment's first-flake"
@@ -37,29 +63,7 @@
                 (doseq [idx-type index/types]
                   (let [root-idx-key (-> db-root (get idx-type) :id)
                         branch-data  (<? (storage/read-branch conn root-idx-key))
-                        new-children (loop [[child & r] (:children branch-data)
-                                            i        0
-                                            last-rhs nil
-                                            acc      []]
-                                       (if-not child
-                                         acc
-                                         (let [new-child (cond
-                                                           ;; first segment, place in update farthest 'left-flake'
-                                                           (and (zero? i) (not= left-flake (:first child)))
-                                                           (do
-                                                             (log/info "   -> Updating index segment: " (:id child) "(left flake)")
-                                                             (assoc child :first left-flake))
-
-                                                           ;; need to update child, out of sync
-                                                           (and last-rhs (not= last-rhs (:first child)))
-                                                           (do
-                                                             (log/info "   -> Updating index segment: " (:id child))
-                                                             (assoc child :first last-rhs))
-
-                                                           ;; no change
-                                                           :else
-                                                           child)]
-                                           (recur r (inc i) (:rhs child) (conj acc new-child)))))
+                        new-children (new-children-for-branch left-flake branch-data)
                         branch-data* (assoc branch-data :children new-children)]
                     (<? (storage/write-branch-data conn root-idx-key branch-data*))))))))
         (log/info "Migration complete."))

@@ -1,5 +1,5 @@
 (ns fluree.db.ledger.storage.crypto
-  (:require [clojure.tools.logging :as log]
+  (:require [fluree.db.util.log :as log]
             [fluree.crypto :as crypto])
   (:import (java.nio ByteBuffer)
            (java.security SecureRandom)

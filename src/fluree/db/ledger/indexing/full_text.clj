@@ -4,7 +4,7 @@
             [fluree.db.query.range :as query-range]
             [fluree.db.util.schema :as schema]
             [clojure.core.async :as async :refer [<! chan go go-loop]]
-            [clojure.tools.logging :as log])
+            [fluree.db.util.log :as log])
   (:import (fluree.db.flake Flake)
            (java.time Instant)
            (java.io Closeable)))

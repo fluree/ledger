@@ -510,7 +510,7 @@
             (->> errors
                  (map #(let [ex (ex-data %)]
                          (when (= 500 (:status ex))
-                           (log/error % "Unexpected validation error in transaction! Flakes:" (pr-str all-flakes)))
+                           (log/error % "Unexpected validation error in transaction! Flakes:" all-flakes))
                          (assoc ex :message (ex-message %))))
                  (not-empty))
 
@@ -587,7 +587,7 @@
                 (->> errors
                      (map #(let [ex (ex-data %)]
                              (when (= 500 (:status ex))
-                               (log/error % "Unexpected validation error in transaction! Flakes:" (pr-str all-flakes)))
+                               (log/error % "Unexpected validation error in transaction! Flakes:" all-flakes))
                              (assoc ex :message (ex-message %))))
                      (not-empty))
 

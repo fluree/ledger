@@ -1,5 +1,5 @@
 (ns fluree.db.ledger.transact
-  (:require [clojure.tools.logging :as log]
+  (:require [fluree.db.util.log :as log]
             [fluree.db.flake :as flake]
             [fluree.db.dbproto :as dbproto]
             [fluree.db.util.core :as util]
@@ -250,7 +250,7 @@
                   :else
                   (do
                     (log/warn "Proposed block was not accepted by the network because: "
-                              (pr-str block-approved?)
+                              block-approved?
                               "Proposed block: "
                               (dissoc block-result* :db-orig :db-before :db-after))
                     false)))

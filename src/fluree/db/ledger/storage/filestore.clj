@@ -1,6 +1,6 @@
 (ns fluree.db.ledger.storage.filestore
   (:require [clojure.java.io :as io]
-            [clojure.tools.logging :as log]
+            [fluree.db.util.log :as log]
             [clojure.core.async :as async]
             [fluree.db.ledger.storage :refer [key->unix-path]]
             [fluree.db.ledger.storage.crypto :as crypto])

@@ -1,6 +1,6 @@
 (ns fluree.db.ledger.stats
   (:require [clojure.core.async :as async]
-            [clojure.tools.logging :as log]
+            [fluree.db.util.log :as log]
             [fluree.db.ledger.txgroup.txgroup-proto :as txproto]
             [clojure.walk :as walk]
             [clojure.string :as str]

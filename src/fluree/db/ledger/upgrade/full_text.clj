@@ -6,7 +6,7 @@
             [fluree.db.ledger.txgroup.txgroup-proto :as txproto]
             [fluree.db.query.range :as query-range]
             [clojure.core.async :as async :refer [<!!]]
-            [clojure.tools.logging :as log]
+            [fluree.db.util.log :as log]
             [environ.core :as environ])
   (:import (fluree.db.flake Flake)))
 

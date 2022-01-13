@@ -1,7 +1,7 @@
 (ns fluree.db.server
   (:gen-class)
   (:require [environ.core :as environ]
-            [clojure.tools.logging :as log]
+            [fluree.db.util.log :as log]
             [clojure.core.async :as async]
             [clojure.string :as str]
 
@@ -66,7 +66,7 @@
         try-continue (fn [f]
                        (try (f)
                             (catch Exception e
-                              (log/error e "Exception executing close function: " (pr-str f)))))]
+                              (log/error e "Exception executing close function: " f))))]
     (when (fn? (:close webserver))
       (try-continue (:close webserver)))
     (try-continue (fn [] (async/close! stats)))
@@ -140,13 +140,13 @@
 (defn startup
   ([] (startup (settings/build-env @environ/runtime-env)))
   ([settings]
-   (log/info (str "Starting Fluree in mode: " (:fdb-mode settings)))
+   (log/info "Starting Fluree in mode:" (:fdb-mode settings))
    (log/info "Starting with config:\n" (with-out-str
                                          (pprint/pprint
                                            (cond-> (into (sorted-map) settings) ;; hide encryption secret from logs
                                                    (:fdb-encryption-secret settings) (assoc :fdb-encryption-secret "prying eyes want to know...")))))
-   (log/info "JVM arguments: " (str (stats/jvm-arguments)))
-   (log/info "Memory Info: " (stats/memory-stats))
+   (log/info "JVM arguments:" (stats/jvm-arguments))
+   (log/info "Memory Info:" (stats/memory-stats))
 
    (Thread/setDefaultUncaughtExceptionHandler
     (reify Thread$UncaughtExceptionHandler

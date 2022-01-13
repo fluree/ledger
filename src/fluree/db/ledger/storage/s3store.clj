@@ -6,7 +6,7 @@
             [cognitect.aws.client.api :as aws]
             [fluree.db.ledger.storage :refer [key->unix-path]]
             [fluree.db.ledger.storage.crypto :as crypto]
-            [clojure.tools.logging :as log])
+            [fluree.db.util.log :as log])
   (:import (java.io ByteArrayOutputStream Closeable)))
 
 (set! *warn-on-reflection* true)
@@ -135,7 +135,7 @@
                               :size size})
                            objects)]
        (log/trace (format "Objects found in %s bucket at %s: %s"
-                          bucket path' (pr-str result)))
+                          bucket path' result))
        (with-meta result (dissoc s3-result :Contents))))))
 
 
