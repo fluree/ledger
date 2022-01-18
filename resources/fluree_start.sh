@@ -106,20 +106,6 @@ elif [ -f "${SYSTEM_CONFIG_DIR}/${SYSTEM_LOGBACK_CONFIG_FILE}" ]; then
   FLUREE_LOGBACK_CONFIGURATION_FILE="${SYSTEM_CONFIG_DIR}/${SYSTEM_LOGBACK_CONFIG_FILE}"
 fi
 
-## first check if issuing a command (string that starts with ':' as the only arg)
-if [ "${1:0:1}" = : ]; then
-  echo "Executing command: $1"
-  exec $JAVA_X -Dfdb.command=$1 -jar $FLUREE_SERVER
-  exit 0
-else
-  case "$1" in
-  *.properties)
-    FLUREE_PROPERTIES=$1
-    shift
-    ;;
-  esac
-fi
-
 if [ "$FLUREE_PROPERTIES" == "" ]; then
   echo "No properties file specified. Using default properties file $DEFAULT_PROPERTIES_FILE."
   FLUREE_PROPERTIES="${THIS_DIR}/${DEFAULT_PROPERTIES_FILE}"
@@ -128,6 +114,20 @@ fi
 if ! [ -f ${FLUREE_PROPERTIES} ]; then
   echo "Properties file ${FLUREE_PROPERTIES} does not exist. Exiting."
   exit 1
+fi
+
+## first check if issuing a command (string that starts with ':' as the only arg)
+if [ "${1:0:1}" = : ]; then
+  echo "Executing command: $1"
+  exec $JAVA_X -Dfdb.command=$1 -Dfdb.properties.file=${FLUREE_PROPERTIES} -jar $FLUREE_SERVER
+  exit 0
+else
+  case "$1" in
+  *.properties)
+    FLUREE_PROPERTIES=$1
+    shift
+    ;;
+  esac
 fi
 
 JAVA_OPTS='-XX:+UseG1GC -XX:MaxGCPauseMillis=50'
