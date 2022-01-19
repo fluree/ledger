@@ -119,7 +119,8 @@ fi
 ## first check if issuing a command (string that starts with ':' as the only arg)
 if [ "${1:0:1}" = : ]; then
   echo "Executing command: $1"
-  exec $JAVA_X -Dfdb.command=$1 -Dfdb.properties.file=${FLUREE_PROPERTIES} -jar $FLUREE_SERVER
+  exec $JAVA_X -Dfdb.command=$1 ${FLUREE_ARGS} -Dfdb.properties.file=${FLUREE_PROPERTIES} \
+    -Dfdb.log.ansi -Dlogback.configurationFile=${FLUREE_LOGBACK_CONFIGURATION_FILE} -jar $FLUREE_SERVER
   exit 0
 else
   case "$1" in
