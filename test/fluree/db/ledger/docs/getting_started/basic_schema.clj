@@ -2,11 +2,11 @@
   (:require [clojure.test :refer :all]
             [fluree.db.test-helpers :as test]
             [fluree.db.api :as fdb]
-            [clojure.core.async :as async]
+            [clojure.core.async :as async :refer [<!!]]
             [clojure.java.io :as io]
             [clojure.tools.reader.edn :as edn]))
 
-(use-fixtures :once test/test-system)
+(use-fixtures :once test/test-system-deprecated)
 
 (defn get-db
   ([ledger-name]
@@ -63,38 +63,42 @@
 
 (deftest add-predicates
   (testing "Add predicates for the chat app"
-    (let [filename        "../test/fluree/db/ledger/Resources/ChatApp/chatPreds.edn"
-          predicate-txn   (edn/read-string (slurp (io/resource filename)))
-          collection-resp (async/<!! (fdb/transact-async (get-conn) test/ledger-chat predicate-txn))]
+    (let [filename      "schemas/chat-preds.edn"
+          predicate-txn (-> filename io/resource slurp edn/read-string)
+          resp          (->> predicate-txn
+                             (fdb/transact-async (get-conn) test/ledger-chat)
+                             <!!)]
 
       ;; status should be 200
-      (is (= 200 (:status collection-resp)))
+      (is (= 200 (:status resp)))
 
       ;; block should be 3
-      (is (= 3 (:block collection-resp)))
+      (is (= 3 (:block resp)))
 
       ;; there should be 16 _predicate tempids
-      (is (= 17 (-> collection-resp :tempids (test/get-tempid-count "_predicate")))))))
+      (is (= 17 (-> resp :tempids (test/get-tempid-count "_predicate")))))))
 
 ;; Add sample data
 
 (deftest add-sample-data
   (testing "Add sample data for the chat app"
-    (let [filename        "../test/fluree/db/ledger/Resources/ChatApp/chatAppData.edn"
-          predicate-txn   (edn/read-string (slurp (io/resource filename)))
-          collection-resp (async/<!! (fdb/transact-async (get-conn) test/ledger-chat predicate-txn))]
+    (let [filename "data/chat.edn"
+          data-txn (-> filename io/resource slurp edn/read-string)
+          resp     (->> data-txn
+                        (fdb/transact-async (get-conn) test/ledger-chat)
+                        <!!)]
 
       ;; status should be 200
-      (is (= 200 (:status collection-resp)))
+      (is (= 200 (:status resp)))
 
       ;; block should be 4
-      (is (= 4 (:block collection-resp)))
+      (is (= 4 (:block resp)))
 
       ;; there should be 17 tempids
-      (is (= 15 (count (:tempids collection-resp))))
+      (is (= 15 (count (:tempids resp))))
 
       ;; there should be 3 chat tempids that were not unique
-      (is (= 3 (-> collection-resp :tempids (test/get-tempid-count "chat")))))))
+      (is (= 3 (-> resp :tempids (test/get-tempid-count "chat")))))))
 
 
 (deftest graphql-txn

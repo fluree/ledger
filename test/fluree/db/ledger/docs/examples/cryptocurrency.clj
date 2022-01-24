@@ -8,7 +8,7 @@
             [clojure.tools.reader.edn :as edn]
             [clojure.string :as str]))
 
-(use-fixtures :once test/test-system)
+(use-fixtures :once test/test-system-deprecated)
 
 ;; Cryptocurrency xample
 

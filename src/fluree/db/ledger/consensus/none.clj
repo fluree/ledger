@@ -150,7 +150,7 @@
 
   Events include:
   - new-command           - (leader) processes a new command, will return result of operation after applied to state
-  -   close                 - ends event-loop"
+  - close                 - ends event-loop"
   [state]
   (let [event-chan   (:event-chan state)
         command-chan (:command-chan state)]
@@ -181,7 +181,6 @@
         (shutdown system)
         (System/exit 1)))))
 
-
 (defrecord InMemoryGroup [in-memory-server state-atom port this-server event-chan command-chan close open-api]
   TxGroup
   (-add-server-async [group server] false)
@@ -194,9 +193,8 @@
   (-start-up-activities [group conn system shutdown join?] (in-memory-start-up group conn system shutdown)))
 
 (defn launch-in-memory-server
-  [group-settings]
-  (let [{:keys [private-keys this-server port open-api]} group-settings
-        event-chan         (async/chan)
+  [{:keys [private-keys this-server port open-api] :as _group-settings}]
+  (let [event-chan         (async/chan)
         command-chan       (async/chan)
         state-machine-atom (atom default-state)
         close-fn           (fn []
@@ -206,24 +204,21 @@
                              (unregister-all-state-change-fn)
                              (memorystore/close)
                              (event-bus/reset-sub))
-        config*            {:state-atom    (atom {:version     3
-                                                  :private-key (first
-                                                                 private-keys)})
+        config*            {:state-atom    (atom (assoc default-state
+                                                   :private-key
+                                                   (first private-keys)))
                             :event-chan    event-chan
                             :this-server   this-server
                             :port          port
                             :private-keys  private-keys
                             :command-chan  command-chan
-                            :state-machine (state-machine state-machine-atom)}
-        _                  (event-loop config*)]
-    (-> {:in-memory-server config*
-         :state-atom       state-machine-atom
-         :port             port
-         :this-server      this-server
-         :event-chan       event-chan
-         :command-chan     command-chan
-         :close            close-fn
-         :open-api         open-api}
-        map->InMemoryGroup)))
-
-
+                            :state-machine (state-machine state-machine-atom)}]
+    (event-loop config*)
+    (map->InMemoryGroup {:in-memory-server config*
+                         :state-atom       state-machine-atom
+                         :port             port
+                         :this-server      this-server
+                         :event-chan       event-chan
+                         :command-chan     command-chan
+                         :close            close-fn
+                         :open-api         open-api})))

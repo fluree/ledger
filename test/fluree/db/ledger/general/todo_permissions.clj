@@ -7,7 +7,7 @@
             [fluree.db.api :as fdb]))
 
 
-(use-fixtures :once test/test-system)
+(use-fixtures :once test/test-system-deprecated)
 
 (def sys-admin {:private "602798c87164f0c1e1b2fe0f7f229d32218d828cc51ef78b462eccaa05983e4c"
                 :auth    "Tf3sgBQ9G6EsrG65DXdWWamWXX3AxiDaq4z"})

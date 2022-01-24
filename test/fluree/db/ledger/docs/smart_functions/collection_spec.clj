@@ -5,7 +5,7 @@
             [fluree.db.api :as fdb]
             [fluree.db.ledger.docs.getting-started.basic-schema :as basic]))
 
-(use-fixtures :once test/test-system)
+(use-fixtures :once test/test-system-deprecated)
 
 (deftest full-name-req-test
   (let [full-name-spec  [{:_id ["_collection/name" "person"], :spec ["_fn$fullNameReq"], :specDoc "A person is required to have a fullName."}

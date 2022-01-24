@@ -7,7 +7,7 @@
             [clojure.string :as str])
   (:import (clojure.lang ExceptionInfo)))
 
-(use-fixtures :once test/test-system)
+(use-fixtures :once test/test-system-deprecated)
 
 (defn get-db
   ([ledger-name]

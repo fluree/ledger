@@ -1,6 +1,5 @@
 (ns fluree.db.peer.query-peer-tests
   (:require
-   [clojure.core.async :as async]
    [clojure.test :as t :refer [deftest testing is]]
    [environ.core :as environ]
    [fluree.db.server :as server]

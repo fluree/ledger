@@ -4,8 +4,8 @@
             [fluree.db.api :as fdb]
             [clojure.tools.logging :as log]
             [clojure.core.async :as async]
-            [clojure.string :as str]
-            [fluree.db.util.core :as util]))
+            [fluree.db.test-helpers :as test]
+            [clojure.edn :as edn]))
 
 ;; UTILITY FUNCTIONS - Time and Results Formatting
 
@@ -81,7 +81,7 @@
 (defn get-query-type
   "Offset is used for special query lists, i.e. PlaneQueryTxn. Rather than"
   ([queryTxns type]
-    (get-query-type queryTxns type 0))
+   (get-query-type queryTxns type 0))
   ([queryTxns type offset]
    (select-keys queryTxns (range (+ offset (first (get queryTxnRanges type)))
                                  (+ 1 offset (second (get queryTxnRanges type)))))))
@@ -101,14 +101,14 @@
 
 (defn add-schema-performance-check
   [conn dbid]
-  (let [collections (-> "../test/fluree/db/ledger/Resources/ChatApp/collections.edn" io/resource slurp read-string)
+  (let [collections (-> "schemas/chat.edn" io/resource slurp edn/read-string)
         coll-txn    (time-return-data (fn [conn dbid collections]
                                         (async/<!! (fdb/transact-async conn dbid collections)))
                                       conn dbid collections)
-        predicates  (-> "../test/fluree/db/ledger/Resources/ChatApp/chatPreds.edn" io/resource slurp read-string)
+        predicates  (-> "schema/chat-preds.edn" io/resource slurp edn/read-string)
         pred-txn    (time-return-data (fn [conn dbid collections]
                                         (async/<!! (fdb/transact-async conn dbid collections))) conn dbid predicates)
-        data        (-> "../test/fluree/db/ledger/Resources/ChatApp/chatAppData.edn" io/resource slurp read-string)
+        data        (-> "data/chat.edn" io/resource slurp edn/read-string)
         data-txn    (time-return-data (fn [conn dbid collections]
                                         (async/<!! (fdb/transact-async conn dbid collections))) conn dbid data)
         ;; For now, these are hard-coded

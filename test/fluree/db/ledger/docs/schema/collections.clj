@@ -6,7 +6,7 @@
             [clojure.core.async :as async]
             [clojure.string :as str]))
 
-(use-fixtures :once test/test-system)
+(use-fixtures :once test/test-system-deprecated)
 
 (deftest add-collection-long-desc
   (testing "Add long description to collections.")

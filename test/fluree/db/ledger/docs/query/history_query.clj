@@ -8,7 +8,7 @@
             [fluree.db.util.log :as log]
             [fluree.db.util.core :as util]))
 
-(use-fixtures :once test/test-system)
+(use-fixtures :once test/test-system-deprecated)
 
 (deftest history-of-subject
   (testing "History of Subject up to block 4")
