@@ -261,14 +261,3 @@
   but must have all of ks."
   [m & ks]
   (every? #(contains? m %) ks))
-
-
-(defmacro pre-fixture [& body]
-  `(fn [tests#]
-     ~@body
-     (tests#)))
-
-(defmacro post-fixture [& body]
-  `(fn [tests#]
-     (tests#)
-     ~@body))
