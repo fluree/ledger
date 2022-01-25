@@ -176,7 +176,9 @@
 
 (defn transact-resource
   "Transacts the type (keyword form of test-resources subdirectory) of resource
-  with filename file."
+  with filename file. Optional api arg can be either :http (default) or :clj to
+  indicate which API to use for the transaction. :clj can be useful under
+  closed-api mode since this doesn't sign the HTTP requests."
   ([type ledger file] (transact-resource type ledger file :http))
   ([type ledger file api]
    (let [tx (->> file (str (name type) "/") io/resource slurp edn/read-string)]
@@ -192,12 +194,12 @@
              deref
              (safe-update :body string? json/parse)))))))
 
-(def ^{:arglists '([ledger file])
+(def ^{:arglists '([ledger file] [ledger file api])
        :doc      "Like transact-resource but bakes in :schemas as the first arg."}
   transact-schema
   (partial transact-resource :schemas))
 
-(def ^{:arglists '([ledger file])
+(def ^{:arglists '([ledger file] [ledger file api])
        :doc      "Like transact-resource but bakes in :data as the first arg."}
   transact-data
   (partial transact-resource :data))
