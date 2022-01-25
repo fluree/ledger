@@ -3,7 +3,7 @@
         com.fluree/alphabase              {:mvn/version "3.2.2"}
         ;com.fluree/db                     {:mvn/version "1.0.0-rc34"}
         com.fluree/db                     {:git/url "https://github.com/fluree/db.git"
-                                           :sha "1b03052af2635bdf2e8cd5f7e30d61f8b32e371b"}
+                                           :sha "2c026f2e897e86c70dec5e8848dccf55d100e19a"}
         ;com.fluree/db                     {:local/root "../db"}
         com.fluree/raft                   {:mvn/version "1.0.0-beta1"}
         com.fluree/crypto                 {:mvn/version "0.3.7"}
