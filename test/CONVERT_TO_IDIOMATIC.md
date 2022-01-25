@@ -2,8 +2,6 @@
 
 ## Goals
 
-- Make the test suite more familiar to other Clojure programmers by following
-  community conventions & idioms
 - Make the tests runnable individually, together with other tests, and in any
   order
 - Make the tests easily runnable from the CLI, in CI, and at the REPL
@@ -11,6 +9,8 @@
   the very least do no harm)
 - Make / keep the test suite reliable (same idea: first, do no harm. second, do 
   good.)
+- Make the test suite more familiar to other Clojure programmers by following
+  community conventions & idioms
 
 ## Process
 
