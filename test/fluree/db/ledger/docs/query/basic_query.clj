@@ -8,7 +8,7 @@
             [clojure.core.async :as async]
             [clojure.set :refer [subset?]]))
 
-(use-fixtures :once test/test-system)
+(use-fixtures :once test/test-system-deprecated)
 
 (defn average
   [numbers]

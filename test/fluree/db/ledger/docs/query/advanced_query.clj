@@ -6,7 +6,7 @@
             [clojure.core.async :as async]
             [fluree.db.util.log :as log]))
 
-(use-fixtures :once test/test-system)
+(use-fixtures :once test/test-system-deprecated)
 
 (deftest crawl-graph
   (testing "Crawl the graph")

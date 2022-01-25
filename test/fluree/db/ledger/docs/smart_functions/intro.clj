@@ -5,7 +5,7 @@
             [fluree.db.api :as fdb]
             [fluree.db.ledger.docs.getting-started.basic-schema :as basic]))
 
-(use-fixtures :once test/test-system)
+(use-fixtures :once test/test-system-deprecated)
 
 (deftest add-three-add-ten
   (let [add-three [{:_id "_fn", :name "addThree", :params ["n"], :code "(+ 3 n)"}]

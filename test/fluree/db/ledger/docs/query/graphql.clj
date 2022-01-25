@@ -5,7 +5,7 @@
             [fluree.db.api :as fdb]
             [clojure.core.async :as async]))
 
-(use-fixtures :once test/test-system)
+(use-fixtures :once test/test-system-deprecated)
 
 (deftest basic-graphql
   (testing "Basic GraphQL query of chat collection")

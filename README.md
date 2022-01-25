@@ -62,9 +62,21 @@ you're ready to test integration of the production build.
 
 ### Tests
 
-You can run the integration tests like this:
+You can run the entire test suite like this:
 
 `make test`
+
+Or you can select which tests you'd like to run by invoking the test runner
+like this:
+
+`clojure -X:test`
+
+...followed by any of the filters / selectors [described here](https://github.com/cognitect-labs/test-runner#invoke-with-clojure--x-exec-style).
+
+For example, to run only the tests in the `fluree.db.ledger.api.open-test`
+namespace, you can do this:
+
+`clojure -X:test :nses '[fluree.db.ledger.api.open-test]`
 
 ### Building
 

@@ -7,7 +7,7 @@
             [fluree.db.ledger.docs.getting-started.basic-schema :as basic]
             [fluree.db.test-helpers :as test]))
 
-(use-fixtures :once test/test-system)
+(use-fixtures :once test/test-system-deprecated)
 
 ;; Auths
 (def antonio {:auth        "TfLK8tUpjYpabx7p64c9ZRwSgNUCCvxAAWG"
@@ -91,7 +91,7 @@
           antonio-res (-> antonio
                           :auth
                           query-as
-                          (get-values-for-key "invoice/id"))   ]
+                          (get-values-for-key "invoice/id"))]
 
       (is (= #{"A-000" "B-000"} (set root-res)))
       (is (= #{"A-000"} (set scott-res)))

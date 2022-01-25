@@ -9,7 +9,7 @@
            (org.httpkit BytesInputStream)
            (clojure.lang ExceptionInfo)))
 
-(use-fixtures :once test/test-system)
+(use-fixtures :once test/test-system-deprecated)
 
 ;; helper functions
 (defn object->stream

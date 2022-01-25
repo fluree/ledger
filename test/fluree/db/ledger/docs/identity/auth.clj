@@ -6,7 +6,7 @@
             [clojure.core.async :as async]
             [clojure.string :as str]))
 
-(use-fixtures :once test/test-system)
+(use-fixtures :once test/test-system-deprecated)
 
 ; Add new auth record with permissions and test
 (deftest viewPersonNoHandle

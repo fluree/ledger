@@ -3,7 +3,7 @@
         com.fluree/alphabase              {:mvn/version "3.2.2"}
         ;com.fluree/db                     {:mvn/version "1.0.0-rc34"}
         com.fluree/db                     {:git/url "https://github.com/fluree/db.git"
-                                           :sha "5c94a8c7f6057529129f53258a9fd808e226b30e"}
+                                           :sha "2c026f2e897e86c70dec5e8848dccf55d100e19a"}
         ;com.fluree/db                     {:local/root "../db"}
         com.fluree/raft                   {:mvn/version "1.0.0-beta1"}
         com.fluree/crypto                 {:mvn/version "0.3.7"}
@@ -108,8 +108,9 @@
    :main-opts   ["-m" "cloverage.coverage" "-p" "src" "-s" "test" "--test-ns-regex" "^fluree\\.db\\.ledger\\.ledger-test*$" "--output" "scanning_results/coverage"]}
 
   :eastwood
-  {:extra-deps {jonase/eastwood {:mvn/version "1.0.0"}}
-   :main-opts ["-m" "eastwood.lint" {:source-paths ["src"] :test-paths ["test"]}]}
+  {:extra-deps {jonase/eastwood {:mvn/version "1.1.1"}}
+   :main-opts ["-m" "eastwood.lint" {:source-paths ["src"] :test-paths ["test"]
+                                     :config-files ["test-resources/eastwood-config.clj"]}]}
 
   :ancient
   {:extra-deps {com.github.liquidz/antq {:mvn/version "RELEASE"}}
