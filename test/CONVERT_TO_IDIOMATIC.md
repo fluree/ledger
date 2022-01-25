@@ -52,6 +52,11 @@ unconverted ones.
          - For this one especially you'll often find that the assertion doesn't
            hold after you fix it. Use your best judgment, ask others, or just
            comment it out w/ a "TODO: Fix me" kind of comment.
+     - `testing` forms that don't wrap their test code
+        (i.e. `(testing "stuff") (test code)` instead of
+         `(testing "stuff" (test code))`)
+     - Comments in addition to or instead of `testing` forms; delete these and
+       add a `testing` form where necessary
      - Redundant fn wrappers around things that can behave as fns on their own
        (e.g. sets and keywords)
      - But overall, use your best judgment. If something seems simple but turns
