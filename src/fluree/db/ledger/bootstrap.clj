@@ -9,7 +9,8 @@
             [fluree.db.ledger.indexing :as indexing]
             [fluree.db.ledger.txgroup.txgroup-proto :as txproto]
             [fluree.db.util.async :refer [go-try <?]]
-            [fluree.db.util.core :as util])
+            [fluree.db.util.core :as util]
+            [fluree.db.util.log :as log])
   (:import (fluree.db.flake Flake)))
 
 (set! *warn-on-reflection* true)
@@ -112,14 +113,15 @@
 
 
 
-(defn master-auth-flake
-  [t pred->id ident->id auth-subid master-authority]
+(defn master-auth-flakes
+  [t pred->id ident->id auth-subids]
+  (log/debug "Generating master-auth-flake for" auth-subids)
   (let [db-setting-id (flake/->sid const/$_setting 0)
         true-fn-sid   (flake/->sid const/$_fn 0)
         false-fn-sid  (flake/->sid const/$_fn 1)
         rule-sid      (flake/->sid const/$_rule 0)
         role-sid      (flake/->sid const/$_role 0)]
-    (when-not master-authority
+    (when (empty? auth-subids)
       (throw (ex-info (str "No Master Authority provided when bootstrapping.")
                       {:status 500 :error :db/unexpected-error})))
     (when-not (get pred->id "_auth/id")
@@ -131,87 +133,130 @@
     ;(when-not (get pred->id "_setting/defaultAuth")
     ;  (throw (ex-info (str "Unable to determine _setting/defaultAuth predicate id when bootstrapping.")
     ;                  {:status 500 :error :db/unexpected-error})))
-    [
-     ;; add a true predicate function
-     (flake/new-flake true-fn-sid (get pred->id "_fn/name") "true" t true)
-     (flake/new-flake true-fn-sid (get pred->id "_fn/doc") "Allows access to any rule or spec this is attached to." t true)
-     (flake/new-flake true-fn-sid (get pred->id "_fn/code") "true" t true)
-     ;; add a false predicate function (just for completeness)
-     (flake/new-flake false-fn-sid (get pred->id "_fn/name") "false" t true)
-     (flake/new-flake false-fn-sid (get pred->id "_fn/doc") "Denies access to any rule or spec this is attached to." t true)
-     (flake/new-flake false-fn-sid (get pred->id "_fn/code") "false" t true)
+    (let [base-flakes
+          [;; add a true predicate function
+           (flake/new-flake true-fn-sid (get pred->id "_fn/name") "true" t true)
+           (flake/new-flake true-fn-sid (get pred->id "_fn/doc") "Allows access to any rule or spec this is attached to." t true)
+           (flake/new-flake true-fn-sid (get pred->id "_fn/code") "true" t true)
+           ;; add a false predicate function (just for completeness)
+           (flake/new-flake false-fn-sid (get pred->id "_fn/name") "false" t true)
+           (flake/new-flake false-fn-sid (get pred->id "_fn/doc") "Denies access to any rule or spec this is attached to." t true)
+           (flake/new-flake false-fn-sid (get pred->id "_fn/code") "false" t true)
 
-     ;; add a 'root' rule
-     (flake/new-flake rule-sid (get pred->id "_rule/id") "root" t true)
-     (flake/new-flake rule-sid (get pred->id "_rule/doc") "Root rule, gives full access" t true)
-     (flake/new-flake rule-sid (get pred->id "_rule/collection") "*" t true)
-     (flake/new-flake rule-sid (get pred->id "_rule/predicates") "*" t true)
-     (flake/new-flake rule-sid (get pred->id "_rule/fns") true-fn-sid t true)
-     (flake/new-flake rule-sid (get pred->id "_rule/ops") (get ident->id ["_tag/id" "_rule/ops:all"]) t true)
+           ;; add a 'root' rule
+           (flake/new-flake rule-sid (get pred->id "_rule/id") "root" t true)
+           (flake/new-flake rule-sid (get pred->id "_rule/doc") "Root rule, gives full access" t true)
+           (flake/new-flake rule-sid (get pred->id "_rule/collection") "*" t true)
+           (flake/new-flake rule-sid (get pred->id "_rule/predicates") "*" t true)
+           (flake/new-flake rule-sid (get pred->id "_rule/fns") true-fn-sid t true)
+           (flake/new-flake rule-sid (get pred->id "_rule/ops") (get ident->id ["_tag/id" "_rule/ops:all"]) t true)
 
-     ;; add a 'root' role
-     (flake/new-flake role-sid (get pred->id "_role/id") "root" t true)
-     (flake/new-flake role-sid (get pred->id "_role/doc") "Root role." t true)
-     (flake/new-flake role-sid (get pred->id "_role/rules") rule-sid t true)
+           ;; add a 'root' role
+           (flake/new-flake role-sid (get pred->id "_role/id") "root" t true)
+           (flake/new-flake role-sid (get pred->id "_role/doc") "Root role." t true)
+           (flake/new-flake role-sid (get pred->id "_role/rules") rule-sid t true)]]
+      (reduce-kv (fn [flakes auth-subid master-authority]
+                   (conj flakes
+                         ;; add auth record, and assign root role
+                         (flake/new-flake auth-subid (get pred->id "_auth/id")
+                                          master-authority t true)
+                         (flake/new-flake auth-subid
+                                          (get pred->id "_auth/roles") role-sid
+                                          t true)
 
-     ;; add auth record, and assign root role
-     (flake/new-flake auth-subid (get pred->id "_auth/id") master-authority t true)
-     (flake/new-flake auth-subid (get pred->id "_auth/roles") role-sid t true)
+                         ;; add ledger that uses master auth
+                         (flake/new-flake db-setting-id
+                                          (get pred->id "_setting/ledgers")
+                                          auth-subid t true)
+                         (flake/new-flake
+                           db-setting-id
+                           (get pred->id "_setting/language")
+                           (get ident->id ["_tag/id" "_setting/language:en"])
+                           t true)
+                         (flake/new-flake db-setting-id
+                                          (get pred->id "_setting/id") "root"
+                                          t true)))
+                 base-flakes auth-subids))))
 
-     ;; add ledger that uses master auth
-     (flake/new-flake db-setting-id (get pred->id "_setting/ledgers") auth-subid t true)
-     (flake/new-flake db-setting-id (get pred->id "_setting/language") (get ident->id ["_tag/id" "_setting/language:en"]) t true)
-     (flake/new-flake db-setting-id (get pred->id "_setting/id") "root" t true)]))
 
 (defn bootstrap-memory-db
   "Bootstraps a blank db fully in-memory.
   Does not attempt to create the db, or index the db to disk. Holds everything in memory.
 
-  Returns a standard 'block' map, but also include the :db key that contains the newly created
+  Returns a standard 'block' map, but also includes the :db key that contains the newly created
   db."
   ([conn ledger]
    (bootstrap-memory-db conn ledger nil))
-  ([conn ledger {:keys [master-auth-id master-auth-private txid cmd sig]}]
+  ([conn ledger {:keys [owners master-auth-private txid cmd sig] :as command}]
+   (log/debug "Bootstrapping memory db:" command)
    (let [blank-db             (session/blank-db conn ledger)
-         timestamp            (System/currentTimeMillis)
          {:keys [novelty stats]} blank-db
-         master-auth-private* (or master-auth-private (-> (crypto/generate-key-pair) :private))
-         master-auth-id*      (or master-auth-id (crypto/account-id-from-private master-auth-private*))
-         ;; if a txid isn't provided, we just make one up by hashing the auth-id so something exists for the genesis block
-         txid*                (or txid (crypto/sha2-256 master-auth-id*))
-         auth-subid           (flake/->sid 6 0)
+         master-auth-private* (or master-auth-private
+                                  (:private (crypto/generate-key-pair)))
+         owners*              (or (not-empty owners)
+                                  #{(crypto/account-id-from-private
+                                      master-auth-private*)})
+         ;; if a txid isn't provided, we just make one up by hashing the first auth-id so something exists for the genesis block
+         txid*                (or txid (-> owners* first crypto/sha2-256))
+         auth-subids          (apply hash-map
+                                     (interleave (map #(flake/->sid 6 %)
+                                                      (range))
+                                                 owners*))
          block                1
          t                    -1
          block-t              -2
-         {:keys [fparts index-pred ref-pred pred->id ident->id]} (bootstrap-data->fparts bootstrap-txn)
-         flakes               (reduce (fn [acc [s p o]]
-                                        (conj acc (flake/new-flake s p o t true)))
-                                      (flake/sorted-set-by flake/cmp-flakes-spot) fparts)
-         authority-flakes     (master-auth-flake t pred->id ident->id auth-subid master-auth-id*)
-         flakes*              (-> (into flakes authority-flakes)
-                                  (conj (flake/new-flake t (get pred->id "_tx/id") txid* t true)
-                                        (flake/new-flake t (get pred->id "_tx/nonce") timestamp t true)
-                                        (flake/new-flake block-t (get pred->id "_block/number") 1 block-t true)
-                                        (flake/new-flake block-t (get pred->id "_block/instant") timestamp block-t true)
-                                        (flake/new-flake block-t (get pred->id "_block/transactions") -1 block-t true)
-                                        (flake/new-flake block-t (get pred->id "_block/transactions") -2 block-t true)))
+
+         {:keys [fparts index-pred ref-pred pred->id ident->id]}
+         (bootstrap-data->fparts bootstrap-txn)
+
+         flakes               (reduce
+                                (fn [acc [s p o]]
+                                  (conj acc (flake/new-flake s p o t true)))
+                                (flake/sorted-set-by flake/cmp-flakes-spot)
+                                fparts)
+         owner-flakes         (master-auth-flakes t pred->id ident->id
+                                                  auth-subids)
+         _                    (log/debug "new ledger owner-flakes:" owner-flakes)
+         flakes+owners        (into flakes owner-flakes)
+         flakes*              (conj flakes+owners
+                                    (flake/new-flake t (get pred->id "_tx/id")
+                                                     txid* t true))
          hash                 (get-block-hash flakes*)
-         block-flakes         [(flake/new-flake block-t (get pred->id "_block/hash") hash block-t true)
-                               (flake/new-flake block-t (get pred->id "_block/ledgers") auth-subid block-t true)]
+         block-flakes         (concat
+                                [(flake/new-flake block-t
+                                                  (get pred->id "_block/hash")
+                                                  hash block-t true)]
+                                (map #(flake/new-flake block-t
+                                                       (get pred->id "_block/ledgers")
+                                                       % block-t true)
+                                     (keys auth-subids)))
          flakes+block         (into flakes* block-flakes)
 
          {:keys [spot psot post opst tspo]} novelty
-         db                   (assoc blank-db :block block
-                                              :t block-t
-                                              :ecount genesis-ecount
-                                              :novelty (assoc novelty :spot (into spot flakes+block)
-                                                                      :psot (into psot flakes+block)
-                                                                      :post (into post (filter #(index-pred (.-p ^Flake %)) flakes+block))
-                                                                      :opst (into opst (filter #(ref-pred (.-p ^Flake %)) flakes+block))
-                                                                      :tspo (into tspo flakes+block)
-                                                                      :size (flake/size-bytes flakes+block))
-                                              :stats (assoc stats :flakes (count flakes+block)
-                                                                  :size (flake/size-bytes flakes+block)))]
+         db                   (assoc blank-db
+                                :block block
+                                :t block-t
+                                :ecount genesis-ecount
+                                :novelty (assoc novelty
+                                           :spot (into spot flakes+block)
+                                           :psot (into psot flakes+block)
+                                           :post (into
+                                                   post (filter
+                                                          #(index-pred
+                                                             (.-p ^Flake %))
+                                                          flakes+block))
+                                           :opst (into
+                                                   opst (filter
+                                                          #(ref-pred
+                                                             (.-p ^Flake %))
+                                                          flakes+block))
+                                           :tspo (into tspo flakes+block)
+                                           :size (flake/size-bytes
+                                                   flakes+block))
+                                :stats (assoc stats
+                                         :flakes (count flakes+block)
+                                         :size (flake/size-bytes
+                                                 flakes+block)))]
      {:db     db
       :block  block
       :t      block-t
@@ -224,37 +269,41 @@
 
 (defn bootstrap-db
   "Bootstraps a new db from a signed new-db message."
-  [{:keys [conn group]} {:keys [cmd sig]}]
+  [{:keys [conn group]} {:keys [cmd sig] :as command}]
   (go-try
-   (let [txid          (crypto/sha3-256 cmd)
-         new-db-name   (-> cmd json/parse :db)
-         [network dbid] (if (sequential? new-db-name)
-                          new-db-name
-                          (str/split new-db-name #"/"))
-         _             (when (or (txproto/ledger-exists? group network dbid)
-                                 ;; also check for block 1 on disk as a precaution
-                                 (<? (storage/read-block conn network dbid 1)))
-                         (throw (ex-info (str "Ledger " network "/$" dbid " already exists! Create unsuccessful.")
-                                         {:status 500
-                                          :error  :db/unexpected-error})))
-         master-authid (crypto/account-id-from-message cmd sig)
-         block         (bootstrap-memory-db conn [network dbid] {:master-auth-id master-authid :txid txid :cmd cmd :sig sig})
-         new-db        (:db block)
-         block-data    (dissoc block :db)
-         _             (<? (storage/write-block conn network dbid block-data))
-         ;; todo - should create a new command to register new DB that first checks raft
-         _             (<? (txproto/register-genesis-block-async (:group conn) network dbid))
+    (log/debug "Bootstrapping new ledger:" command)
+    (let [txid          (crypto/sha3-256 cmd)
+          {new-db-name :db owners :owners} (json/parse cmd)
+          [network dbid] (if (sequential? new-db-name)
+                           new-db-name
+                           (str/split new-db-name #"/"))
+          _             (when (or (txproto/ledger-exists? group network dbid)
+                                  ;; also check for block 1 on disk as a precaution
+                                  (<? (storage/read-block conn network dbid 1)))
+                          (throw (ex-info (str "Ledger " network "/$" dbid " already exists! Create unsuccessful.")
+                                          {:status 500
+                                           :error  :db/unexpected-error})))
+          owners'       (or owners #{(crypto/account-id-from-message cmd sig)})
+          _             (log/debug "New ledger owner(s):" owners')
+          block         (bootstrap-memory-db conn [network dbid]
+                                             {:owners owners' :txid txid :cmd cmd
+                                              :sig    sig})
+          new-db        (:db block)
+          block-data    (dissoc block :db)
+          _             (<? (storage/write-block conn network dbid block-data))
+          ;; todo - should create a new command to register new DB that first checks raft
+          _             (<? (txproto/register-genesis-block-async (:group conn) network dbid))
 
-         {:keys [network dbid block fork] :as indexed-db}
-         (<? (indexing/refresh new-db))
+          {:keys [network dbid block fork] :as indexed-db}
+          (<? (indexing/refresh new-db))
 
-         dbgroup       (-> indexed-db :conn :group)
-         indexed-block (get-in indexed-db [:stats :indexed])]
+          dbgroup       (-> indexed-db :conn :group)
+          indexed-block (get-in indexed-db [:stats :indexed])]
 
-     ;; write out new index point
-     (<? (txproto/initialized-ledger-async dbgroup txid network dbid block
-                                           fork indexed-block))
-     indexed-db)))
+      ;; write out new index point
+      (<? (txproto/initialized-ledger-async dbgroup txid network dbid block
+                                            fork indexed-block))
+      indexed-db)))
 
 (def bootstrap-txn
   [{:_id     ["_collection" const/$_predicate]

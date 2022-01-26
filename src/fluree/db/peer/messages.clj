@@ -46,6 +46,7 @@
     (log/trace "Processing signed command:" (pr-str cmd-data))
     (case cmd-type
       :tx (let [{:keys [db tx deps expire nonce]} cmd-data
+                _ (log/trace "tx command:" cmd-data)
                 _ (when-not db (throw-invalid-command "No db specified for transaction."))
                 [network dbid] (session/resolve-ledger conn db)]
 
@@ -111,20 +112,20 @@
                           {:status 400
                            :error  :db/invalid-action}))))
 
-      :new-db (let [{:keys [db snapshot auth expire nonce]} cmd-data
-                    [network dbid] (if (sequential? db) db (str/split db #"/"))]
+      :new-db (let [{:keys [db snapshot auth expire nonce owners]} cmd-data
+                    [network ledger-id] (if (sequential? db) db (str/split db #"/"))]
                 (when (and auth auth-id (not= auth auth-id))
                   (throw-invalid-command (str "New-db command was signed by auth: " auth-id " but the command specifies auth: " auth ". They must be the same if auth is provided.")))
                 (when-not (re-matches #"^[a-z0-9-]+$" network)
                   (throw-invalid-command (str "Invalid network name: " network)))
-                (when-not (re-matches #"^[a-z0-9-]+$" dbid)
-                  (throw-invalid-command (str "Invalid db name: " dbid)))
+                (when-not (re-matches #"^[a-z0-9-]+$" ledger-id)
+                  (throw-invalid-command (str "Invalid ledger name: " ledger-id)))
                 (when (and expire (or (not (pos-int? expire)) (< expire (System/currentTimeMillis))))
                   (throw-invalid-command (format "Transaction 'expire', when provided, must be epoch millis and be later than now. expire: %s current time: %s" expire (System/currentTimeMillis))))
                 (when (and nonce (not (int? nonce)))
                   (throw-invalid-command (format "Nonce, if provided, must be an integer. Provided: %s" nonce)))
-                (when ((set (txproto/all-ledger-list (:group system))) [network dbid])
-                  (throw-invalid-command (format "Cannot create a new db, it already exists or existed: %s" db)))
+                (when ((set (txproto/all-ledger-list (:group system))) [network ledger-id])
+                  (throw-invalid-command (format "Cannot create a new ledger, it already exists or existed: %s" db)))
                 (when snapshot
                   (let [storage-exists? (-> system :conn :storage-exists)
                         exists?         (storage-exists? (str snapshot))]
@@ -138,7 +139,7 @@
 
                 ;; TODO - do more validation, reconcile with "unsigned-cmd" validation before this
 
-                (async/<!! (txproto/new-ledger-async (:group system) network dbid id signed-cmd))
+                (async/<!! (txproto/new-ledger-async (:group system) network ledger-id id signed-cmd owners))
 
                 id)
       :delete-db (let [{:keys [db]} cmd-data

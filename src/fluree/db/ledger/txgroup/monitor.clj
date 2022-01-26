@@ -74,7 +74,6 @@
     (txproto/-new-entry-async raft command)))
 
 
-
 (defn assign-network-to-server-async
   "Uses the worker-assign feature."
   [raft server-id network]
@@ -86,6 +85,7 @@
   [raft worker-id]
   (txproto/kv-get-in raft [:_worker worker-id]))
 
+
 (defn assigned-networks-for-server
   "Returns assigned networks as a set based on server-id"
   ([raft] (assigned-networks-for-server raft (:this-server (:raft raft))))
@@ -94,6 +94,7 @@
        :networks
        keys
        (set))))
+
 
 (defn assigned-networks
   "Returns all networks that currently have assignments."
@@ -175,6 +176,7 @@
         (log/warn "Unable to assign work to servers, none are registered as active on the network.")
         (release-lock)))))
 
+
 (defn queued-tx
   "If state change is a new tx that was queued
    returns three-tuple of [network dbid txid], else nil."
@@ -194,6 +196,7 @@
         [op _ arg2] command]
     (and (= :worker-assign op)
          (= arg2 server-id))))
+
 
 (defn get-multi-txns
   [cmd cmds multiTxns]
@@ -252,6 +255,7 @@
 
 ;; holds db-queues. Creates them on the fly if needed.
 (def db-queues-atom (atom {}))
+
 
 (defn close-db-queue
   "Closes queue for db by closing channel and removing from queue atom"
