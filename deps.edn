@@ -35,6 +35,8 @@
 
  :paths ["src" "resources"]
 
+ :jvm-opts ["-Dclojure.tools.logging.factory=clojure.tools.logging.impl/slf4j-factory"]
+
  :aliases
  {:mvn/group-id com.fluree
   :mvn/artifact-id ledger
