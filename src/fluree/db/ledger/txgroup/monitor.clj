@@ -5,7 +5,7 @@
             [fluree.db.session :as session]
             [fluree.db.ledger.transact :as transact]
             [fluree.db.ledger.bootstrap :as bootstrap]
-            [fluree.db.util.async :refer [<? go-try]]
+            [fluree.db.util.async :refer [<? <?? go-try]]
             [fluree.db.ledger.txgroup.txgroup-proto :as txproto]
             [fluree.db.api :as fdb]))
 
@@ -395,7 +395,12 @@
         (when (txproto/-is-leader? (:group conn))
           (let [initialize-dbs (txproto/find-all-dbs-to-initialize (:group conn))]
             (doseq [[network dbid command] initialize-dbs]
-              (let [db      (async/<!! (bootstrap/bootstrap-db system command))
+              (log/info "Initializing new ledger:" (str network "/" dbid) "-" command)
+              (let [db      (try
+                              (<?? (bootstrap/bootstrap-db system command))
+                              (catch Exception e
+                                (log/error e "Failed to bootstrap new ledger:" (str network "/" dbid))))
+                    _       (log/trace "bootstrap-db returned:" db)
                     session (session/session conn [network dbid])]
                 ;; force session close, so next request will cause session to keep in sync
                 (session/close session))))))
