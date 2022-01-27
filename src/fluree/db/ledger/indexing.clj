@@ -174,7 +174,9 @@
   (mapcat (fn [node]
             (if (and (index/leaf? node)
                      (overflow-leaf? node))
-              (rebalance-leaf node)
+              (do (log/debug "Rebalancing index leaf:"
+                             (select-keys node [:id :network :dbid]))
+                  (rebalance-leaf node))
               [node]))))
 
 (defn rebalance-leaves
@@ -230,8 +232,12 @@
     (if (index/resolved? node)
       (try* (if (index/leaf? node)
               (let [leaf (reconcile-leaf-size node)]
+                (log/debug "Writing index leaf:"
+                           (select-keys leaf [:id :network :dbid]))
                 (<? (storage/write-leaf conn network dbid idx leaf)))
               (let [branch (reconcile-branch-size node)]
+                (log/debug "Writing index branch:"
+                           (select-keys branch [:id :network :dbid]))
                 (<? (storage/write-branch conn network dbid idx branch))))
             (catch* e
               (log/error e
@@ -255,8 +261,10 @@
   [conn network dbid idx error-ch parent descendants]
   (go-loop [children (<! (write-child-nodes conn network dbid idx error-ch parent descendants))]
     (if (overflow-children? children)
-      (let [child-branches (rebalance-children parent children)]
-        (recur (<! (write-child-nodes conn network dbid idx error-ch parent child-branches))))
+      (do (log/debug "Rebalancing index branch:"
+                     (select-keys parent [:id :network :dbid]))
+          (let [child-branches (rebalance-children parent children)]
+            (recur (<! (write-child-nodes conn network dbid idx error-ch parent child-branches)))))
       children)))
 
 (defn descendant?
