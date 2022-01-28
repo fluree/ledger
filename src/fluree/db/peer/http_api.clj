@@ -206,19 +206,31 @@
   [_ system param auth-map ledger {:keys [timeout] :as opts}]
   (go-try
     (require-authentication system auth-map)
-    (let [conn        (:conn system)
-          private-key (when (= :jwt (:type auth-map))
-                        (<? (pw-auth/fluree-decode-jwt conn (:jwt auth-map))))
-
-          _           (when-not (sequential? param)
-                        (throw (ex-info (str "A transaction submitted to the 'transact' endpoint must be a list/vector/array.")
-                                        {:status 400 :error :db/invalid-transaction})))
-          txid-only?  (some-> (get opts "txid-only") str/lower-case (= "true"))
-          auth-id     (:auth auth-map)
-          result      (<? (fdb/transact-async conn ledger param {:auth        auth-id
-                                                                 :private-key private-key
-                                                                 :txid-only   txid-only?
-                                                                 :timeout     timeout}))]
+    (let [conn          (:conn system)
+          private-key   (when (= :jwt (:type auth-map))
+                          (<? (pw-auth/fluree-decode-jwt conn (:jwt auth-map))))
+          verified-auth (when (= :http-signature (:type auth-map))
+                          (-> auth-map
+                              (select-keys [:signed :signature])
+                              ;; :authority is guaranteed to be the verified auth-id
+                              ;; derived from the private key that signed the
+                              ;; original request
+                              (assoc :auth (:authority auth-map))))
+          _             (when-not (sequential? param)
+                          (throw (ex-info (str "A transaction submitted to the "
+                                               "'transact' endpoint must be a "
+                                               "list/vector/array.")
+                                          {:status 400
+                                           :error  :db/invalid-transaction})))
+          txid-only?    (some-> opts (get "txid-only") str/lower-case (= "true"))
+          auth-id       (:auth auth-map)
+          result        (<? (fdb/transact-async conn ledger param
+                                                (util/without-nils
+                                                  {:auth          auth-id
+                                                   :verified-auth verified-auth
+                                                   :private-key   private-key
+                                                   :txid-only     txid-only?
+                                                   :timeout       timeout})))]
       [{:status (or (:status result) 200)
         :fuel   (or (:fuel result) 0)}
        result])))
@@ -503,24 +515,29 @@
         action*         (keyword action)
         body'           (when body (decode-body body :string))
         action-param    (some-> body' json/parse)
-        _               (log/trace "wrap-action-handler decoded body:" action-param)
+        _               (log/trace "wrap-action-handler decoded body:"
+                                   action-param)
         auth-map        (auth-map system ledger request body')
         request-timeout (if-let [timeout (:request-timeout headers)]
                           (try (Integer/parseInt timeout)
                                (catch Exception _ 60000))
                           60000)
         opts            (assoc params :timeout request-timeout)
-        [header body] (<?? (action-handler action* system action-param auth-map ledger opts))
+        [header body] (<?? (action-handler action* system action-param auth-map
+                                           ledger opts))
         request-time    (- (System/nanoTime) start)
         resp-body       (json/stringify-UTF8 body)
         resp-headers    (-> header
-                            (assoc :time (format "%.2fms" (float (/ request-time 1000000)))
+                            (assoc :time (format "%.2fms"
+                                                 (float
+                                                   (/ request-time 1000000)))
                                    :fuel (or (:fuel header) (:fuel body) 0))
                             command-response-headers->http-headers)
         resp            {:status  (or (:status header) 200)
                          :headers resp-headers
                          :body    resp-body}]
-    (log/info (str ledger ":" action " [" (:status header) "] " remote-addr) header)
+    (log/info (str ledger ":" action " [" (:status header) "] " remote-addr)
+              header)
     resp))
 
 

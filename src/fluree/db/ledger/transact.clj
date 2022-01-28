@@ -65,12 +65,13 @@
         (update :fuel + fuel)
         (update :remove-preds into remove-preds)
         (cond-> type (update :cmd-types conj type)
-                txid (assoc-in [:txns txid] (util/without-nils ;; note the "block" transaction won't have a txid
-                                              (-> tx-result
-                                                  (assoc :id txid) ;; historically reported out :id and not :txid in tx result map
-                                                  (select-keys [:id :type :t :status :error :errors
-                                                                :tempids :auth :hash :authority
-                                                                :bytes :fuel :duration]))))))))
+                txid (assoc-in [:txns txid]
+                               (util/without-nils           ;; note the "block" transaction won't have a txid
+                                 (-> tx-result
+                                     (assoc :id txid)       ;; historically reported out :id and not :txid in tx result map
+                                     (select-keys [:id :type :t :status :error :errors
+                                                   :tempids :auth :hash :authority
+                                                   :bytes :fuel :duration]))))))))
 
 
 (defn build-block-tx
@@ -135,10 +136,11 @@
 
 (defn propose-block
   "Proposes block to consensus network. Returns core async channel with success or failure."
-  [{:keys [group] :as conn} network dbid {:keys [flakes] :as block-map}]
+  [{:keys [group] :as _conn} network dbid {:keys [flakes] :as block-map}]
   (let [block-map' (-> block-map
                        (dissoc :fuel :db-orig :db-before :db-after :before-t :prev-hash :remove-preds)
                        (assoc :flakes (into [] flakes)))]
+    (log/trace (str "Proposing new block for " network "/" dbid ":") block-map')
     (txproto/propose-new-block-async group network dbid block-map')))
 
 
@@ -196,19 +198,19 @@
   "Builds a new block with supplied transaction(s)."
   [{:keys [conn network dbid] :as session} db-before transactions]
   (go-try
-    (let [start       (System/currentTimeMillis)
-          _           (when (nil? db-before)
-                        ;; TODO - think about this error, if it is possible, and what to do with any pending transactions
-                        (log/warn "Unable to find a current db. Db transaction processor closing for db: %s/%s." network dbid)
-                        (session/close session)
-                        (throw (ex-info (format "Unable to find a current db for: %s/%s." network dbid)
-                                        {:status 400 :error :db/invalid-transaction})))
-          prev-hash   (<? (retrieve-prev-hash db-before))]
+    (when (nil? db-before)
+      ;; TODO - think about this error, if it is possible, and what to do with any pending transactions
+      (log/warn "Unable to find a current db. Db transaction processor closing for db: %s/%s." network dbid)
+      (session/close session)
+      (throw (ex-info (format "Unable to find a current db for: %s/%s." network dbid)
+                      {:status 400 :error :db/invalid-transaction})))
+    (let [prev-hash (<? (retrieve-prev-hash db-before))]
       ;; perform each transaction in order
       (loop [[cmd-data & r] transactions
              block-map (->block-map db-before prev-hash)]
         (let [block-map* (try
-                           (->> (tx-util/validate-command cmd-data)
+                           (->> cmd-data
+                                tx-util/validate-command
                                 (tx-core/transact block-map)
                                 <?
                                 (merge-tx-into-block block-map))
@@ -254,6 +256,6 @@
                               "Proposed block: "
                               (dissoc block-result* :db-orig :db-before :db-after))
                     false)))
-              (do                                           ;; all transactions errored out
+              (do ; all transactions errored out
                 (log/info "Block processing resulted in no new blocks, all transaction attempts had issues.")
                 false))))))))

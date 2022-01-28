@@ -27,7 +27,7 @@
   "Does sanity checks for a new command and if valid, propagates it.
   Returns command-id/txid upon successful persistence to network, else
   throws."
-  [{:keys [conn] :as system}  {:keys [cmd sig] :as signed-cmd}]
+  [{:keys [conn] :as system}  {:keys [cmd sig signed] :as signed-cmd}]
   (when-not (and (string? cmd) (string? sig))
     (throw-invalid-command (str "Command map requires keys of 'cmd' and 'sig', with a json string command map and signature of the command map respectively. Provided: "
                                 (pr-str signed-cmd))))
@@ -41,9 +41,9 @@
         _        (when-not cmd-type (throw-invalid-command "No 'type' key in command, cannot process."))
         ;; verify signature before passing along
         auth-id  (try
-                   (crypto/account-id-from-message cmd sig)
+                   (crypto/account-id-from-message (or signed cmd) sig)
                    (catch Exception _ (throw-invalid-command "Invalid signature on command.")))]
-    (log/trace "Processing signed command:" (pr-str cmd-data))
+    (log/trace "Processing signed command:" (pr-str signed-cmd))
     (case cmd-type
       :tx (let [{:keys [db tx deps expire nonce]} cmd-data
                 _ (log/trace "tx command:" cmd-data)
@@ -361,7 +361,8 @@
                              expire      (or expire (+ 60000 nonce))
                              cmd-data*   (assoc cmd-data :expire expire :nonce nonce)]
                          (when (< expire (System/currentTimeMillis))
-                           (throw-invalid-command (format "Command expired. Expiration: %s. Current time: %s." expire (System/currentTimeMillis))))
+                           (throw-invalid-command (format "Command expired. Expiration: %s. Current time: %s."
+                                                          expire (System/currentTimeMillis))))
                          (when (and (= :new-db cmd-type)
                                     (txproto/ledger-exists? (:group system) network dbid))
                            (throw-invalid-command (str "The database already exists or existed: " db)))

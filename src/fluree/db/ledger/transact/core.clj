@@ -439,7 +439,9 @@
 
 
 (defn ->tx-state
-  [db block-instant {:keys [auth auth-sid authority authority-sid tx-permissions txid cmd sig nonce type] :as tx-map}]
+  [db block-instant
+   {:keys [auth auth-sid authority authority-sid tx-permissions txid cmd sig
+           signed nonce type] :as tx-map}]
   (let [tx-type   (keyword type)
         tx        (case tx-type                             ;; command type is either :tx or :new-db
                     :tx (:tx tx-map)
@@ -462,6 +464,7 @@
      :tx               tx
      :tx-string        cmd
      :signature        sig
+     :signed           signed
      :nonce            nonce
      :fuel             (atom {:stack   []
                               :credits 1000000
@@ -647,6 +650,7 @@
     (try
       (when (not-empty (:deps tx-map)) ; transaction has dependencies listed, verify they are satisfied
         (<? (tx-validate/tx-deps-check db-after tx-map)))
+      (log/trace "Transacting:" tx-map)
       (let [start-time (util/current-time-millis)
             tx-map*    (<? (tx-auth/add-auth-ids-permissions db-after tx-map))
             tx-state   (->tx-state db-after instant tx-map*)
