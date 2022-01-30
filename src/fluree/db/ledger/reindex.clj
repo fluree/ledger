@@ -188,9 +188,12 @@
              (let [{:keys [flakes]} block-data
                    db*          (<? (dbproto/-with db block flakes {:reindex? true}))
                    novelty-size (get-in db* [:novelty :size])]
-               (log/info (str "  -> Reindex dbid: " dbid " block: " block " containing " (count flakes) " flakes. Novelty size: " novelty-size "."))
+               (log/info (str "  -> Reindex dbid: " dbid
+                              " block: " block
+                              " containing " (count flakes)
+                              " flakes. Novelty size: " novelty-size "."))
                (if (>= novelty-size max-novelty)
-                 (let [db**  (async/<!! (indexing/refresh db*))
+                 (let [db**  (<? (indexing/refresh db*))
                        group (-> db** :conn :group)]
                    (txproto/write-index-point-async group db**)
                    (recur (inc block) db**))
