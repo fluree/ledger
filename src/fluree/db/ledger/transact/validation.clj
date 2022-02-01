@@ -566,8 +566,10 @@
               result-ch (async/chan parallelism)
               af        (fn [f res-chan]
                           (async/go
-                            (let [fn-result (as-> (f tx-state*) res
-                                                  (if (channel? res) (async/<! res) res))]
+                            (let [fn-result (try
+                                              (as-> (f tx-state*) res
+                                                    (if (channel? res) (async/<! res) res))
+                                              (catch Exception e e))]
                               (when-not (nil? fn-result)
                                 (async/put! res-chan fn-result))
                               (async/close! res-chan))))]
