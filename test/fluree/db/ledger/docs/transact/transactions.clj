@@ -85,6 +85,27 @@
    (is (and (-> collection-resp :tempids (get "person")) (-> collection-resp :tempids (get "_user"))))))
 
 
+(deftest duplicate-unique-predicate
+  (testing "Duplicate predicate should return an exception"
+    (let [failure-txn  [{:_id "person",
+                         :handle "ajohnson",
+                         :fullName "Andrew A Johnson"
+                         :user {:_id "_user", :username "aajohnson"}}]
+          failure-resp (async/<!! (fdb/transact-async (get-conn) test/ledger-query+transact failure-txn))]
+      (is (instance? ExceptionInfo failure-resp))
+      (is (-> failure-resp
+              ex-data
+              :status
+              (= 400)))
+      (is (-> failure-resp
+              ex-data
+              :error
+              (= :db/invalid-tx)))
+      (is (-> failure-resp
+              ex-message
+              (str/starts-with? "Unique predicate person/handle with value: ajohnson matched an existing subject"))))))
+
+
 (deftest upserting-data
   (testing "Issue a transaction to upsert data instead of creating a new entity")
   (let [failure-txn   [{:_id "person", :handle "ajohnson", :age 26}]
@@ -128,12 +149,14 @@
             (str/starts-with? "Transaction 'expire', when provided, must be epoch millis and be later than now.")))))
 
 
+
 (deftest transaction-basics
   (testing "Testing suite for the Transaction section of the docs")
   (add-collections*)
   (add-predicates)
   (transact-with-temp-ids)
   (nested-transaction)
+  (duplicate-unique-predicate)
   (upserting-data)
   (deleting-data)
   (expired-transaction))
