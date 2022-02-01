@@ -629,7 +629,7 @@
   [{:keys [db-after instant]} tx-map]
   (async/go
     (try
-      (when (not-empty (:deps tx-map))                      ;; transaction has dependencies listed, verify they are satisfied
+      (when (not-empty (:deps tx-map)) ; transaction has dependencies listed, verify they are satisfied
         (<? (tx-validate/tx-deps-check db-after tx-map)))
       (let [start-time (util/current-time-millis)
             tx-map*    (<? (tx-auth/add-auth-ids-permissions db-after tx-map))
