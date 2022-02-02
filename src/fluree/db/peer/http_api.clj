@@ -203,11 +203,11 @@
 
 
 (defmethod action-handler :transact
-  [_ system param auth-map ledger {:keys [timeout] :as opts}]
+  [_ {:keys [conn] :as system} param auth-map ledger
+   {:keys [timeout] :as opts}]
   (go-try
     (require-authentication system auth-map)
-    (let [conn          (:conn system)
-          private-key   (when (= :jwt (:type auth-map))
+    (let [private-key   (when (= :jwt (:type auth-map))
                           (<? (pw-auth/fluree-decode-jwt conn (:jwt auth-map))))
           verified-auth (when (= :http-signature (:type auth-map))
                           (-> auth-map
@@ -686,6 +686,7 @@
                        (update opts :owners (comp set conj) sig-auth)
                        opts)
         result       @(fdb/new-ledger conn ledger-ident opts')]
+    (log/debug "new-ledger result:" result)
     ;; create session so tx-monitors will work
     (when transactor? (session/session conn ledger-ident))
     (when (= ExceptionInfo (type result))

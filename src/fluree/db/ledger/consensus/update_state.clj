@@ -1,6 +1,7 @@
 (ns fluree.db.ledger.consensus.update-state
   (:require [fluree.db.constants :as constants]
             [clojure.string :as str]
+            [fluree.db.flake :as flake]
             [fluree.db.util.core :as util]
             [fluree.db.event-bus :as event-bus]
             [fluree.db.util.json :as json]
@@ -76,10 +77,9 @@
   "Returns flake object (.-o flake) from block-map of the given type whose
   subject matches (:t tx-data). Returns nil if none is found."
   [{:keys [flakes] :as _block-map} {:keys [t] :as _tx-data} type]
-  (some #(let [^Flake flake %]
-           (when (and (= type (.-p flake))
-                      (= t (.-s flake)))
-             (.-o flake)))
+  (some #(when (and (= type (flake/p %))
+                    (= t (flake/s %)))
+           (flake/o %))
         flakes))
 
 (defn register-new-dbs
@@ -95,8 +95,8 @@
                           orig-cmd      (efo constants/$_tx:tx)
                           orig-sig      (efo constants/$_tx:sig)
                           orig-signed   (efo constants/$_tx:signed)
-                          orig-cmd-data (when orig-cmd (json/parse orig-cmd))
-                          {:keys [db fork forkBlock]} orig-cmd-data
+                          {:keys [db fork forkBlock]} (when orig-cmd
+                                                        (json/parse orig-cmd))
                           [network dbid] (when orig-cmd
                                            (if (sequential? db)
                                              db
@@ -109,7 +109,6 @@
                                                      :signed orig-signed})
                                        :fork      fork
                                        :forkBlock forkBlock})]))))]
-
     (swap! state-atom (fn [s]
                         (reduce (fn [s* [network dbid db-status]]
                                   (assoc-in s* [:networks network :dbs dbid] db-status))
