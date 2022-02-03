@@ -71,6 +71,22 @@
             resolved))))))
 
 
+(defn resolve-ref-ident-strict
+  "Resolves ident (from cache if exists).
+  Will throw exception if ident cannot be resolved or references an incorrect collection."
+  [ident pred-info {:keys [db-root] :as tx-state}]
+  (go-try
+    (let [resolved       (<? (resolve-ident-strict ident tx-state))
+          restrictCollId (pred-info :restrictCollection)]
+      (when (and restrictCollId
+                 (not= (flake/sid->cid resolved) restrictCollId))
+        (throw (ex-info (str "Invalid identity, " (pr-str ident)
+                             ", not in referenced collection: "
+                             (get-in db-root [:schema :coll restrictCollId :name]))
+                        {:status 400 :error :db/invalid-tx})))
+      resolved)))
+
+
 (defn- resolve-collection-name
   "Resolves collection name from _id"
   [_id {:keys [db-root]}]
@@ -219,8 +235,8 @@
         (= :ref type) (cond
                         (tempid/TempId? object*) object*
                         (string? object*) (tempid/use object* tx-state)
-                        (int? object*) (<? (resolve-ident-strict object* tx-state))
-                        (util/pred-ident? object*) (<? (resolve-ident-strict object* tx-state)))
+                        (int? object*) (<? (resolve-ref-ident-strict object* pred-info tx-state))
+                        (util/pred-ident? object*) (<? (resolve-ref-ident-strict object* pred-info tx-state)))
 
         (= :tag type) (<? (tags/resolve object* pred-info tx-state))
 
