@@ -275,15 +275,15 @@
       children)))
 
 (defn descendant?
-  [{:keys [rhs], first-flake :first, :as branch} node]
+  [{:keys [rhs leftmost?], cmp :comparator, first-flake :first, :as branch}
+   {node-first :first, node-rhs :rhs, :as node}]
   (if-not (index/branch? branch)
     false
-    (let [cmp (:comparator branch)
-          {node-first :first, node-rhs :rhs} node]
-      (and (not (pos? (cmp first-flake node-first)))
-           (or (nil? rhs)
-               (and (not (nil? node-rhs))
-                    (not (pos? (cmp node-rhs rhs)))))))))
+    (and (or leftmost?
+             (not (pos? (cmp first-flake node-first))))
+         (or (nil? rhs)
+             (and (not (nil? node-rhs))
+                  (not (pos? (cmp node-rhs rhs))))))))
 
 (defn pop-descendants
   "Pops all the descendants of `branch` off of the top of the stack `in-stack`"
