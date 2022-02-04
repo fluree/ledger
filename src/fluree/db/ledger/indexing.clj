@@ -77,7 +77,14 @@
     (-> node
         (index/at-t t novelty)
         (update :flakes except-preds remove-preds))
-    node))
+    (let [cmp         (:comparator node)
+          novel-first (-> node
+                          (index/novelty-subrange t novelty)
+                          first)]
+      (update node :first (fn [f]
+                            (if (neg? (cmp f novel-first))
+                              f
+                              novel-first))))))
 
 (defn resolve-if-novel
   "Resolves data associated with `node` from storage configured in the connection
