@@ -151,39 +151,40 @@
   "Splits leaf nodes if the combined size of it's flakes is greater than
   `*overflow-bytes*`."
   [{:keys [flakes leftmost? rhs] :as leaf}]
-  (let [target-size (/ *overflow-bytes* 2)]
-    (loop [[f & r] flakes
-           cur-size  0
-           cur-first f
-           leaves    []]
-      (if (empty? r)
-        (let [subrange  (flake/subrange flakes >= cur-first)
-              last-leaf (-> leaf
-                            (assoc :flakes subrange
-                                   :first cur-first
-                                   :rhs rhs)
-                            (dissoc :id :leftmost?))]
-          (conj leaves last-leaf))
-        (let [new-size (-> f flake/size-flake (+ cur-size) long)]
-          (if (> new-size target-size)
-            (let [subrange (flake/subrange flakes >= cur-first < f)
-                  new-leaf (-> leaf
-                               (assoc :flakes subrange
-                                      :first cur-first
-                                      :rhs f
-                                      :leftmost? (and (empty? leaves)
-                                                      leftmost?))
-                               (dissoc :id))]
-              (recur r 0 f (conj leaves new-leaf)))
-            (recur r new-size cur-first leaves)))))))
+  (if (overflow-leaf? leaf)
+    (let [target-size (/ *overflow-bytes* 2)]
+      (log/debug "Rebalancing index leaf:"
+                 (select-keys leaf [:id :network :dbid]))
+      (loop [[f & r] flakes
+             cur-size  0
+             cur-first f
+             leaves    []]
+        (if (empty? r)
+          (let [subrange  (flake/subrange flakes >= cur-first)
+                last-leaf (-> leaf
+                              (assoc :flakes subrange
+                                     :first cur-first
+                                     :rhs rhs)
+                              (dissoc :id :leftmost?))]
+            (conj leaves last-leaf))
+          (let [new-size (-> f flake/size-flake (+ cur-size) long)]
+            (if (> new-size target-size)
+              (let [subrange (flake/subrange flakes >= cur-first < f)
+                    new-leaf (-> leaf
+                                 (assoc :flakes subrange
+                                        :first cur-first
+                                        :rhs f
+                                        :leftmost? (and (empty? leaves)
+                                                        leftmost?))
+                                 (dissoc :id))]
+                (recur r 0 f (conj leaves new-leaf)))
+              (recur r new-size cur-first leaves))))))
+    [leaf]))
 
 (def rebalance-leaf-xf
   (mapcat (fn [node]
-            (if (and (index/leaf? node)
-                     (overflow-leaf? node))
-              (do (log/debug "Rebalancing index leaf:"
-                             (select-keys node [:id :network :dbid]))
-                  (rebalance-leaf node))
+            (if (index/leaf? node)
+              (rebalance-leaf node)
               [node]))))
 
 (defn rebalance-leaves
