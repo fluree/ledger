@@ -27,8 +27,8 @@
 
 (def ^:dynamic *overflow-children* 500)
 (defn overflow-children?
-  [child-map]
-  (> (count child-map) *overflow-children*))
+  [children]
+  (> (count children) *overflow-children*))
 
 (defn dirty?
   "Returns `true` if the index for `db` of type `idx` is out of date, or if `db`
@@ -98,6 +98,15 @@
              (and (not (nil? node-rhs))
                   (not (pos? (cmp node-rhs rhs))))))))
 
+(defn filter-predicates
+  [preds & flake-sets]
+  (if (seq preds)
+    (->> flake-sets
+         (apply concat)
+         (filter (fn [f]
+                   (contains? preds (flake/p f)))))
+    []))
+
 (defn rebalance-leaf
   "Splits leaf nodes if the combined size of it's flakes is greater than
   `*overflow-bytes*`."
@@ -159,75 +168,86 @@
            :first first-flake
            :rhs rhs)))
 
-(defn rebalancer [idx t novelty remove-preds]
+(defn rebalance-children
+  [branch idx child-nodes]
+  (let [target-count (/ *overflow-children* 2)]
+    (->> child-nodes
+         (partition-all target-count)
+         (map (fn [kids]
+                (update-branch branch idx kids)))
+         (fn [[maybe-leftmost & not-leftmost]]
+           (into [maybe-leftmost] (map (fn [non-left-node]
+                                         (assoc non-left-node
+                                                :leftmost? false)))
+                 not-leftmost)))))
+
+(defn integrate-novelty
+  "Returns a transducer that transforms a stream of index nodes in depth first
+  order by incorporating the novelty flakes into the nodes, removing flakes with
+  predicates in remove-preds, rebalancing the leaves so that none is bigger than
+  *overflow-bytes*, and rebalancing the branches so that none have more children
+  than *overflow-children*."
+  [idx t novelty remove-preds]
   (fn [xf]
     (let [stack (volatile! [])]
       (fn
         ;; Initialization: do nothing but initialize the nested transformer by
-        ;; calling it's initializer.
+        ;; calling it's initializing fn.
         ([]
          (xf))
 
-        ;; Completion: Flush the stack, calling the nested transformer's
-        ;; iterator to iterate each remaining item before calling the nested
-        ;; transformer's completion fn on the result of the iterations.
-        ([result]
-         (loop [result* result]
-           (if-let [nxt (peek @stack)]
-             (do (vswap! stack pop)
-                 (recur (unreduced (xf result* nxt))))
-             (xf result*))))
-
         ;; Iteration:
-        ([result nxt]
-         (if (index/leaf? nxt)
-           (let [new-flakes (index/novelty-subrange nxt t novelty)
-                 to-remove  (if (seq remove-preds)
-                              (->> new-flakes
-                                   (concat (:flakes nxt))
-                                   (filter (fn [f]
-                                             (contains? remove-preds
-                                                        (flake/p f)))))
-                              [])]
+        ;;   1. Incorporate each successive node with it's corresponding novelty
+        ;;      flakes.
+        ;;   2. Rebalance both leaves and branches if they become too large after
+        ;;      adding novelty by splitting them.
+        ;;   3. Iterate each resulting node with the nested transformer.
+        ([result node]
+         (if (index/leaf? node)
+           (let [new-flakes (index/novelty-subrange node t novelty)
+                 to-remove  (filter-predicates remove-preds (:flakes node) new-flakes)]
              (if (or (seq new-flakes) (seq to-remove))
-               (let [new-leaves (update-leaf nxt idx new-flakes to-remove)]
+               (let [new-leaves (update-leaf node idx new-flakes to-remove)]
                  (vswap! stack into new-leaves))
-               (vswap! stack conj nxt)))
+               (vswap! stack conj node)))
 
            (loop [child-nodes []
+                  stack*      @stack
                   result*     result]
-             (let [child (peek @stack)]
-               (if (and child
-                        (descendant? nxt child))
-                 (do (vswap! stack pop)
-                     (recur (conj child-nodes child)
-                            (xf result* child)))
-                 (if (>= (count child-nodes) *overflow-children*)
-                   (let [target-count (/ *overflow-children* 2)
-                         new-branches (->> child-nodes
-                                           (partition-all target-count)
-                                           (map (fn [kids]
-                                                  (update-branch nxt idx kids)))
-                                           (fn [[f & r]]
-                                             (into [f]
-                                                   (map (fn [node]
-                                                          (assoc node :leftmost? false)))
-                                                   r)))
-                         result**     (reduce (fn [res item]
-                                                (xf res item))
+             (let [child (peek stack*)]
+               (if (and child (descendant? node child))
+                 (recur (conj child-nodes child)
+                        (vswap! stack pop)
+                        (xf result* child))
+                 (if (overflow-children? child-nodes)
+                   (let [new-branches (rebalance-children node idx child-nodes)
+                         result**     (reduce (fn [res branch]
+                                                (xf res branch))
                                               result* new-branches)]
                      (recur new-branches
+                            stack*
                             result**))
-                   (let [branch (cond-> nxt
+                   (let [branch (cond-> node
                                   (seq child-nodes) (update-branch idx child-nodes))]
-                     (vswap! stack conj branch))))))))))))
+                     (vswap! stack conj branch))))))))
+
+        ;; Completion: Flush the stack iterating each remaining node with the
+        ;; nested transformer before calling the nested transformer's completion
+        ;; fn on the iterated result.
+        ([result]
+         (loop [stack*  @stack
+                result* result]
+           (if-let [node (peek stack*)]
+             (recur (vswap! stack pop)
+                    (unreduced (xf result* node)))
+             (xf result*))))))))
 
 (defn resolve-novel-nodes
   "Returns a channel that will eventually contain a stream of index nodes
   descended from `root` in depth-first order. Only nodes with associated flakes
   from `novelty` will be resolved."
   [conn idx root novelty t remove-preds error-ch]
-  (let [index-ch (async/chan 1 (rebalancer idx t novelty remove-preds))]
+  (let [index-ch (async/chan 1 (integrate-novelty idx t novelty remove-preds))]
     (go
       (let [root-node (<! (resolve-if-novel conn root t novelty remove-preds
                                             error-ch))]
