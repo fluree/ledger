@@ -193,7 +193,7 @@
     (let [stack (volatile! [])]
       (fn
         ;; Initialization: do nothing but initialize the nested transformer by
-        ;; calling it's initializing fn.
+        ;; calling its initializing fn.
         ([]
          (xf))
 
