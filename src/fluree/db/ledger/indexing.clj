@@ -269,7 +269,8 @@
 (defn write-node
   "Writes `node` to storage, and puts any errors onto the `error-ch`"
   [conn idx {:keys [id network dbid] :as node} error-ch]
-  (let [display-node (select-keys node [:id :network :dbid])]
+  (let [node         (dissoc node ::old-id)
+        display-node (select-keys node [:id :network :dbid])]
     (go
       (try*
        (if (index/leaf? node)
