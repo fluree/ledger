@@ -21,6 +21,11 @@
             [fluree.db.ledger.bootstrap :as bootstrap]
             [fluree.db.ledger.consensus.raft :as raft]
             [fluree.db.ledger.txgroup.core :as txgroup]
+            [fluree.db.ledger.indexing :as indexing]
+            [fluree.db.ledger.reindex :as reindex]
+            [fluree.db.query.range :as query-range]
+            [fluree.db.ledger.txgroup.txgroup-proto :as txproto]
+            [fluree.db.dbproto :as dbproto]
             [fluree.db.peer.http-api :as http-api]
             [fluree.db.ledger.txgroup.txgroup-proto :as txproto]
             [fluree.db.peer.password-auth :as pw-auth]
@@ -470,7 +475,25 @@
                                           :name "temp5"}]))
 
 
-
+(comment
+  (let [{:keys [conn]} system
+        network "test-chat"
+        dbid "v4"
+        {:keys [blank-db]} (session/session conn [network dbid])]
+    (async/go-loop [block 2
+                    db    (async/<! (reindex/write-genesis-block blank-db))]
+      (if-let [{:keys [flakes]} (async/<! (storage/read-block conn network dbid block))]
+        (let [db*          (async/<! (dbproto/-with db block flakes {:reindex? true}))
+              novelty-size (get-in db* [:novelty :size])]
+          (log/info (str "  -> Reindex dbid: " dbid
+                         " block: " block
+                         " containing " (count flakes)
+                         " flakes. Novelty size: " novelty-size "."))
+          (let [db**  (async/<! (indexing/refresh db*))
+                group (-> db** :conn :group)]
+            (txproto/write-index-point-async group db**)
+            (recur (inc block) db**)))
+        db))))
 
 
 

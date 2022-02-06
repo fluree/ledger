@@ -186,7 +186,8 @@
   order by incorporating the novelty flakes into the nodes, removing flakes with
   predicates in remove-preds, rebalancing the leaves so that none is bigger than
   *overflow-bytes*, and rebalancing the branches so that none have more children
-  than *overflow-children*."
+  than *overflow-children*. Maintains a 'lifo' stack to preserve the depth-first
+  order of the transformed stream."
   [idx t novelty remove-preds]
   (fn [xf]
     (let [stack (volatile! [])]
@@ -197,7 +198,7 @@
          (xf))
 
         ;; Iteration:
-        ;;   1. Incorporate each successive node with it's corresponding novelty
+        ;;   1. Incorporate each successive node with its corresponding novelty
         ;;      flakes.
         ;;   2. Rebalance both leaves and branches if they become too large after
         ;;      adding novelty by splitting them.
@@ -246,25 +247,24 @@
   "Returns a channel that will eventually contain a stream of index nodes
   descended from `root` in depth-first order. Only nodes with associated flakes
   from `novelty` will be resolved."
-  [conn idx root novelty t remove-preds error-ch]
-  (let [index-ch (async/chan 1 (integrate-novelty idx t novelty remove-preds))]
-    (go
-      (let [root-node (<! (resolve-if-novel conn root t novelty remove-preds
-                                            error-ch))]
-        (loop [stack [root-node]]
-          (when-let [node (peek stack)]
-            (let [stack* (pop stack)]
-              (if (expanded? node)
-                (do (>! index-ch (unmark-expanded node))
-                    (recur stack*))
-                (let [children (<! (resolve-children conn node t novelty remove-preds
-                                                     error-ch))
-                      stack**  (-> stack*
-                                   (conj (mark-expanded node))
-                                   (into (rseq children)))]
-                  (recur stack**))))))
-        (async/close! index-ch)))
-    index-ch))
+  [conn root novelty t remove-preds error-ch index-ch]
+  (go
+    (let [root-node (<! (resolve-if-novel conn root t novelty remove-preds
+                                          error-ch))]
+      (loop [stack [root-node]]
+        (when-let [node (peek stack)]
+          (let [stack* (pop stack)]
+            (if (expanded? node)
+              (do (>! index-ch (unmark-expanded node))
+                  (recur stack*))
+              (let [children (<! (resolve-children conn node t novelty remove-preds
+                                                   error-ch))
+                    stack**  (-> stack*
+                                 (conj (mark-expanded node))
+                                 (into (rseq children)))]
+                (recur stack**))))))
+      (async/close! index-ch)))
+  index-ch)
 
 (defn write-node
   "Writes `node` to storage, and puts any errors onto the `error-ch`"
@@ -282,7 +282,7 @@
                           "Error writing novel index node:" display-node)
                (>! error-ch e))))))
 
-(defn write-novel-nodes
+(defn write-resolved-nodes
   [conn network dbid idx error-ch index-ch]
   (go-loop [stats     {:idx idx, :novel 0, :unchanged 0, :garbage #{}}
             last-node nil]
@@ -300,8 +300,10 @@
 
 (defn refresh-index
   [conn network dbid error-ch {::keys [idx t novelty remove-preds root]}]
-  (->> (resolve-novel-nodes conn idx root novelty t remove-preds error-ch)
-       (write-novel-nodes conn network dbid idx error-ch)))
+  (let [index-ch (async/chan 1 (integrate-novelty idx t novelty remove-preds))]
+    (->> index-ch
+         (resolve-novel-nodes conn root novelty t remove-preds error-ch)
+         (write-resolved-nodes conn network dbid idx error-ch))))
 
 (defn extract-root
   [{:keys [novelty t] :as db} remove-preds idx]
