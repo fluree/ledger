@@ -2,7 +2,7 @@
         org.clojure/data.xml              {:mvn/version "0.2.0-alpha6"}
         com.fluree/alphabase              {:mvn/version "3.2.2"}
         com.fluree/db                     {:git/url "https://github.com/fluree/db.git"
-                                           :sha "2c026f2e897e86c70dec5e8848dccf55d100e19a"}
+                                           :sha "1c005351bd9a049745c329b6c09659b30d84afb6"}
         com.fluree/raft                   {:mvn/version "1.0.0-beta1"}
         com.fluree/crypto                 {:mvn/version "0.3.7"}
 
@@ -14,17 +14,17 @@
 
         ;; AWS S3 API
         com.cognitect.aws/api             {:mvn/version "0.8.539"}
-        com.cognitect.aws/endpoints       {:mvn/version "1.1.12.129"}
-        com.cognitect.aws/s3              {:mvn/version "814.2.991.0"}
+        com.cognitect.aws/endpoints       {:mvn/version "1.1.12.145"}
+        com.cognitect.aws/s3              {:mvn/version "814.2.1053.0"}
 
         ;; web server
         http-kit/http-kit                 {:mvn/version "2.5.3"}
-        ring/ring-core                    {:mvn/version "1.9.4"}
+        ring/ring-core                    {:mvn/version "1.9.5"}
         ring-cors/ring-cors               {:mvn/version "0.1.13"}
         compojure/compojure               {:mvn/version "1.6.2"}
 
         ;; logging
-        ch.qos.logback/logback-classic    {:mvn/version "1.2.9"}
+        ch.qos.logback/logback-classic    {:mvn/version "1.2.10"}
 
         ;; config
         environ/environ                   {:git/url   "https://github.com/cap10morgan/environ.git"
@@ -32,6 +32,8 @@
                                            :deps/root "environ"}}
 
  :paths ["src" "resources"]
+
+ :jvm-opts ["-Dclojure.tools.logging.factory=clojure.tools.logging.impl/slf4j-factory"]
 
  :aliases
  {:mvn/group-id com.fluree
@@ -106,7 +108,7 @@
    :main-opts   ["-m" "cloverage.coverage" "-p" "src" "-s" "test" "--test-ns-regex" "^fluree\\.db\\.ledger\\.ledger-test*$" "--output" "scanning_results/coverage"]}
 
   :eastwood
-  {:extra-deps {jonase/eastwood {:mvn/version "1.1.1"}}
+  {:extra-deps {jonase/eastwood {:mvn/version "1.2.2"}}
    :main-opts ["-m" "eastwood.lint" {:source-paths ["src"] :test-paths ["test"]
                                      :config-files ["test-resources/eastwood-config.clj"]}]}
 
@@ -115,5 +117,5 @@
    :main-opts ["-m" "antq.core" "--skip=github-action"]}
 
   :clj-kondo
-  {:extra-deps {clj-kondo/clj-kondo {:mvn/version "2021.12.16"}}
+  {:extra-deps {clj-kondo/clj-kondo {:mvn/version "2022.01.15"}}
    :main-opts ["-m" "clj-kondo.main" "--lint" "src" "--config" ".clj-kondo/config.edn"]}}}
