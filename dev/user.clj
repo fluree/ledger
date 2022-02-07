@@ -475,31 +475,6 @@
                                           :name "temp5"}]))
 
 
-(comment
-  (let [{:keys [conn]} system
-        network "test-chat"
-        dbid "v4"
-        {:keys [blank-db]} (session/session conn [network dbid])]
-    (async/go-loop [block 2
-                    db    (async/<! (reindex/write-genesis-block blank-db))]
-      (if-let [{:keys [flakes]} (async/<! (storage/read-block conn network dbid block))]
-        (let [db*          (async/<! (dbproto/-with db block flakes {:reindex? true}))
-              novelty-size (get-in db* [:novelty :size])]
-          (log/info (str "  -> Reindex dbid: " dbid
-                         " block: " block
-                         " containing " (count flakes)
-                         " flakes. Novelty size: " novelty-size "."))
-          (let [db**  (async/<! (indexing/refresh db*))
-                group (-> db** :conn :group)]
-            (txproto/write-index-point-async group db**)
-            (recur (inc block) db**)))
-        db))))
-
-
-
-
-
-
 
 (comment)
 
