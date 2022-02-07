@@ -216,7 +216,10 @@
                   stack*      @stack
                   result*     result]
              (let [child (peek stack*)]
-               (if (and child (descendant? node child))
+               (if (and child (descendant? node child)) ; all of a resolved
+                                                        ; branch's children
+                                                        ; should be at the top
+                                                        ; of the stack
                  (recur (conj child-nodes child)
                         (vswap! stack pop)
                         (xf result* child))
