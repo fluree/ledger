@@ -87,17 +87,6 @@
               (resolve-if-novel conn child t novelty remove-preds error-ch)))
        (async/map vector)))
 
-(defn descendant?
-  [{:keys [rhs leftmost?], cmp :comparator, first-flake :first, :as branch}
-   {node-first :first, node-rhs :rhs, :as node}]
-  (if-not (index/branch? branch)
-    false
-    (and (or leftmost?
-             (not (pos? (cmp first-flake node-first))))
-         (or (nil? rhs)
-             (and (not (nil? node-rhs))
-                  (not (pos? (cmp node-rhs rhs))))))))
-
 (defn filter-predicates
   [preds & flake-sets]
   (if (seq preds)
@@ -176,9 +165,10 @@
          (map (fn [kids]
                 (update-branch branch idx kids)))
          (fn [[maybe-leftmost & not-leftmost]]
-           (into [maybe-leftmost] (map (fn [non-left-node]
-                                         (assoc non-left-node
-                                                :leftmost? false)))
+           (into [maybe-leftmost]
+                 (map (fn [non-left-node]
+                        (assoc non-left-node
+                               :leftmost? false)))
                  not-leftmost)))))
 
 (defn integrate-novelty
@@ -216,7 +206,8 @@
                   stack*      @stack
                   result*     result]
              (let [child (peek stack*)]
-               (if (and child (descendant? node child)) ; all of a resolved
+               (if (and child
+                        (index/descendant? node child)) ; all of a resolved
                                                         ; branch's children
                                                         ; should be at the top
                                                         ; of the stack
