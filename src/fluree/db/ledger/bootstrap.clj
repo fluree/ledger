@@ -295,6 +295,10 @@
     :name    "_shard"
     :doc     "Shard settings."
     :version "1"}
+   {:_id     ["_collection" const/$_ctx]
+    :name    "_ctx"
+    :doc     "Context keys and values."
+    :version "1"}
 
 
    ;; value type tags
@@ -663,6 +667,12 @@
     :type               "ref"
     :multi              true
     :restrictCollection "_rule"}
+   {:_id                ["_predicate" const/$_role:ctx]
+    :name               "_role/ctx"
+    :doc                "Reference context definitions and SmartFunctions for this role."
+    :type               "ref"
+    :multi              true
+    :restrictCollection "_ctx"}
 
 
    ;; _rule predicates
@@ -843,5 +853,26 @@
    {:_id  ["_predicate" const/$_shard:mutable]
     :name "_shard/mutable"
     :doc  "Whether this shard is mutable. If not specified, defaults to 'false', meaning the data is immutable."
-    :type "boolean"}])
+    :type "boolean"}
+
+   ; _cts
+   {:_id    ["_predicate" const/$_ctx:name]
+    :name   "_ctx/name"
+    :doc    "Unique name for context setting"
+    :type   "string"
+    :unique true}
+   {:_id                ["_predicate" const/$_ctx:key]
+    :name               "_ctx/key"
+    :doc                "Context map's key value to assign value result to."
+    :type               "string"}
+   {:_id  ["_predicate" const/$_ctx:fn]
+    :name "_ctx/fn"
+    :doc  "SmartFunction that will be executed to populate key's value."
+    :type               "ref"
+    :restrictCollection "_fn"}
+   {:_id  ["_predicate" const/$_ctx:doc]
+    :name "_ctx/doc"
+    :doc  "Optional docstring for context information."
+    :type "string"}
+   ])
 

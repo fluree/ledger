@@ -127,7 +127,7 @@
       (is (test/contains-many? queryCollectionsRes :opts :body :headers :status))
 
       ; Are all the collection names what we expect?
-      (is (= collections #{"_rule" "nestedComponent" "_fn" "_predicate" "_setting" "chat" "_auth" "_user" "person" "_shard" "_tag" "comment" "_role" "_collection"})))))
+      (is (= collections #{"_rule" "nestedComponent" "_fn" "_predicate" "_setting" "_ctx" "chat" "_auth" "_user" "person" "_shard" "_tag" "comment" "_role" "_collection"})))))
 
 
 (deftest query-collections*
@@ -176,7 +176,7 @@
       (is (test/contains-many? multi-res :opts :body :headers :status))
 
       ; Are all the predicates what we expect?
-      (is (= collections #{"_rule" "nestedComponent" "_fn" "_predicate" "_setting" "chat" "_auth" "_user" "person" "_shard" "_tag" "comment" "_role" "_collection"}))
+      (is (= collections #{"_rule" "nestedComponent" "_fn" "_predicate" "_setting" "_ctx" "chat" "_auth" "_user" "person" "_shard" "_tag" "comment" "_role" "_collection"}))
 
       ; Are some of the predicates we expect returned?
       (is (every? boolean (map #(predicates %) ["comment/nestedComponent" "person/stringUnique"]))))))
