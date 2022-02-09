@@ -108,8 +108,13 @@
 
               index-xf           (indexing/integrate-novelty idx new-tx novelty #{})
               subject-under-test (into [] index-xf old-index)]
+
           (is (->> subject-under-test
                    (filter :leftmost?)
                    (map :first)
                    (every? #{lowest-novelty}))
-              "sets the first novelty item as first flake for every leftmost node"))))))
+              "sets the first novelty item as first flake for every leftmost node")
+
+          (is (contains? (->> subject-under-test last :children vals set)
+                         (first subject-under-test))
+              "preserves the node ancestry"))))))
