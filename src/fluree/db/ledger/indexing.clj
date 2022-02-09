@@ -131,39 +131,56 @@
     [leaf]))
 
 (defn update-leaf
-  [{:keys [network dbid] :as leaf} idx new-flakes to-remove]
-  (let [new-leaves (-> leaf
-                       (dissoc :id)
-                       (index/add-flakes new-flakes)
-                       (index/rem-flakes to-remove)
-                       rebalance-leaf)]
-    (map (fn [l]
-           (assoc l :id (storage/random-leaf-id network dbid idx)))
-         new-leaves)))
+  [{:keys [network dbid] :as leaf} idx t novelty remove-preds]
+  (let [new-flakes (index/novelty-subrange leaf t novelty)
+        to-remove  (filter-predicates remove-preds (:flakes leaf) new-flakes)]
+    (if (or (seq new-flakes) (seq to-remove))
+      (let [new-leaves (-> leaf
+                           (dissoc :id)
+                           (index/add-flakes new-flakes)
+                           (index/rem-flakes to-remove)
+                           rebalance-leaf)]
+        (map (fn [l]
+               (assoc l
+                      :id (storage/random-leaf-id network dbid idx)
+                      :t t))
+             new-leaves))
+      [leaf])))
+
+(defn some-update-after?
+  [t nodes]
+  (->> nodes
+       (map :t)
+       (some (fn [node-t]
+               (> node-t t)))
+       boolean))
 
 (defn update-branch
-  [{:keys [network dbid comparator] :as branch} idx child-nodes]
-  (let [children    (apply index/child-map comparator child-nodes)
-        size        (->> child-nodes
-                         (map :size)
-                         (reduce +))
-        first-flake (->> children first key)
-        rhs         (->> children flake/last val :rhs)
-        new-id      (storage/random-branch-id network dbid idx)]
-    (assoc branch
-           :id new-id
-           :children children
-           :size size
-           :first first-flake
-           :rhs rhs)))
+  [{:keys [network dbid comparator], branch-t :t, :as branch} idx t child-nodes]
+  (if (some-update-after? branch-t child-nodes)
+    (let [children    (apply index/child-map comparator child-nodes)
+          size        (->> child-nodes
+                           (map :size)
+                           (reduce +))
+          first-flake (->> children first key)
+          rhs         (->> children flake/last val :rhs)
+          new-id      (storage/random-branch-id network dbid idx)]
+      (assoc branch
+             :id new-id
+             :t t
+             :children children
+             :size size
+             :first first-flake
+             :rhs rhs))
+    branch))
 
 (defn rebalance-children
-  [branch idx child-nodes]
+  [branch idx t child-nodes]
   (let [target-count (/ *overflow-children* 2)]
     (->> child-nodes
          (partition-all target-count)
          (map (fn [kids]
-                (update-branch branch idx kids)))
+                (update-branch branch idx t kids)))
          (fn [[maybe-leftmost & not-leftmost]]
            (into [maybe-leftmost]
                  (map (fn [non-left-node]
@@ -195,12 +212,8 @@
         ;;   3. Iterate each resulting node with the nested transformer.
         ([result node]
          (if (index/leaf? node)
-           (let [new-flakes (index/novelty-subrange node t novelty)
-                 to-remove  (filter-predicates remove-preds (:flakes node) new-flakes)]
-             (if (or (seq new-flakes) (seq to-remove))
-               (let [new-leaves (update-leaf node idx new-flakes to-remove)]
-                 (vswap! stack into new-leaves))
-               (vswap! stack conj node))
+           (let [leaves (update-leaf node idx t novelty remove-preds)]
+             (vswap! stack into leaves)
              result)
 
            (loop [child-nodes []
@@ -216,15 +229,12 @@
                         (vswap! stack pop)
                         (xf result* child))
                  (if (overflow-children? child-nodes)
-                   (let [new-branches (rebalance-children node idx child-nodes)
-                         result**     (reduce (fn [res branch]
-                                                (xf res branch))
-                                              result* new-branches)]
+                   (let [new-branches (rebalance-children node idx t child-nodes)
+                         result**     (reduce xf result* new-branches)]
                      (recur new-branches
                             stack*
                             result**))
-                   (let [branch (cond-> node
-                                  (seq child-nodes) (update-branch idx child-nodes))]
+                   (let [branch (update-branch node idx t child-nodes)]
                      (vswap! stack conj branch)
                      result*)))))))
 
