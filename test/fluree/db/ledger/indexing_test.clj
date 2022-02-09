@@ -1,5 +1,6 @@
 (ns fluree.db.ledger.indexing-test
   (:require [clojure.test :refer :all]
+            [clojure.set :as set]
             [fluree.db.flake :as flake]
             [fluree.db.index :as index]
             [fluree.db.storage.core :as storage]
@@ -52,17 +53,50 @@
           old-branch    (-> (index/new-branch network lgr-id cmp [old-leaf])
                             (assoc :id old-branch-id))
 
-          old-index     [old-leaf old-branch]]
+          old-index     [old-leaf old-branch]
+          new-tx        (inc-tx last-tx)]
 
       (testing "with empty novelty"
-        (let [new-tx             (inc-tx last-tx)
-              novelty            (flake/sorted-set-by cmp)
+        (let [novelty            (flake/sorted-set-by cmp)
               index-xf           (indexing/integrate-novelty idx new-tx novelty #{})
               subject-under-test (into [] index-xf old-index)]
           (is (= subject-under-test old-index)
               "doesn't change the index")))
 
-      (testing "adding lower sorted flakes"
+      (testing "with nonempty novelty"
+        (let [novelty-flakes     (map flake/->Flake
+                                      subjs (reverse old-preds) old-objs
+                                      (repeat new-tx) (repeat true) (repeat {}))
+              novelty            (apply flake/sorted-set-by cmp novelty-flakes)
+              novelty-size       (flake/size-bytes novelty)
+
+              index-xf           (indexing/integrate-novelty idx new-tx novelty #{})
+              subject-under-test (into [] index-xf old-index)]
+
+          (is (= (->> subject-under-test
+                      (filter index/leaf?)
+                      (map :size)
+                      (reduce +))
+                 (-> old-leaf :size (+ novelty-size)))
+              "adds the novelty size to the total leaf size")
+
+          (is (= (->> subject-under-test last :size)
+                 (-> old-branch :size (+ novelty-size)))
+              "adds the novelty size to the root branch size")
+
+          (is (empty? (set/intersection (->> old-index
+                                             (map :id)
+                                             set)
+                                        (->> subject-under-test
+                                             (map :id)
+                                             set)))
+              "updates all the :id attributes")
+
+          (is (contains? (->> subject-under-test last :children vals set)
+                         (first subject-under-test))
+              "preserves the node ancestry")))
+
+      (testing "with lower sorted flakes in novelty"
         (let [new-tx             (inc-tx last-tx)
               lower-subj         (inc last-subj)
 
