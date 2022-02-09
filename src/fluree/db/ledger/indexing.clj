@@ -200,7 +200,8 @@
              (if (or (seq new-flakes) (seq to-remove))
                (let [new-leaves (update-leaf node idx new-flakes to-remove)]
                  (vswap! stack into new-leaves))
-               (vswap! stack conj node)))
+               (vswap! stack conj node))
+             result)
 
            (loop [child-nodes []
                   stack*      @stack
@@ -224,7 +225,8 @@
                             result**))
                    (let [branch (cond-> node
                                   (seq child-nodes) (update-branch idx child-nodes))]
-                     (vswap! stack conj branch))))))))
+                     (vswap! stack conj branch)
+                     result*)))))))
 
         ;; Completion: Flush the stack iterating each remaining node with the
         ;; nested transformer before calling the nested transformer's completion
