@@ -174,6 +174,14 @@
              :rhs rhs))
     branch))
 
+(defn update-sibling-leftmost
+  [[maybe-leftmost & not-leftmost]]
+  (into [maybe-leftmost]
+        (map (fn [non-left-node]
+               (assoc non-left-node
+                      :leftmost? false)))
+        not-leftmost))
+
 (defn rebalance-children
   [branch idx t child-nodes]
   (let [target-count (/ *overflow-children* 2)]
@@ -181,12 +189,7 @@
          (partition-all target-count)
          (map (fn [kids]
                 (update-branch branch idx t kids)))
-         (fn [[maybe-leftmost & not-leftmost]]
-           (into [maybe-leftmost]
-                 (map (fn [non-left-node]
-                        (assoc non-left-node
-                               :leftmost? false)))
-                 not-leftmost)))))
+         update-sibling-leftmost)))
 
 (defn integrate-novelty
   "Returns a transducer that transforms a stream of index nodes in depth first
