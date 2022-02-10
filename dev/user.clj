@@ -21,6 +21,11 @@
             [fluree.db.ledger.bootstrap :as bootstrap]
             [fluree.db.ledger.consensus.raft :as raft]
             [fluree.db.ledger.txgroup.core :as txgroup]
+            [fluree.db.ledger.indexing :as indexing]
+            [fluree.db.ledger.reindex :as reindex]
+            [fluree.db.query.range :as query-range]
+            [fluree.db.ledger.txgroup.txgroup-proto :as txproto]
+            [fluree.db.dbproto :as dbproto]
             [fluree.db.peer.http-api :as http-api]
             [fluree.db.ledger.txgroup.txgroup-proto :as txproto]
             [fluree.db.peer.password-auth :as pw-auth]
@@ -468,13 +473,6 @@
 
   @(fdb/transact (:conn system) "dev/1" [{:_id  "account"
                                           :name "temp5"}]))
-
-
-
-
-
-
-
 
 
 
