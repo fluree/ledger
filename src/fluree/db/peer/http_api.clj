@@ -1,5 +1,5 @@
 (ns fluree.db.peer.http-api
-  (:require [clojure.tools.logging :as log]
+  (:require [fluree.db.util.log :as log]
             [clojure.string :as str]
             [clojure.core.async :as async]
             [org.httpkit.server :as http]
@@ -330,9 +330,11 @@
           auth-id     (:auth auth-map)
           db          (fdb/db conn ledger {:auth (when auth-id ["_auth/id" auth-id])})
           private-key (or (txproto/get-shared-private-key (:group system))
-                          (throw (ex-info (str "There is no shared private key in this group. The gen-flakes endpoint is not currently supported in databases where fdb-api-open is false")
-                                          {:status 400
-                                           :error  :db/invalid-transaction})))]
+                          (throw
+                            (ex-info
+                              (str "There is no shared private key in this group. The gen-flakes endpoint is not currently supported in databases where fdb-api-open is false")
+                              {:status 400
+                               :error  :db/invalid-transaction})))]
       (loop [fuel-tot   0
              txn        [(first param)]
              txs        (rest param)
@@ -341,10 +343,13 @@
         (let [cmd-data     (fdb/tx->command ledger txn private-key)
               internal-cmd {:command cmd-data
                             :id      (:id cmd-data)}
-              res          (->> (tx-util/validate-command internal-cmd)
-                                (tx-core/transact {:db-before db :instant (Instant/now)})
-                                <?)
-              {:keys [flakes fuel status error db-after]} res
+
+              {:keys [flakes fuel status error db-after]}
+              (->> internal-cmd
+                   tx-util/validate-command
+                   (tx-core/transact {:db-before db :instant (Instant/now)})
+                   <?)
+
               fuel-tot     (+ fuel-tot fuel)
               _            (when (not= status 200)
                              (throw (ex-info error
@@ -366,14 +371,16 @@
                                         (if (not-empty (rest vals'))
                                           (recur (rest vals') acc')
                                           acc')))]
-              [{:status status} {:res    (<? res-map)
-                                 :flakes flakes'
-                                 :fuel   fuel-tot}])
+              [{:status status}
+               {:res    (<? res-map)
+                :flakes flakes'
+                :fuel   fuel-tot}])
             (recur fuel-tot [(first txs)] (rest txs) db-after flakes')))))))
 
 
 (defmethod action-handler :ledger-stats
   [_ system _ _ ledger _]
+  (log/trace "Getting ledger-info for" ledger)
   (go-try
     (let [conn    (:conn system)
           db-info (<? (fdb/ledger-info-async conn ledger))
@@ -489,12 +496,14 @@
 (defn wrap-action-handler
   "Wraps a db request to facilitate proper response format"
   [system {:keys [headers body params remote-addr] :as request}]
+  (log/trace "wrap-action-handler received:" request)
   (let [{:keys [action network db]} params
         start           (System/nanoTime)
         ledger          (keyword network db)
         action*         (keyword action)
         body'           (when body (decode-body body :string))
         action-param    (some-> body' json/parse)
+        _               (log/trace "wrap-action-handler decoded body:" action-param)
         auth-map        (auth-map system ledger request body')
         request-timeout (if-let [timeout (:request-timeout headers)]
                           (try (Integer/parseInt timeout)
@@ -650,12 +659,16 @@
 
 
 (defn new-ledger
-  [{:keys [conn] :as system} {:keys [body]}]
+  [{:keys [conn] :as system} {:keys [body] :as request}]
   (let [body         (decode-body body :json)
         transactor?  (-> system :config :transactor?)
         ledger-ident (:db/id body)
-        opts         (dissoc body :db/id)
-        result       @(fdb/new-ledger conn ledger-ident opts)]
+        opts         (dissoc body :db/id :auth) ; dissoc auth so it can't be spoofed
+        {sig-auth :auth} (http-signatures/verify-signature-header request)
+        opts'        (if sig-auth
+                       (update opts :owners (comp set conj) sig-auth)
+                       opts)
+        result       @(fdb/new-ledger conn ledger-ident opts')]
     ;; create session so tx-monitors will work
     (when transactor? (session/session conn ledger-ident))
     (when (= ExceptionInfo (type result))
@@ -718,7 +731,7 @@
                         accept-encodings (or (get headers "accept")
                                              "application/json")
                         signature        (return-signature request)
-                        jwt              (return-token request)    ;may not be signed if client is using password auth
+                        jwt              (return-token request) ;may not be signed if client is using password auth
                         open-api?        (open-api? system)
                         _                (when (and (not open-api?) (not signature) (not jwt))
                                            (throw (ex-info (str "To request an item from storage, open-api must be true or your request must be signed.")
@@ -859,6 +872,7 @@
     (compojure/POST "/fdb/delete-db" request (delete-ledger system request))
     (compojure/POST "/fdb/:network/:db/pw/:action" request (password-handler system request))
     (compojure/POST "/fdb/:network/:db/:action" request (wrap-action-handler system request))
+    (compojure/GET "/fdb/:network/:db/:action" request (wrap-action-handler system request))
     (compojure/POST "/fdb/command" request (command-handler system request))
 
     ;; fallback 404 for unknown API paths

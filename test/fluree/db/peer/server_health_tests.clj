@@ -35,13 +35,13 @@
   (testing "extract-state-from-leases"
     (let [res (srv-health/extract-state-from-leases state-leases instant-now)]
       (is (vector? res))
-      (is (-> res first (test/contains-many? :id :active?)))))
+      (is (-> res first (test/contains-every? :id :active?)))))
   (testing "parse-command-queue"
     (let [res (srv-health/parse-command-queue state-cmd-queue)]
       (is (vector? res))
       (is (-> res
               first
-              (test/contains-many? :txn-count :txn-oldest-instant)))))
+              (test/contains-every? :txn-count :txn-oldest-instant)))))
   (testing "parse-new-db-queue"
     (let [res (srv-health/parse-new-db-queue state-new-db-queue)]
       (is (vector? res))
@@ -58,7 +58,7 @@
           system* (assoc-in test/system [:group :state-atom] state)
           res     (srv-health/get-consensus-state system*)]
       (is (map? res))
-      (is (test/contains-many? res :open-api :raft :svr-state :oldest-pending-txn-instant))
+      (is (test/contains-every? res :open-api :raft :svr-state :oldest-pending-txn-instant))
       (is (= instant-oldest-txn (:oldest-pending-txn-instant res)))))
   (testing "get-request-timeout"
     (testing "integer"
@@ -76,7 +76,7 @@
             body (-> res :body bs/to-string json/parse)]
         (is (= srv-health/http-ok (:status res)))
         (is (map? body))
-        (is (test/contains-many? body :ready :status :utilization))))
+        (is (test/contains-every? body :ready :status :utilization))))
     (testing "missing group; is transactor?"
       (let [res  (srv-health/health-handler {:config {:transactor? true}} nil)
             body (-> res :body bs/to-string json/parse)]
@@ -93,7 +93,7 @@
             body (-> res :body bs/to-string json/parse)]
         (is (= srv-health/http-ok (:status res)))
         (is (map? body))
-        (is (test/contains-many? body :open-api :raft :svr-state :oldest-pending-txn-instant))))
+        (is (test/contains-every? body :open-api :raft :svr-state :oldest-pending-txn-instant))))
     (testing "consensus - with queue"
       (let [state   (-> test/system
                         :group
@@ -108,7 +108,7 @@
             body    (-> res :body bs/to-string json/parse)]
         (is (= srv-health/http-ok (:status res)))
         (is (map? body))
-        (is (test/contains-many? body :open-api :raft :svr-state :oldest-pending-txn-instant))
+        (is (test/contains-every? body :open-api :raft :svr-state :oldest-pending-txn-instant))
         (is (= instant-oldest-txn (:oldest-pending-txn-instant body)))))
     (testing "timeout"
       (let [group-state (get-in test/system [:group :state-atom])

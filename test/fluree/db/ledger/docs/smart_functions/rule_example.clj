@@ -11,7 +11,7 @@
             [byte-streams :as bs]
             [fluree.db.util.json :as json]))
 
-(use-fixtures :once test/test-system)
+(use-fixtures :once test/test-system-deprecated)
 
 (def jdoe {:auth        "TfKYG5F5iCsii1JvGGY2Pv6bPVVbZ2ERjmJ"
            :private-key "1787cab58d5b146a049f220c975d5dce7904c63f25d6d834d6980c427b47f412"})
@@ -25,7 +25,7 @@
   (let [person-auth [{:_id  "_predicate", :name "person/auth", :doc "Reference to a database auth.",
                       :type "ref", :restrictCollection "_auth"}]
         _           (async/<!! (fdb/transact-async (basic/get-conn) test/ledger-chat person-auth))
-        filename    "../test/fluree/db/ledger/Resources/ChatApp/ruleExample.edn"
+        filename    "schemas/chat-rules.edn"
         txn         (-> filename io/resource slurp edn/read-string)
         resp        (async/<!! (fdb/transact-async (basic/get-conn) test/ledger-chat txn))]
     (is (= 200 (:status resp)))))

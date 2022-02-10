@@ -50,8 +50,8 @@
                                       {:_id "_predicate", :name "comment/message", :doc "A comment message.", :type "string", :fullText true}
                                       {:_id "_predicate", :name "comment/person", :doc "A reference to the person that made the comment", :type "ref", :restrictCollection "person"}
                                       {:_id "_predicate", :name "artist/name", :type "string", :unique true}
-                                      {:_id "_predicate", :name "movie/title", :type "string", :fullText true, :unique true}
-                                      ]
+                                      {:_id "_predicate", :name "movie/title", :type "string", :fullText true, :unique true}]
+
                               private-key))
 
 
@@ -65,13 +65,13 @@
   tx-result
   temp-result
 
-  (async/<!! (fluree.db.dbproto/-with-t memorydb temp-result))
+  (async/<!! (fluree.db.dbproto/-with-t memorydb temp-result)))
 
-  )
+
 #_(deftest sql-query-parser-test
-  (testing "IRI support"
-    )
-  (testing "Transaction children properly extracted"
+   (testing "IRI support")
+
+   (testing "Transaction children properly extracted"
     (let [nested-tx [{:_id "_collection"
                       :name "_collection/test"}
                      {:_id 12345
@@ -85,6 +85,6 @@
                                       :name "blah4"}}]}
                      :_id ["test/me" 123]
                      :asub {:_id "hi"
-                            :name "hithere"}]]
-      )
-    ))
+                            :name "hithere"}]])))
+
+

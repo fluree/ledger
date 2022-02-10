@@ -1,8 +1,11 @@
 (ns fluree.db.ledger-test
+  "The tests run by this namespace should be converted to idiomatic Clojure
+  tests and removed from `all-open-tests` below. Once they are all converted,
+  this file should be deleted."
   (:require [clojure.test :refer :all]
             [fluree.db.test-helpers :as test]
 
-            [fluree.db.ledger.api.downloaded :as api]
+            [fluree.db.ledger.api.open-test :as api]
 
             [fluree.db.ledger.docs.getting-started.basic-schema :as basic-schema]
 
@@ -24,7 +27,6 @@
             [fluree.db.ledger.docs.transact.transactions :as transactions]
 
             [fluree.db.ledger.docs.identity.auth :as auth]
-            [fluree.db.ledger.docs.identity.signatures :as signatures]
 
             [fluree.db.ledger.docs.schema.collections :as collections]
             [fluree.db.ledger.docs.schema.predicates :as predicates]
@@ -36,6 +38,10 @@
             [fluree.db.ledger.general.invoice-tests :as invoice]
             [fluree.db.peer.server-health-tests :as sh-test]
             [fluree.db.peer.http-api-tests :as http-api-test]))
+
+;; NOTE: The tests run by this namespace should be converted to idiomatic
+;; Clojure tests and removed from `all-open-tests` below. Once they are all
+;; converted, this file should be deleted.
 
 ;; TODO - tests fail - commented out for convenience:
 ;; API - (test-gen-flakes-query-transact-with)
@@ -59,12 +65,8 @@
 
 (deftest all-open-tests
   (is (= :success
-         (test/test-system
+         (test/test-system-deprecated
            (fn []
-             ;; 1- API
-             (test/print-banner "API Tests")
-             (api/api-test)
-
              ;; 2- Docs
              (test/print-banner "Docs Tests")
              (basic-schema/basic-schema-test)
@@ -130,10 +132,4 @@
   ;; returns a summary and logs out "FAIL in ...." for each failure.
   (run-tests)
 
-  ;; this needs to be run separately- closed api test harness. Best to follow
-  ;; this to the page, and run the test, otherwise the results are not visible
-  ;; for some reason?
-  (signatures/Signatures-export)
-
-  ;; This one can
-  (test/test-system (fn [] (api/standalone-test-gen-flakes-query-transact-with))))
+  (test/test-system-deprecated (fn [] (api/standalone-test-gen-flakes-query-transact-with))))

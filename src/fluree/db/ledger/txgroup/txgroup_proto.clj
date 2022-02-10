@@ -235,8 +235,8 @@ or this server is not responsible for this ledger, will return false. Else true 
 
 (defn new-ledger-async
   "Registers new network to be created by leader."
-  [group network ledger-id cmd-id signed-cmd]
-  (let [command [:new-db network ledger-id cmd-id signed-cmd]]
+  [group network ledger-id cmd-id signed-cmd owners]
+  (let [command [:new-db network ledger-id cmd-id signed-cmd owners]]
     (-new-entry-async group command)))
 
 (defn find-all-dbs-to-initialize
@@ -303,12 +303,13 @@ or this server is not responsible for this ledger, will return false. Else true 
 (defn queue-command-async
   "Writes a new tx to the queue"
   [group network ledger-id command-id command]
-  (kv-assoc-in-async group [:cmd-queue network command-id] {:command command
-                                                            :size (count (:cmd command))
-                                                            :id command-id
-                                                            :network network
-                                                            :dbid ledger-id
-                                                            :instant (System/currentTimeMillis)}))
+  (kv-assoc-in-async group [:cmd-queue network command-id]
+                     {:command command
+                      :size (count (:cmd command))
+                      :id command-id
+                      :network network
+                      :dbid ledger-id
+                      :instant (System/currentTimeMillis)}))
 
 
 ;; Block commands

@@ -1,7 +1,25 @@
 <?xml version="1.0" encoding="utf-8"?>
 
-<!--Turn off logging during tests.-->
-<configuration scan="true" />
+<!-- Turn off most logging during tests -->
 
 <!-- If you need to debug something test-related with logs, delete this file temporarily
      or edit/replace it to do the logging you want. -->
+
+<configuration scan="true">
+
+    <!-- Console output -->
+    <appender name="STDOUT-TEST" class="ch.qos.logback.core.ConsoleAppender">
+        <!-- encoder defaults to ch.qos.logback.classic.encoder.PatternLayoutEncoder -->
+        <encoder>
+            <!-- ensure logs including exceptions are a single line -->
+            <pattern>%date %-5level %logger{24} - %message - %replace(%xException){"\n", "\\n"}%nopex%n</pattern>
+        </encoder>
+    </appender>
+
+    <root level="OFF">
+        <appender-ref ref="STDOUT-TEST"/>
+    </root>
+
+    <logger name="fluree.db.test-helpers" level="ERROR"/>
+
+</configuration>

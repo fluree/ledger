@@ -7,7 +7,7 @@
             [clojure.java.io :as io]
             [clojure.tools.reader.edn :as edn]))
 
-(use-fixtures :once test/test-system)
+(use-fixtures :once test/test-system-deprecated)
 
 ;; Voting Example
 

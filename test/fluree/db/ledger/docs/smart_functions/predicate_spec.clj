@@ -5,7 +5,7 @@
             [fluree.db.api :as fdb]
             [fluree.db.ledger.docs.getting-started.basic-schema :as basic]))
 
-(use-fixtures :once test/test-system)
+(use-fixtures :once test/test-system-deprecated)
 
 (deftest non-negative
   (let [non-neg-spec  [{:_id "_fn$nonNeg",
