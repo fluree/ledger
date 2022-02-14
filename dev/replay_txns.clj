@@ -12,14 +12,14 @@
 (defn- block-flakes
   "Returns block flakes for specified block"
   [conn network dbid block]
-  (-> (storage/block conn network dbid block)
+  (-> (storage/read-block conn network dbid block)
       (async/<!!)
       :flakes))
 
 (defn- nearest-index-point
   "Given a block, finds closest index point prior to or equal to provided block."
   [conn db-ident block]
-  (let [db-info       @(fdb/ledger-status conn db-ident)
+  (let [db-info       @(fdb/ledger-info conn db-ident)
         index-points  (-> db-info :indexes keys sort reverse)
         closest-point (->> index-points
                            (filter #(<= % block))
