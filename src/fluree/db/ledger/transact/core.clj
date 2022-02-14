@@ -462,7 +462,7 @@
      :txid             txid
      :tx-type          tx-type
      :tx               tx
-     :tx-string        cmd
+     :tx-string        (if (not-empty signed) (json/stringify tx) cmd)
      :signature        sig
      :signed           signed
      :nonce            nonce
@@ -589,6 +589,7 @@
     (let [{:keys [db-root auth-id authority-id txid tx t tx-type fuel permissions]} tx-state
           tx-flakes        (<? (do-transact tx-state tx))
           tx-meta-flakes   (tx-meta/tx-meta-flakes tx-state nil)
+          _                (log/trace "tx-meta flakes:" tx-meta-flakes)
           tempids-map      (tempid/result-map tx-state)
           all-flakes       (cond-> (into tx-flakes tx-meta-flakes)
                                    (not-empty tempids-map) (conj (tempid/flake tempids-map t))
