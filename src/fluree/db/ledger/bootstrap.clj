@@ -826,6 +826,10 @@
     :name "_tx/sig"
     :doc  "Signature of original JSON transaction command."
     :type "string"}
+   {:_id  ["_predicate" const/$_tx:signed]
+    :name "_tx/signed"
+    :doc  "String that _tx/sig is a signature of if it isn't _tx/tx"
+    :type "string"}
    {:_id  ["_predicate" const/$_tx:tempids]
     :name "_tx/tempids"
     :doc  "Tempid JSON map for this transaction."
