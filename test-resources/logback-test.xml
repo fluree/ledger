@@ -21,7 +21,5 @@
     </root>
 
     <logger name="fluree.db.test-helpers" level="ERROR"/>
-    <logger name="fluree.db.ledger.storage.memorystore" level="INFO" />
-    <logger name="fluree.db.ledger.mutable" level="INFO" />
 
 </configuration>
