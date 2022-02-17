@@ -1,0 +1,6 @@
+[{:_id               ["dataSpecAttributes/uid", "dsa007"],
+  :schemaTag         "updated Omega-Two source.port",
+  :sourceDescription "updated Omega-Two Originating endpoint’s TCP/UDP port",
+  :exampleValue      "updated Omega-Two 59313"
+  :included          false
+  }]

@@ -41,6 +41,7 @@
 (def ledger-supplychain "fluree/supplychain")
 (def ledger-todo "fluree/todo")
 (def ledger-invoice "fluree/invoice")
+(def ledger-mutable "fluree/mutable")
 
 (def all-ledgers
   #{ledger-endpoints ledger-query+transact ledger-chat ledger-crypto

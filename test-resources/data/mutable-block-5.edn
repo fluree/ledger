@@ -1,0 +1,13 @@
+[{:_id           "dataSpecification",
+  :iid           "ds1",
+  :title         "Zeta Data Source",
+  :version       "Zeta v1.0",
+  :schemaVersion "Zeta 11.0",
+  :status        "final"},
+ {:_id           "dataSpecification",
+  :iid           "ds2",
+  :title         "Gamma Data Source",
+  :version       "Gamma v2.0",
+  :schemaVersion "Gamma 12.0",
+  :status        "in-progress"
+  }]
