@@ -42,10 +42,10 @@
 
 (defn purge-block
   [conn nw ledger block flakes]
-  (go-try (let [conn-rename   (:storage-rename conn)
+  (go-try (let [conn-delete   (:storage-delete conn)
                 block-key     (storage/ledger-block-key nw ledger block)
                 current-block (<? (storage/read-block conn nw ledger block))
-                _             (<?? (conn-rename block-key (str block-key "-delete")))
+                _             (<?? (conn-delete block-key))
                 new-block     (filter-flakes-from-block current-block flakes)
                 _             (<?? (storage/write-block conn nw ledger new-block))
                 numVersions   (-> (next-version conn block-key) <? dec)]
