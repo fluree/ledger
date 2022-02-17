@@ -127,8 +127,8 @@
                                  {:status 400
                                   :error  :db/invalid-tx}))))
 
-    :ref object                                             ;; will have already been conformed
-    :tag object                                             ;; will have already been conformed
+    :ref object ;; will have already been conformed
+    :tag object ;; will have already been conformed
     ;; else
     ;; TODO - type-check creates an atom to hold errors, we really just need to throw exception if error exists
     (fspec/type-check object type)))
@@ -148,7 +148,7 @@
                             (conj uniques-set ::duplicate-detected) ;; check for this special keyword in result
                             (conj uniques-set ident))))]
     (if (contains? uniques* ::duplicate-detected)
-      false                                                 ;; already registered, should throw downstream
+      false ;; already registered, should throw downstream
       true)))
 
 
@@ -225,7 +225,7 @@
   [object _id pred-info tx-state]
   (go-try
     (let [type    (pred-info :type)
-          object* (if (txfunction/tx-fn? object)            ;; should only happen for multi-cardinality objects
+          object* (if (txfunction/tx-fn? object) ;; should only happen for multi-cardinality objects
                     (<? (txfunction/execute object _id pred-info tx-state))
                     object)]
       (cond
@@ -248,7 +248,7 @@
   [object _id pred-info tx-state]
   (let [multi? (pred-info :multi)]
     (if (nil? object)
-      (async/go :delete)                                    ;; delete any existing object
+      (async/go :delete) ;; delete any existing object
       (cond-> object
               (not multi?) (resolve-object-item _id pred-info tx-state)
               multi? (#(if (sequential? %) % [%]))
@@ -319,7 +319,7 @@
                                                  <?)
                                              (<? (resolve-object obj _id* pred-info tx-state)))]
                              (recur (conj acc [pred-info obj*]) r))))
-            _id**      (or (get @tempids _id*) _id*)        ;; if a ':upsert true' value resolved to existing sid, will now be in @tempids map
+            _id**      (or (get @tempids _id*) _id*) ;; if a ':upsert true' value resolved to existing sid, will now be in @tempids map
             tempid?    (tempid/TempId? _id**)]
         (when (and delete? tempid?)
           (throw (ex-info (str "Tempid with a 'delete' action is not allowed: " _id)
@@ -328,7 +328,7 @@
           (async/>! res-chan (assoc txi* :_final-flakes (<? (tx-retract/subject _id** tx-state))))
           (loop [acc txi*
                  [[pred-info obj*] & r] pi-obj]
-            (if (nil? pred-info)                            ;; finished
+            (if (nil? pred-info) ;; finished
               (async/>! res-chan acc)
               (let [pid (pred-info :id)]
                 (cond
@@ -439,29 +439,32 @@
 
 
 (defn ->tx-state
-  [db block-instant {:keys [auth auth-sid authority authority-sid tx-permissions txid cmd sig nonce type] :as tx-map}]
+  [db block-instant
+   {:keys [auth auth-sid authority authority-sid tx-permissions txid cmd sig
+           signed nonce type] :as tx-map}]
   (let [tx-type   (keyword type)
-        tx        (case tx-type                             ;; command type is either :tx or :new-db
+        tx        (case tx-type ;; command type is either :tx or :new-db
                     :tx (:tx tx-map)
                     :new-db (tx-util/create-new-db-tx tx-map))
         db-before (cond-> db
                           tx-permissions (assoc :permissions tx-permissions))]
     {:db-before        db-before
      :db-root          db
-     :db-after         (atom nil)                           ;; store updated db here
-     :flakes           nil                                  ;; holds final list of flakes for tx once complete
+     :db-after         (atom nil) ;; store updated db here
+     :flakes           nil ;; holds final list of flakes for tx once complete
      :permissions      tx-permissions
-     :auth-id          auth                                 ;; auth id string in _auth/id
-     :auth             auth-sid                             ;; auth subject-id integer
-     :authority-id     authority                            ;; authority id string as per _auth/id (or nil if no authority)
-     :authority        authority-sid                        ;; authority subject-id integer (or nil if no authority)
+     :auth-id          auth ;; auth id string in _auth/id
+     :auth             auth-sid ;; auth subject-id integer
+     :authority-id     authority ;; authority id string as per _auth/id (or nil if no authority)
+     :authority        authority-sid ;; authority subject-id integer (or nil if no authority)
      :t                (dec (:t db))
      :instant          block-instant
      :txid             txid
      :tx-type          tx-type
      :tx               tx
-     :tx-string        cmd
+     :tx-string        (if (not-empty signed) (json/stringify tx) cmd)
      :signature        sig
+     :signed           signed
      :nonce            nonce
      :fuel             (atom {:stack   []
                               :credits 1000000
@@ -477,7 +480,7 @@
      :idents           (atom {})
      ;; if a tempid resolves to existing subject via :upsert predicate, set it here. tempids don't need
      ;; to check for existing duplicate values, but if a tempid resolves via upsert, we need to check it
-     :upserts          (atom nil)                           ;; cache of resolved identities
+     :upserts          (atom nil) ;; cache of resolved identities
      ;; Unique predicate + value used in transaction kept here, to ensure the same unique is not used
      ;; multiple times within the transaction
      :uniques          (atom #{})
@@ -507,7 +510,7 @@
               ^Flake flake  (cond-> tf
                                     (tempid/TempId? s) (assoc :s (get @tempids s))
                                     (tempid/TempId? o) (assoc :o (get @tempids o)))
-              retract-flake (when (contains? @upserts s)    ;; if was an upsert resolved, could be an existing flake that needs to get retracted
+              retract-flake (when (contains? @upserts s) ;; if was an upsert resolved, could be an existing flake that needs to get retracted
                               (first (<? (tx-retract/flake (:s flake) (:p tf) (if multi? (:o flake) nil) tx-state))))
               pred-info     (fn [property] (dbproto/-p-prop db-before property (:p flake)))
               flakes*       (add-singleton-flake flakes flake retract-flake pred-info tx-state)]
@@ -586,6 +589,7 @@
     (let [{:keys [db-root auth-id authority-id txid tx t tx-type fuel permissions]} tx-state
           tx-flakes        (<? (do-transact tx-state tx))
           tx-meta-flakes   (tx-meta/tx-meta-flakes tx-state nil)
+          _                (log/trace "tx-meta flakes:" tx-meta-flakes)
           tempids-map      (tempid/result-map tx-state)
           all-flakes       (cond-> (into tx-flakes tx-meta-flakes)
                                    (not-empty tempids-map) (conj (tempid/flake tempids-map t))
@@ -608,7 +612,7 @@
 
           ;; runs all 'spec' validations
           spec-errors      (<? (tx-validate/run-queued-specs all-flakes tx-state parallelism))
-          perm-errors      (when (and (nil? spec-errors)    ;; only run permissions errors if no spec errors
+          perm-errors      (when (and (nil? spec-errors) ;; only run permissions errors if no spec errors
                                       (not (true? (:root? permissions))))
                              (<? (tx-validate/run-permissions-checks all-flakes tx-state parallelism)))]
 
@@ -617,15 +621,15 @@
                :auth         auth-id
                :authority    authority-id
                :db-before    db-root
-               :db-after     db-after                       ;; will get replaced if there is an error
-               :status       200                            ;; will get replaced if there is an error
-               :errors       nil                            ;; will get replaced if there is an error
-               :flakes       (conj all-flakes @hash-flake)  ;; will get replaced if there is an error
-               :hash         (.-o ^Flake @hash-flake)       ;; will get replaced if there is an error
-               :tempids      tempids-map                    ;; will get replaced if there is an error
-               :bytes        tx-bytes                       ;; will get replaced if there is an error
+               :db-after     db-after ;; will get replaced if there is an error
+               :status       200 ;; will get replaced if there is an error
+               :errors       nil ;; will get replaced if there is an error
+               :flakes       (conj all-flakes @hash-flake) ;; will get replaced if there is an error
+               :hash         (.-o ^Flake @hash-flake) ;; will get replaced if there is an error
+               :tempids      tempids-map ;; will get replaced if there is an error
+               :bytes        tx-bytes ;; will get replaced if there is an error
                :remove-preds (tx-schema/remove-from-post-result tx-state) ;; will get replaced if there is an error
-               :fuel         nil                            ;; additional fuel will be consumed while processing validations, fill in at end
+               :fuel         nil ;; additional fuel will be consumed while processing validations, fill in at end
                :type         tx-type}
 
               ;; replace response with error response if errors detected
@@ -647,6 +651,7 @@
     (try
       (when (not-empty (:deps tx-map)) ; transaction has dependencies listed, verify they are satisfied
         (<? (tx-validate/tx-deps-check db-after tx-map)))
+      (log/trace "Transacting:" tx-map)
       (let [start-time (util/current-time-millis)
             tx-map*    (<? (tx-auth/add-auth-ids-permissions db-after tx-map))
             tx-state   (->tx-state db-after instant tx-map*)
