@@ -187,6 +187,8 @@
                        :_id)
           ;; verify state of in-memory cache
           res-1    (<!! (mutable/purge-flakes conn nw db {:purge [sid-1 sid-2]}))
+          ;; get updated handle to db & re-query for both purged and untouched data
+          db-ch    (fdb/db conn ledger)
           res-2    (-> (fdb/query-async db-ch
                                         {:selectOne ["_id"],
                                          :from ["dataSpecification/title" "Omega Data Source"],
@@ -211,8 +213,7 @@
       (is (= 26 (-> res-1 :result :flakes-purged)))
       (is (every? #{7, 8, 9} (-> res-1 :result :blocks)))
       (is (some? res-4))
-      ;; the following checks are not working for in-memory storage
-      #_(is (nil? res-2))
-      #_(is (nil? res-3)))))
+      (is (nil? res-2))
+      (is (nil? res-3)))))
 
 
