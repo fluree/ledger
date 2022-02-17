@@ -46,15 +46,15 @@
   (go-try (let [conn-delete   (:storage-delete conn)
                 block-key     (storage/ledger-block-key nw ledger block)
                 current-block (<? (storage/read-block conn nw ledger block))
-                _             (<?? (conn-delete block-key))
+                _             (<? (conn-delete block-key))
                 new-block     (filter-flakes-from-block current-block flakes)
-                _             (<?? (storage/write-block conn nw ledger new-block))
+                _             (<? (storage/write-block conn nw ledger new-block))
                 numVersions   (-> (next-version conn block-key) <? dec)]
             (loop [version numVersions]
               (when (> 0 version)
                 (let [versioned-block     (<? (storage/read-block-version conn nw ledger block version))
                       new-versioned-block (filter-flakes-from-block versioned-block flakes)]
-                  (<?? (storage/write-block-version conn nw ledger new-versioned-block version)))
+                  (<? (storage/write-block-version conn nw ledger new-versioned-block version)))
                 (recur (dec version))))
             (log/warn (str "Flakes purged from block " block))
             true)))
@@ -226,7 +226,7 @@
           [block-map fuel] (<? (identify-purge-map db preds sids))
           _                (when (seq block-map)
                              (loop [[[block flakes] & r] block-map]
-                               (<?? (purge-block conn nw ledger block flakes))
+                               (<? (purge-block conn nw ledger block flakes))
                                (if r
                                  (recur r)
                                  true)))
