@@ -1,4 +1,4 @@
-FROM --platform=$BUILDPLATFORM clojure:openjdk-11-tools-deps-1.10.3.1058-slim-bullseye AS builder
+FROM --platform=$BUILDPLATFORM clojure:openjdk-11-tools-deps-1.10.3.1075-slim-bullseye AS builder
 
 RUN apt-get update && apt-get install --assume-yes --no-install-recommends curl
 
