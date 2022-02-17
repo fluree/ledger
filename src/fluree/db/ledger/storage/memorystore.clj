@@ -19,6 +19,13 @@
             (swap! memory-store assoc key val))
           true))
 
+(defn connection-storage-delete
+  "Default function for connection storage writing."
+  [key]
+  (go-try
+    (swap! memory-store dissoc key)
+    true))
+
 
 (defn close
   "Resets memory store."

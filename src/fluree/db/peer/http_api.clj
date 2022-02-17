@@ -260,7 +260,7 @@
   [_ system param _ ledger _]
   (go-try
     (or (open-api? system)
-        (throw (ex-info "Hiding flakes in a closed API is not currently supported"
+        (throw (ex-info "Purging flakes in a closed API is not currently supported"
                         {:status  400
                          :message :db/invalid-command})))
     (let [conn   (:conn system)

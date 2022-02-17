@@ -1,0 +1,24 @@
+[{:_id           "dataSpecification$omega",
+  :iid           "ds3",
+  :title         "Omega Data Source",
+  :version       "v1.0",
+  :schemaVersion "13.0",
+  :status        "in-progress",
+  :specTable     ["dataSpecAttributes$v1item1", "dataSpecAttributes$v1item2"]
+  },
+ {:_id               "dataSpecAttributes$v1item1",
+  :uid               "dsa006",
+  :sourceTag         "Omega-One",
+  :schemaTag         "Omega-One source.ip",
+  :sourceDescription "Omega-One Originating endpoint’s IP address",
+  :exampleValue      "Omega-One 172.31.15.97",
+  :included          true
+  },
+ {:_id               "dataSpecAttributes$v1item2",
+  :uid               "dsa007",
+  :sourceTag         "Omega-Two",
+  :schemaTag         "original Omega-Two source.port",
+  :sourceDescription "original Omega-Two Originating endpoint’s TCP/UDP port",
+  :exampleValue      "original Omega-Two 59313",
+  :included          true
+  }]

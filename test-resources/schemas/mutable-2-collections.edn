@@ -1,0 +1,10 @@
+[{:_id     "_collection",
+  :name    "dataSpecification",
+  :doc     "Data Specification describing a Data Source to be imported and mapped to schema attributes",
+  :version "1.0"
+ },
+ {:_id     "_collection",
+  :name    "dataSpecAttributes",
+  :doc     "Collection of attributes defining the Data Source -> schema mapping.",
+  :version "1.0"
+ }]

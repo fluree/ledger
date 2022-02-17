@@ -1,0 +1,29 @@
+[{:_id               "dataSpecAttributes$v2item3",
+  :uid               "dsa003",
+  :sourceTag         "Gamma-One",
+  :schemaTag         "Gamma-One dns.id",
+  :sourceDescription "Gamma-One A 16-bit identifier assigned by the program that generated the DNS query.",
+  :exampleValue      "Gamma-One 3834",
+  :included          true
+  },
+ {:_id               "dataSpecAttributes$v2item4",
+  :uid               "dsa004",
+  :sourceTag         "Gamma-Two",
+  :schemaTag         "Gamma-Two limit.max",
+  :sourceDescription "Gamma-Two max for recursion limit",
+  :exampleValue      "Gamma-Two 48",
+  :included          true
+  },
+ {:_id               "dataSpecAttributes$v2item5",
+  :uid               "dsa005",
+  :sourceTag         "Gamma-Three",
+  :schemaTag         "Gamma-Three source.name",
+  :sourceDescription "Gamma-Three Name of source (bot)",
+  :exampleValue      "Gamma-Three CFX-003",
+  :included          true
+  },
+ {:_id       ["dataSpecification/iid", "ds2"],
+  :specTable ["dataSpecAttributes$v2item3",
+              "dataSpecAttributes$v2item4",
+              "dataSpecAttributes$v2item5"]
+  }]
