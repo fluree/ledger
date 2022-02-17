@@ -439,7 +439,7 @@
                                    :file (filestore/connection-storage-delete
                                            file-ledger-storage-path)
                                    :s3 (s3store/connection-storage-delete
-                                         file-ledger-storage-path)
+                                         s3-conn s3-ledger-storage-prefix)
                                    :memory memorystore/connection-storage-delete)
         storage-list             (case storage-type
                                    :file (filestore/connection-storage-list
