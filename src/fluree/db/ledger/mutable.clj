@@ -8,8 +8,7 @@
             [fluree.db.util.log :as log]
             [fluree.db.ledger.reindex :as reindex]
             [fluree.db.util.core :as util]
-            [fluree.db.flake :as flake])
-  (:import (fluree.db.flake Flake)))
+            [fluree.db.flake :as flake]))
 
 (set! *warn-on-reflection* true)
 
@@ -23,12 +22,12 @@
 
 (defn filter-flakes-from-block
   [block flakes]
-  (let [ts (-> (map #(.-t ^Flake %) flakes) set)]
+  (let [ts (-> (map #(flake/t %) flakes) set)]
     (assoc block
-      :flakes (filterv #(let [^Flake f %]
+      :flakes (filterv #(let [f %]
                           (and (not ((set flakes) f))
-                               (not (and (= const/$_tx:tx (.-p f))
-                                         (ts (.-t f))))))
+                               (not (and (= const/$_tx:tx (flake/p f))
+                                         (ts (flake/t f))))))
                        (:flakes block)))))
 
 (defn hide-block
@@ -65,13 +64,13 @@
   "Creates a block-map from a vector of flakes"
   [db flakes]
   (go-try
-    (loop [[^Flake flake & r] flakes
+    (loop [[flake & r] flakes
            t-map     {}
            block-map {}]
       (if flake
-        (if-let [block (get t-map (.-t flake))]
+        (if-let [block (get t-map (flake/t flake))]
           (recur r t-map (update block-map block conj flake))
-          (let [t     (.-t flake)
+          (let [t     (flake/t flake)
                 block (<? (time-travel/non-border-t-to-block db t))]
             (if (get block-map block)
               (recur r (assoc t-map t block) (update block-map block conj flake))
@@ -91,14 +90,14 @@
                             (:t (<? (time-travel/as-of-block db block-end)))
                             (:t db))
                 flakes    (<? (query-range/time-range db idx = pattern {:from-t from-t :to-t to-t}))
-                _ (log/info "identify-hide-blocks-flakes " {:flakes flakes})
-                block-map (<? (go-try (loop [[^Flake flake & r] flakes
+                _ (log/debug "identify-hide-blocks-flakes " {:flakes flakes})
+                block-map (<? (go-try (loop [[flake & r] flakes
                                              t-map     {}
                                              block-map {}]
                                         (if flake
-                                          (if-let [block (get t-map (.-t flake))]
+                                          (if-let [block (get t-map (flake/t flake))]
                                             (recur r t-map (update block-map block conj flake))
-                                            (let [t     (.-t flake)
+                                            (let [t     (flake/t flake)
                                                   block (<? (time-travel/non-border-t-to-block db t))]
                                               (if (get block-map block)
                                                 (recur r (assoc t-map t block) (update block-map block conj flake))
@@ -170,8 +169,8 @@
   [preds flakes]
   (->> flakes
        (filter #(some preds %))
-       (reduce (fn [m ^Flake v]
-                 (conj  m (.-o v)))
+       (reduce (fn [m v]
+                 (conj  m (flake/o v)))
                [])))
 
 (defn identify-purge-graph
