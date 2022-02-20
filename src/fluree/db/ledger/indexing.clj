@@ -44,49 +44,6 @@
         (some (partial dirty? db))
         boolean)))
 
-(defn mark-expanded
-  [node]
-  (assoc node ::expanded true))
-
-(defn unmark-expanded
-  [node]
-  (dissoc node ::expanded))
-
-(defn expanded?
-  [node]
-  (or (index/leaf? node)
-      (-> node ::expanded true?)))
-
-(defn resolve-if-novel
-  "Resolves data associated with `node` from storage configured in the connection
-  `conn` if the `novelty` set contains flakes within the range of node or the
-  `remove-preds` sequence is nonempty. Any errors are put on the `error-ch`"
-  [conn node t novelty remove-preds error-ch]
-  (go
-    (let [node-novelty (index/novelty-subrange node t novelty)]
-      (if (or (seq node-novelty) (seq remove-preds))
-        (try*
-         (log/debug "Resolving index node" (select-keys node [:id :network :dbid]))
-         (let [{:keys [id] :as resolved-node} (<? (index/resolve conn node))]
-           (assoc resolved-node ::old-id id))
-         (catch* e
-                 (log/error e
-                            "Error resolving novel index node:"
-                            (select-keys node [:id :network :dbid]))
-                 (>! error-ch e)))
-        node))))
-
-(defn resolve-children
-  "Resolves a branch's children in parallel, and loads data for each child only if
-  there are novelty flakes associated with that child. Returns a channel that
-  will eventually contain a vector of resolved children."
-  [conn branch t novelty remove-preds error-ch]
-  (->> branch
-       :children
-       (map (fn [[_ child]]
-              (resolve-if-novel conn child t novelty remove-preds error-ch)))
-       (async/map vector)))
-
 (defn filter-predicates
   [preds & flake-sets]
   (if (seq preds)
@@ -252,29 +209,6 @@
                     (unreduced (xf result* node)))
              (xf result*))))))))
 
-(defn resolve-novel-nodes
-  "Returns a channel that will eventually contain a stream of index nodes
-  descended from `root` in depth-first order. Only nodes with associated flakes
-  from `novelty` will be resolved."
-  [conn root novelty t remove-preds error-ch index-ch]
-  (go
-    (let [root-node (<! (resolve-if-novel conn root t novelty remove-preds
-                                          error-ch))]
-      (loop [stack [root-node]]
-        (when-let [node (peek stack)]
-          (let [stack* (pop stack)]
-            (if (expanded? node)
-              (do (>! index-ch (unmark-expanded node))
-                  (recur stack*))
-              (let [children (<! (resolve-children conn node t novelty remove-preds
-                                                   error-ch))
-                    stack**  (-> stack*
-                                 (conj (mark-expanded node))
-                                 (into (rseq children)))]
-                (recur stack**))))))
-      (async/close! index-ch)))
-  index-ch)
-
 (defn write-node
   "Writes `node` to storage, and puts any errors onto the `error-ch`"
   [conn idx {:keys [id network dbid] :as node} error-ch]
@@ -310,9 +244,11 @@
 
 (defn refresh-index
   [conn network dbid error-ch {::keys [idx t novelty remove-preds root]}]
-  (let [index-ch (async/chan 1 (integrate-novelty idx t novelty remove-preds))]
-    (->> index-ch
-         (resolve-novel-nodes conn root novelty t remove-preds error-ch)
+  (let [refresh-xf (integrate-novelty idx t novelty remove-preds)
+        novel?     (fn [node]
+                     (or (seq remove-preds)
+                         (seq (index/novelty-subrange node t novelty))))]
+    (->> (index/tree-chan conn root novel? (constantly true) refresh-xf error-ch)
          (write-resolved-nodes conn network dbid idx error-ch))))
 
 (defn extract-root
