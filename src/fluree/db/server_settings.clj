@@ -435,6 +435,12 @@
                                    :s3 (s3store/connection-storage-rename
                                          s3-conn s3-ledger-storage-prefix)
                                    :memory nil)
+        storage-delete           (case storage-type
+                                   :file (filestore/connection-storage-delete
+                                           file-ledger-storage-path)
+                                   :s3 (s3store/connection-storage-delete
+                                         s3-conn s3-ledger-storage-prefix)
+                                   :memory memorystore/connection-storage-delete)
         storage-list             (case storage-type
                                    :file (filestore/connection-storage-list
                                            file-ledger-storage-path)
@@ -456,6 +462,7 @@
                     ;; use the RAFT group as part of the write process
                     :storage-write  storage-write
                     :storage-rename storage-rename
+                    :storage-delete storage-delete
                     :storage-list   storage-list
 
                     ;; create our own request channel so we can monitor it if in 'dev' mode

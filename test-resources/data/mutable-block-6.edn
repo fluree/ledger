@@ -1,0 +1,19 @@
+[{:_id               "dataSpecAttributes$v1item1",
+  :uid               "dsa001",
+  :sourceTag         "Zeta-One",
+  :schemaTag         "Zeta-One source.ip",
+  :sourceDescription "Zeta-One Originating endpoint’s IP address",
+  :exampleValue      "Zeta-One 172.31.15.97",
+  :included          true,
+  },
+ {:_id               "dataSpecAttributes$v1item2",
+  :uid               "dsa002",
+  :sourceTag         "Zeta-Two",
+  :schemaTag         "Zeta-Two source.port",
+  :sourceDescription "Zeta-Two Originating endpoint’s TCP/UDP port",
+  :exampleValue      "Zeta-Two 59313",
+  :included          true
+  },
+ {:_id               ["dataSpecification/iid", "ds1"],
+  :specTable        ["dataSpecAttributes$v1item1", "dataSpecAttributes$v1item2"]
+  }]

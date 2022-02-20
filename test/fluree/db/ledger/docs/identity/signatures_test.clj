@@ -3,6 +3,7 @@
             [fluree.db.test-helpers :as test]
             [fluree.db.ledger.docs.getting-started.basic-schema :as basic]
             [fluree.db.api :as fdb]
+            [fluree.db.api.auth :as fdb-auth]
             [org.httpkit.client :as http]
             [clojure.core.async :as async :refer [<!!]]
             [fluree.db.util.json :as json]
@@ -31,48 +32,10 @@
       json/parse))
 
 
-(defn create-auths
-  "Creates 3 auths in the given ledger: root, all persons, all persons no
-  handles. Returns of vector of [key-maps create-txn-result]."
-  [ledger]
-  (let [keys     (vec (repeatedly 3 fdb/new-private-key))
-        add-auth [{:_id   "_auth"
-                   :id    (get-in keys [0 :id])
-                   :roles [["_role/id" "root"]]}
-                  {:_id   "_auth"
-                   :id    (get-in keys [1 :id])
-                   :roles ["_role$allPersons"]}
-                  {:_id   "_auth"
-                   :id    (get-in keys [2 :id])
-                   :roles ["_role$noHandles"]}
-                  {:_id   "_role$allPersons"
-                   :id    "allPersons"
-                   :rules ["_rule$allPersons"]}
-                  {:_id   "_role$noHandles"
-                   :id    "noHandles"
-                   :rules ["_rule$allPersons" "_rule$noHandles"]}
-                  {:_id               "_rule$allPersons"
-                   :id                "role$allPersons"
-                   :collection        "person"
-                   :collectionDefault true
-                   :fns               [["_fn/name" "true"]]
-                   :ops               ["all"]}
-                  {:_id        "_rule$noHandles"
-                   :id         "noHandles"
-                   :collection "person"
-                   :predicates ["person/handle"]
-                   :fns        [["_fn/name" "false"]]
-                   :ops        ["all"]}]]
-    [keys (->> add-auth
-               (fdb/transact-async (:conn test/system) ledger)
-               <!!)]))
-
-
 (deftest create-auth-test
   (let [ledger (test/rand-ledger test/ledger-chat)
-        [_ {:keys [status flakes]}] (create-auths ledger)]
+        [_ {:keys [status flakes]}] (test/create-auths ledger)]
     (is (= 200 status))
-
     (is (= 28 (count flakes)))))
 
 
@@ -99,7 +62,7 @@
   (testing "/query endpoint should return filtered results"
     (let [ledger           (test/rand-ledger test/ledger-chat)
 
-          [keys] (create-auths ledger)
+          [keys] (test/create-auths ledger)
 
           _                (test/transact-schema ledger "chat.edn" :clj)
           _                (test/transact-schema ledger "chat-preds.edn" :clj)
@@ -182,7 +145,7 @@
           _             (test/transact-schema ledger "chat.edn" :clj)
           _             (test/transact-schema ledger "chat-preds.edn" :clj)
 
-          [keys] (create-auths ledger)
+          [keys] (test/create-auths ledger)
 
           root-key      (get-in keys [0 :private])
           person-key    (get-in keys [1 :private])

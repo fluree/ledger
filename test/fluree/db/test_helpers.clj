@@ -9,7 +9,7 @@
             [clojure.edn :as edn]
             [fluree.db.util.json :as json]
             [org.httpkit.client :as http]
-            [fluree.db.query.http-signatures :as http-sig])
+            [fluree.db.api.auth :as fdb-auth])
   (:import (java.net ServerSocket)
            (java.util UUID)))
 
@@ -41,6 +41,7 @@
 (def ledger-supplychain "fluree/supplychain")
 (def ledger-todo "fluree/todo")
 (def ledger-invoice "fluree/invoice")
+(def ledger-mutable "fluree/mutable")
 
 (def all-ledgers
   #{ledger-endpoints ledger-query+transact ledger-chat ledger-crypto
@@ -204,6 +205,46 @@
   transact-data
   (partial transact-resource :data))
 
+
+(defn create-auths
+  "Creates 3 auths in the given ledger: root, all persons, all persons no
+  handles. Returns of vector of [key-maps create-txn-result]."
+  ([ledger] (create-auths ledger (:conn system)))
+  ([ledger conn]
+   (let [keys     (vec (repeatedly 3 fdb-auth/new-private-key))
+         add-auth [{:_id   "_auth"
+                    :id    (get-in keys [0 :id])
+                    :roles [["_role/id" "root"]]}
+                   {:_id   "_auth"
+                    :id    (get-in keys [1 :id])
+                    :roles ["_role$allPersons"]}
+                   {:_id   "_auth"
+                    :id    (get-in keys [2 :id])
+                    :roles ["_role$noHandles"]}
+                   {:_id   "_role$allPersons"
+                    :id    "allPersons"
+                    :rules ["_rule$allPersons"]}
+                   {:_id   "_role$noHandles"
+                    :id    "noHandles"
+                    :rules ["_rule$allPersons" "_rule$noHandles"]}
+                   {:_id               "_rule$allPersons"
+                    :id                "role$allPersons"
+                    :collection        "person"
+                    :collectionDefault true
+                    :fns               [["_fn/name" "true"]]
+                    :ops               ["all"]}
+                   {:_id        "_rule$noHandles"
+                    :id         "noHandles"
+                    :collection "person"
+                    :predicates ["person/handle"]
+                    :fns        [["_fn/name" "false"]]
+                    :ops        ["all"]}]]
+     [keys (->> add-auth
+                (fdb/transact-async conn ledger)
+                <!!)])))
+
+
+;; ======================== DEPRECATED ===============================
 
 (defn ^:deprecated test-system-deprecated
   "This fixture is deprecated. As tests are converted to the more idiomatic

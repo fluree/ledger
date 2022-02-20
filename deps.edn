@@ -1,44 +1,44 @@
-{:deps {org.clojure/clojure               {:mvn/version "1.10.3"}
-        org.clojure/data.xml              {:mvn/version "0.2.0-alpha6"}
-        com.fluree/alphabase              {:mvn/version "3.2.2"}
-        com.fluree/db                     {:git/url "https://github.com/fluree/db.git"
-                                           :sha "631458ec74316dd5b6dcfb9956b934a39167ccf4"}
-        com.fluree/raft                   {:mvn/version "1.0.0-beta1"}
-        com.fluree/crypto                 {:mvn/version "0.3.7"}
+{:deps     {org.clojure/clojure            {:mvn/version "1.10.3"}
+            org.clojure/data.xml           {:mvn/version "0.2.0-alpha6"}
+            com.fluree/alphabase           {:mvn/version "3.2.2"}
+            com.fluree/db                  {:git/url "https://github.com/fluree/db.git"
+                                            :sha     "0ce30bf5c1e22c94f6a38fb713ac8f52b45fe5b2"}
+            com.fluree/raft                {:mvn/version "1.0.0-beta1"}
+            com.fluree/crypto              {:mvn/version "0.3.7"}
 
-        ;; network comm
-        net.async/async                   {:mvn/version "0.1.1"}
+            ;; network comm
+            net.async/async                {:mvn/version "0.1.1"}
 
-        ;; Lucene
-        clucie/clucie                     {:mvn/version "0.4.2"}
+            ;; Lucene
+            clucie/clucie                  {:mvn/version "0.4.2"}
 
-        ;; AWS S3 API
-        com.cognitect.aws/api             {:mvn/version "0.8.539"}
-        com.cognitect.aws/endpoints       {:mvn/version "1.1.12.145"}
-        com.cognitect.aws/s3              {:mvn/version "814.2.1053.0"}
+            ;; AWS S3 API
+            com.cognitect.aws/api          {:mvn/version "0.8.539"}
+            com.cognitect.aws/endpoints    {:mvn/version "1.1.12.153"}
+            com.cognitect.aws/s3           {:mvn/version "814.2.1053.0"}
 
-        ;; web server
-        http-kit/http-kit                 {:mvn/version "2.5.3"}
-        ring/ring-core                    {:mvn/version "1.9.5"}
-        ring-cors/ring-cors               {:mvn/version "0.1.13"}
-        compojure/compojure               {:mvn/version "1.6.2"}
+            ;; web server
+            http-kit/http-kit              {:mvn/version "2.5.3"}
+            ring/ring-core                 {:mvn/version "1.9.5"}
+            ring-cors/ring-cors            {:mvn/version "0.1.13"}
+            compojure/compojure            {:mvn/version "1.6.2"}
 
-        ;; logging
-        ch.qos.logback/logback-classic    {:mvn/version "1.2.10"}
+            ;; logging
+            ch.qos.logback/logback-classic {:mvn/version "1.2.10"}
 
-        ;; config
-        environ/environ                   {:git/url   "https://github.com/cap10morgan/environ.git"
-                                           :sha       "32682e865e8248d9df09643d6321ca4259fdbc19"
-                                           :deps/root "environ"}}
+            ;; config
+            environ/environ                {:git/url   "https://github.com/cap10morgan/environ.git"
+                                            :sha       "32682e865e8248d9df09643d6321ca4259fdbc19"
+                                            :deps/root "environ"}}
 
- :paths ["src" "resources"]
+ :paths    ["src" "resources"]
 
  :jvm-opts ["-Dclojure.tools.logging.factory=clojure.tools.logging.impl/slf4j-factory"]
 
  :aliases
- {:mvn/group-id com.fluree
+ {:mvn/group-id    com.fluree
   :mvn/artifact-id ledger
-  :mvn/version "1.0.0-beta18"
+  :mvn/version     "1.0.0-beta18"
 
   :dev
   {:extra-paths ["dev", "test"]
@@ -48,52 +48,52 @@
   {:extra-paths ["test" "test-resources"]
    :extra-deps  {com.cognitect/test-runner
                  {:git/url "https://github.com/cognitect-labs/test-runner.git"
-                  :sha "cc75980b43011773162b485f46f939dc5fba91e4"}}
+                  :sha     "cc75980b43011773162b485f46f939dc5fba91e4"}}
    :exec-fn     cognitect.test-runner.api/test}
 
   :jar
   {:replace-deps {com.github.seancorfield/depstar {:mvn/version "2.1.303"}}
-   :exec-fn hf.depstar/jar
-   :exec-args {:jar "target/fluree-ledger.jar"
-               :group-id :mvn/group-id
-               :artifact-id :mvn/artifact-id
-               :version :mvn/version
-               :sync-pom true}}
+   :exec-fn      hf.depstar/jar
+   :exec-args    {:jar         "target/fluree-ledger.jar"
+                  :group-id    :mvn/group-id
+                  :artifact-id :mvn/artifact-id
+                  :version     :mvn/version
+                  :sync-pom    true}}
 
   :uberjar
   {:replace-deps {com.github.seancorfield/depstar {:mvn/version "2.1.303"}}
-   :exec-fn hf.depstar/uberjar
-   :exec-args {:jar "target/fluree-ledger.standalone.jar"
-               :aot [fluree.db.server]
-               :main-class fluree.db.server
-               :group-id :mvn/group-id
-               :artifact-id :mvn/artifact-id
-               :version :mvn/version
-               :sync-pom true}}
+   :exec-fn      hf.depstar/uberjar
+   :exec-args    {:jar         "target/fluree-ledger.standalone.jar"
+                  :aot         [fluree.db.server]
+                  :main-class  fluree.db.server
+                  :group-id    :mvn/group-id
+                  :artifact-id :mvn/artifact-id
+                  :version     :mvn/version
+                  :sync-pom    true}}
 
   :native-image
-  {:main-opts ["-m" "clj.native-image" "fluree.db.server"
-               "-H:Name=fluree-ledger" "--no-fallback"
-               "-H:+ReportExceptionStackTraces"
-               ;; IncludeResources is pretty finicky. Lots of regexes I've tried don't
-               ;; work and the logging the docs say you can turn on doesn't work.
-               ;; So I'm just including everything for now. - WSM 2021/08/20
-               "-H:IncludeResources=.*"
-               "--enable-url-protocols=http,https"
-               "--enable-all-security-services"
-               "--report-unsupported-elements-at-runtime"
-               "--initialize-at-build-time"
-               "--allow-incomplete-classpath"
-               "--install-exit-handlers"
+  {:main-opts  ["-m" "clj.native-image" "fluree.db.server"
+                "-H:Name=fluree-ledger" "--no-fallback"
+                "-H:+ReportExceptionStackTraces"
+                ;; IncludeResources is pretty finicky. Lots of regexes I've tried don't
+                ;; work and the logging the docs say you can turn on doesn't work.
+                ;; So I'm just including everything for now. - WSM 2021/08/20
+                "-H:IncludeResources=.*"
+                "--enable-url-protocols=http,https"
+                "--enable-all-security-services"
+                "--report-unsupported-elements-at-runtime"
+                "--initialize-at-build-time"
+                "--allow-incomplete-classpath"
+                "--install-exit-handlers"
 
-               ;; Most of these initialize-at-run-time classes are from https://github.com/oracle/graal/issues/2050#issuecomment-797689154
-               "--initialize-at-run-time=org.asynchttpclient.RequestBuilderBase,org.asynchttpclient.ntlm.NtlmEngine,io.netty.channel.kqueue.KQueue,io.netty.channel.kqueue.Native,io.netty.channel.kqueue.KQueueEventLoop,io.netty.channel.kqueue.KQueueEventArray,io.netty.util.internal.logging.Log4JLogger,io.netty.channel.epoll.Epoll,io.netty.channel.epoll.Native,io.netty.channel.epoll.EpollEventLoop,io.netty.channel.epoll.EpollEventArray,io.netty.channel.unix.Errors,io.netty.channel.unix.IovArray,io.netty.channel.unix.Limits,io.netty.channel.DefaultFileRegion,io.netty.handler.ssl.ReferenceCountedOpenSslContext,io.netty.handler.ssl.ReferenceCountedOpenSslEngine,io.netty.handler.ssl.JdkNpnApplicationProtocolNegotiator,io.netty.handler.ssl.JettyNpnSslEngine,io.netty.handler.ssl.ConscryptAlpnSslEngine,io.netty.handler.ssl.JettyAlpnSslEngine$ServerEngine,io.netty.handler.ssl.JettyAlpnSslEngine$ClientEngine,org.httpkit.client.ClientSslEngineFactory$SSLHolder,abracad.avro.ClojureData$Vars,org.apache.lucene.analysis.ja.dict.UnknownDictionary$SingletonHolder,org.apache.lucene.analysis.ja.dict.TokenInfoDictionary$SingletonHolder"
+                ;; Most of these initialize-at-run-time classes are from https://github.com/oracle/graal/issues/2050#issuecomment-797689154
+                "--initialize-at-run-time=org.asynchttpclient.RequestBuilderBase,org.asynchttpclient.ntlm.NtlmEngine,io.netty.channel.kqueue.KQueue,io.netty.channel.kqueue.Native,io.netty.channel.kqueue.KQueueEventLoop,io.netty.channel.kqueue.KQueueEventArray,io.netty.util.internal.logging.Log4JLogger,io.netty.channel.epoll.Epoll,io.netty.channel.epoll.Native,io.netty.channel.epoll.EpollEventLoop,io.netty.channel.epoll.EpollEventArray,io.netty.channel.unix.Errors,io.netty.channel.unix.IovArray,io.netty.channel.unix.Limits,io.netty.channel.DefaultFileRegion,io.netty.handler.ssl.ReferenceCountedOpenSslContext,io.netty.handler.ssl.ReferenceCountedOpenSslEngine,io.netty.handler.ssl.JdkNpnApplicationProtocolNegotiator,io.netty.handler.ssl.JettyNpnSslEngine,io.netty.handler.ssl.ConscryptAlpnSslEngine,io.netty.handler.ssl.JettyAlpnSslEngine$ServerEngine,io.netty.handler.ssl.JettyAlpnSslEngine$ClientEngine,org.httpkit.client.ClientSslEngineFactory$SSLHolder,abracad.avro.ClojureData$Vars,org.apache.lucene.analysis.ja.dict.UnknownDictionary$SingletonHolder,org.apache.lucene.analysis.ja.dict.TokenInfoDictionary$SingletonHolder"
 
-               ;; In theory this shouldn't be necessary w/ sufficient type hinting, but there's a bug in the go macro (I think)
-               ;; that causes type hinting to not always work correctly inside them and you can't access fields of Java
-               ;; types like fluree.db.flake.Flake b/c it will resort to reflection and that has to be configured under
-               ;; graalvm native-images. I haven't figured out a minimal reproduction yet though. In the meantime, this fixes it.
-               "-H:ReflectionConfigurationFiles=resources/native-image-config/reflect-config.json"]
+                ;; In theory this shouldn't be necessary w/ sufficient type hinting, but there's a bug in the go macro (I think)
+                ;; that causes type hinting to not always work correctly inside them and you can't access fields of Java
+                ;; types like fluree.db.flake.Flake b/c it will resort to reflection and that has to be configured under
+                ;; graalvm native-images. I haven't figured out a minimal reproduction yet though. In the meantime, this fixes it.
+                "-H:ReflectionConfigurationFiles=resources/native-image-config/reflect-config.json"]
    :jvm-opts   ["-Dclojure.compiler.direct-linking=true"]
    :extra-deps {clj.native-image/clj.native-image
                 {:git/url "https://github.com/taylorwood/clj.native-image.git"
@@ -109,13 +109,13 @@
 
   :eastwood
   {:extra-deps {jonase/eastwood {:mvn/version "1.2.2"}}
-   :main-opts ["-m" "eastwood.lint" {:source-paths ["src"] :test-paths ["test"]
-                                     :config-files ["test-resources/eastwood-config.clj"]}]}
+   :main-opts  ["-m" "eastwood.lint" {:source-paths ["src"] :test-paths ["test"]
+                                      :config-files ["test-resources/eastwood-config.clj"]}]}
 
   :ancient
   {:extra-deps {com.github.liquidz/antq {:mvn/version "RELEASE"}}
-   :main-opts ["-m" "antq.core" "--skip=github-action"]}
+   :main-opts  ["-m" "antq.core" "--skip=github-action"]}
 
   :clj-kondo
   {:extra-deps {clj-kondo/clj-kondo {:mvn/version "2022.01.15"}}
-   :main-opts ["-m" "clj-kondo.main" "--lint" "src" "--config" ".clj-kondo/config.edn"]}}}
+   :main-opts  ["-m" "clj-kondo.main" "--lint" "src" "--config" ".clj-kondo/config.edn"]}}}

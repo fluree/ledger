@@ -1,6 +1,7 @@
 (ns fluree.db.ledger.consensus.update-state
   (:require [fluree.db.constants :as constants]
             [clojure.string :as str]
+            [fluree.db.flake :as flake]
             [fluree.db.util.core :as util]
             [fluree.db.event-bus :as event-bus]
             [fluree.db.util.json :as json]
@@ -72,32 +73,42 @@
                              current-val)))]
     (= proposed-v (get-in new-state ks))))
 
+(defn- extract-flake-object
+  "Returns flake object (.-o flake) from block-map of the given type whose
+  subject matches (:t tx-data). Returns nil if none is found."
+  [{:keys [flakes] :as _block-map} {:keys [t] :as _tx-data} type]
+  (some #(when (and (= type (flake/p %))
+                    (= t (flake/s %)))
+           (flake/o %))
+        flakes))
+
 (defn register-new-dbs
   "Register new dbs. Part of state-machine. Updates state-atom, and publishes out :new-db on event-bus"
   [txns state-atom block-map]
-  (let [init-db-status (->> txns
-                            (filter #(and (= :new-db (:type (val %)))
-                                          (= 200 (:status (val %)))))
-                            (map (fn [[_ tx-data]]
-                                   (let [t             (:t tx-data)
-                                         orig-cmd      (some #(when (and (= constants/$_tx:tx (.-p ^Flake %))
-                                                                         (= t (.-s ^Flake %)))
-                                                                (.-o ^Flake %))
-                                                             (:flakes block-map))
-                                         orig-sig      (some #(when (and (= constants/$_tx:sig (.-p ^Flake %))
-                                                                         (= t (.-s ^Flake %)))
-                                                                (.-o ^Flake %))
-                                                             (:flakes block-map))
-                                         orig-cmd-data (when orig-cmd (json/parse orig-cmd))
-                                         {:keys [db fork forkBlock]} orig-cmd-data
-                                         [network dbid] (when orig-cmd (if (sequential? db) db (str/split db #"/")))]
-                                     [network dbid (util/without-nils
-                                                     {:status    :initialize
-                                                      :command   {:cmd orig-cmd
-                                                                  :sig orig-sig}
-                                                      :fork      fork
-                                                      :forkBlock forkBlock})]))))]
-
+  (let [init-db-status
+        (->> txns
+             (filter #(and (= :new-db (:type (val %)))
+                           (= 200 (:status (val %)))))
+             (map (fn [[_ tx-data]]
+                    (let [efo           (partial extract-flake-object block-map
+                                                 tx-data)
+                          orig-cmd      (efo constants/$_tx:tx)
+                          orig-sig      (efo constants/$_tx:sig)
+                          orig-signed   (efo constants/$_tx:signed)
+                          {:keys [db fork forkBlock]} (when orig-cmd
+                                                        (json/parse orig-cmd))
+                          [network dbid] (when orig-cmd
+                                           (if (sequential? db)
+                                             db
+                                             (str/split db #"/")))]
+                      [network dbid (util/without-nils
+                                      {:status    :initialize
+                                       :command   (util/without-nils
+                                                    {:cmd    orig-cmd
+                                                     :sig    orig-sig
+                                                     :signed orig-signed})
+                                       :fork      fork
+                                       :forkBlock forkBlock})]))))]
     (swap! state-atom (fn [s]
                         (reduce (fn [s* [network dbid db-status]]
                                   (assoc-in s* [:networks network :dbs dbid] db-status))
