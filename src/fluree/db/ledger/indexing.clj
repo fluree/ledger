@@ -248,7 +248,7 @@
         novel?     (fn [node]
                      (or (seq remove-preds)
                          (seq (index/novelty-subrange node t novelty))))]
-    (->> (index/tree-chan conn root novel? (constantly true) refresh-xf error-ch)
+    (->> (index/tree-chan conn root novel? (constantly true) 1 refresh-xf error-ch)
          (write-resolved-nodes conn network dbid idx error-ch))))
 
 (defn extract-root
