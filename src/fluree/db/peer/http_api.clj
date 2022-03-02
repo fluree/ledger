@@ -852,6 +852,13 @@
       (update response :headers merge header-map))))
 
 
+(defn wrap-request-id-header [handler]
+  (fn [request]
+    (let [request-id (get-in request [:headers "x-fdb-request-id"])
+          response   (handler request)]
+      (update response :headers assoc "X-Fdb-Request-Id" request-id))))
+
+
 (defn command-handler [system {:keys [headers body] :as _request}]
   (let [start        (System/nanoTime)
         cmd          (decode-body body :json)
@@ -924,10 +931,13 @@
 
       (->> (wrap-errors (:debug-mode? system)))
       (wrap-response-headers "X-Fdb-Version" (meta/version))
+      wrap-request-id-header
       params/wrap-params
       (cors/wrap-cors
         :access-control-allow-origin [#".+"]
-        :access-control-expose-headers ["X-Fdb-Block" "X-Fdb-Fuel" "X-Fdb-Status" "X-Fdb-Time" "X-Fdb-Version"]
+        :access-control-expose-headers ["X-Fdb-Block" "X-Fdb-Fuel"
+                                        "X-Fdb-Status" "X-Fdb-Time"
+                                        "X-Fdb-Version" "X-Fdb-Request-Id"]
         :access-control-allow-methods [:get :put :post :delete])
       ignore-trailing-slash))
 
