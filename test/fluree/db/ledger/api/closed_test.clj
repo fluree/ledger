@@ -49,15 +49,14 @@
      txn-response query-response]))
 
 
-(deftest ^:wes new-db-test
+(deftest new-db-test
   (testing "new db (ledger actually) is owned by request signer"
     (let [{:keys [private id]} (fdb-auth/new-private-key)
           new-db-endpoint   (str endpoint "new-db")
           base-req          {:headers {"content-type" "application/json"}}
           ledger            (str "test/ledger-" (UUID/randomUUID))
           create-req        (assoc base-req
-                              :body (json/stringify {:db/id ledger}))
-          signed-create-req (http-sig/sign-request :post new-db-endpoint
+                              :body (json/stringify {:db/id ledger}))          signed-create-req (http-sig/sign-request :post new-db-endpoint
                                                    create-req private)
           {create-status :status} @(http/post new-db-endpoint
                                               signed-create-req)
