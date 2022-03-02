@@ -190,22 +190,25 @@
   "Returns basic ledger information for incoming requests."
   [system network dbid]
   (if (and network dbid)
-    (-> (txproto/ledger-info (:group system) network dbid)
-        (select-keys [:indexes :block :index :status]))
+    (do
+      (log/trace "Get ledger-info request for" (str network "/" dbid))
+      (-> (txproto/ledger-info (:group system) network dbid)
+          (select-keys [:indexes :block :index :status])))
     {}))
 
 (defn ledger-stats
   "Returns more detailed statistics about ledger than base ledger-info"
   [system ledger success! error!]
   (async/go
+    (log/trace "Got ledger-stats req for" ledger)
     (let [[network dbid] (session/resolve-ledger (:conn system) ledger)]
+      (log/trace "ledger-stats resolved ledger" ledger)
       (if-not (and network dbid)
         (error! (ex-info (str "Invalid ledger: " ledger)
                          {:status 400 :error :db/invalid-ledger}))
         (let [ledger-info (ledger-info system network dbid)
-              db-stat     (when (and (seq ledger-info)      ;; skip stats if db is still initializing
+              db-stat     (when (and (seq ledger-info) ; skip stats if db is still initializing
                                      (not= :initialize (:status ledger-info)))
-
                             (let [session-db (async/<! (session/db (:conn system) ledger {}))]
                               (if (util/exception? session-db)
                                 session-db
@@ -388,7 +391,7 @@
          :ledger-info (let [[network dbid] (session/resolve-ledger (:conn system) arg)]
                         (success! (ledger-info system network dbid)))
 
-         :ledger-stats (future                              ;; as thread/future - otherwise if this needs to load new db will have new requests and will permanently block
+         :ledger-stats (future ; as thread/future - otherwise if this needs to load new db will have new requests and will permanently block
                          (ledger-stats system arg success! error!))
 
          ;; TODO - change command and all internal calls to :ledger-list, deprecate :db-list
