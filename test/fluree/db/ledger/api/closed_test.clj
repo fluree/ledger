@@ -5,9 +5,7 @@
             [fluree.db.query.http-signatures :as http-sig]
             [fluree.db.util.json :as json]
             [org.httpkit.client :as http]
-            [fluree.db.api :as fdb]
-            [clojure.core.async :as async]
-            [fluree.crypto :as crypto])
+            [fluree.db.api :as fdb])
   (:import (java.util UUID)))
 
 (use-fixtures :once (partial test/test-system
@@ -21,26 +19,26 @@
   true iff the given private-key can transact and query back out a _user in the
   given ledger. For verifying permissions / ownership."
   [ledger private-key]
-  (let [base-req          {:headers {"content-type" "application/json"}}
-        txn-endpoint (str endpoint ledger "/transact")
-        username          (str "tester-" (UUID/randomUUID))
-        txn-req           (assoc base-req
-                            :body (json/stringify
-                                    [{:_id "_user", :username username}]))
-        signed-txn-req    (http-sig/sign-request :post txn-endpoint txn-req
-                                                 private-key)
+  (let [base-req       {:headers {"content-type" "application/json"}}
+        txn-endpoint   (str endpoint ledger "/transact")
+        username       (str "tester-" (UUID/randomUUID))
+        txn-req        (assoc base-req
+                         :body (json/stringify
+                                 [{:_id "_user", :username username}]))
+        signed-txn-req (http-sig/sign-request :post txn-endpoint txn-req
+                                              private-key)
 
         {txn-status :status :as txn-response}
         @(http/post txn-endpoint signed-txn-req)
 
-        query-endpoint    (str endpoint ledger "/query")
-        users-query       (-> {:select ["*"], :from "_user"}
-                              json/stringify
-                              (as-> $q
-                                    (assoc base-req :body $q)
-                                    (http-sig/sign-request :post
-                                                           query-endpoint $q
-                                                           private-key)))
+        query-endpoint (str endpoint ledger "/query")
+        users-query    (-> {:select ["*"], :from "_user"}
+                           json/stringify
+                           (as-> $q
+                                 (assoc base-req :body $q)
+                                 (http-sig/sign-request :post
+                                                        query-endpoint $q
+                                                        private-key)))
 
         {query-status :status, query-body :body :as query-response}
         @(http/post query-endpoint users-query)]
@@ -56,7 +54,8 @@
           base-req          {:headers {"content-type" "application/json"}}
           ledger            (str "test/ledger-" (UUID/randomUUID))
           create-req        (assoc base-req
-                              :body (json/stringify {:db/id ledger}))          signed-create-req (http-sig/sign-request :post new-db-endpoint
+                              :body (json/stringify {:db/id ledger}))
+          signed-create-req (http-sig/sign-request :post new-db-endpoint
                                                    create-req private)
           {create-status :status} @(http/post new-db-endpoint
                                               signed-create-req)
@@ -131,3 +130,46 @@
                   set)))
       (is (every? #(transact-and-query-user? ledger %)
                   [private-1 private-2 private-3])))))
+
+(deftest history-query-collection-name-test
+  (testing "Query history of flakes with _collection/name predicate"
+    (let [{:keys [private id]} (fdb-auth/new-private-key)
+          ledger         (test/rand-ledger test/ledger-endpoints
+                                           {:owners [id]})
+          _              (test/transact-schema ledger "chat-alt.edn"
+                                               :clj)
+          query          {:history [nil 40]}
+          base-req       {:headers {"content-type" "application/json"}
+                          :body    (json/stringify query)}
+          query-endpoint (str endpoint ledger "/history")
+          signed-req     (http-sig/sign-request :post query-endpoint base-req
+                                                private)
+          {:keys [status body] :as resp} @(http/post query-endpoint signed-req)
+          result         (json/parse body)]
+      (is (= 200 status)
+          (str "Response was: " (pr-str resp)))
+      (is (every? (fn [flakes]
+                    (every? #(= 40 (second %)) flakes))
+                  (map :flakes result))))))
+
+(deftest query-block-two-test
+  (let [{:keys [private id]} (fdb-auth/new-private-key)
+        ledger         (test/rand-ledger test/ledger-endpoints {:owners [id]})
+        _              (test/transact-schema ledger "chat-alt.edn" :clj)
+        query          {:block 2}
+        base-req       {:headers {"content-type" "application/json"}
+                        :body    (json/stringify query)}
+        query-endpoint (str endpoint ledger "/block")
+        signed-req     (http-sig/sign-request :post query-endpoint base-req
+                                              private)
+        {:keys [status body] :as resp} @(http/post query-endpoint signed-req)
+        result         (json/parse body)]
+
+    (is (= 200 status)
+        (str "Response was: " (pr-str resp)))
+
+    (is (= 2 (-> result first :block)))
+
+    (is (every? #{:block :hash :instant :txns :block-bytes :cmd-types :t :sigs
+                  :flakes}
+                (-> result first keys)))))
