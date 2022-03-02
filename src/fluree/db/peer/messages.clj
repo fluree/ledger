@@ -95,14 +95,15 @@
             result)
 
           :block
-          (let [query  (assoc qry :opts (assoc (:opts qry) :meta meta :auth auth-id))
+          (let [query  (update qry :opts merge {:meta meta, :auth auth-id})
                 result (async/<!! (fdb/block-query-async conn db query))
                 _      (when (instance? clojure.lang.ExceptionInfo result)
                          (throw result))]
             result)
 
           :history
-          (let [result (async/<!! (fdb/history-query-async db* (assoc-in qry [:opts meta] meta)))
+          (let [query  (update qry :opts merge {:meta meta})
+                result (async/<!! (fdb/history-query-async db* query))
                 _      (when (instance? clojure.lang.ExceptionInfo result)
                          (throw result))]
             result)
