@@ -76,8 +76,8 @@
    :fdb-pw-auth-jwt-max-exp      "1y"
    :fdb-pw-auth-jwt-max-renewal  "1y"
 
-   :fdb-command                  nil                       ;; command to process, and then shutdown
-   })
+   :fdb-command                  nil})                       ;; command to process, and then shutdown
+
 
 
 ;; FDB_SETTINGS: dev

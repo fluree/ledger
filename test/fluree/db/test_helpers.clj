@@ -115,25 +115,48 @@
                       (str "Waited " elapsed
                            "ms for test ledgers to initialize. Max is "
                            timeout "ms.")))
-             (recur elapsed (map first (remove second ready-ledgers))))))))))
+             (do ; seeing some intermittent failures to initialize sometimes
+                 ; so this starts outputting some diagnostic messages once
+                 ; we've used up 80% of the timeout; if we figure out what's
+                 ; wrong, can remove the (when ...) form below and the (do ...)
+                 ; wrapper
+               (when (<= 80 (* 100 (/ elapsed timeout)))
+                 (println "Running out of time for ledgers to init"
+                          (str "(~" (- timeout elapsed) "ms remaining).")
+                          "Waiting on" (->> ready-ledgers (remove second) count)
+                          "ledger(s) to initialize."))
+               (recur elapsed (map first (remove second ready-ledgers)))))))))))
 
 
 (defn init-ledgers!
+  "Creates ledgers and waits for them to be ready.
+
+  0-arity version creates fluree.db.test-helpers/all-ledgers.
+
+  1-and-2-arity versions take a collection of ledger names or maps that look
+  like: {:name \"ledger-name\", :opts opts-map-to-new-ledger}.
+
+  2-arity version takes an alternate system as the first arg (defaults to
+  fluree.db.test-helpers/system)."
   ([] (init-ledgers! system all-ledgers))
   ([ledgers] (init-ledgers! system ledgers))
   ([{:keys [conn] :as _system} ledgers]
-   (dorun
-     (for [ledger ledgers]
-       (fdb/new-ledger-async conn ledger)))
-   (wait-for-init conn ledgers)))
+   (let [ledgers-with-opts (map #(if (map? %) % {:name %}) ledgers)]
+     (dorun
+       (for [{ledger :name, opts :opts} ledgers-with-opts]
+         (fdb/new-ledger-async conn ledger opts)))
+     (wait-for-init conn (map :name ledgers-with-opts)))))
 
 
 (defn rand-ledger
   "Generate a random, new, empty ledger with base-name prefix. Waits for it to
-  be ready and then returns its name as a string."
-  [base-name]
+  be ready and then returns its name as a string.
+
+  Also takes an optional opts map that will be passed to
+  fluree.db.api/new-ledger-async."
+  [base-name & [opts]]
   (let [name (str base-name "-" (UUID/randomUUID))]
-    (init-ledgers! [name])
+    (init-ledgers! [{:name name, :opts opts}])
     name))
 
 

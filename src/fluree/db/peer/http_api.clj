@@ -448,28 +448,29 @@
           db       (fdb/db conn ledger db-opts)]
       (case action
         :query
-        (let [query (assoc param :opts (merge (:opts param) {:meta true :open-api open-api}))
+        (let [query (update param :opts merge {:meta true, :open-api open-api})
               res   (<? (fdb/query-async db query))]
           [(dissoc res :result) (:result res)])
 
         :multi-query
-        (let [query (assoc param :opts (merge (:opts param) {:meta true :open-api open-api}))
+        (let [query (update param :opts merge {:meta true, :open-api open-api})
               res   (<? (fdb/multi-query-async db query))]
           [(dissoc res :result) (:result res)])
 
         :block
-        (let [query (assoc param :opts (merge (:opts param) {:meta true :open-api open-api}))
+        (let [query (update param :opts merge {:meta true, :open-api open-api})
               res   (<? (fdb/block-query-async conn ledger query))]
           [(dissoc res :result) (:result res)])
 
         :block-range-with-txn
-        (let [query (assoc param :opts (merge (:opts param) {:meta true :open-api open-api}))
+        (let [query (update param :opts merge {:meta true, :open-api open-api})
               res   (<? (fdb/block-range-with-txn-async conn ledger query))]
           [{:status 200} {:status 200
                           :data   res}])
 
         :history
-        (let [res (<? (fdb/history-query-async db (assoc-in param [:opts :meta] true)))]
+        (let [query (update param :opts merge {:meta true})
+              res   (<? (fdb/history-query-async db query))]
           [(dissoc res :result) (:result res)])
 
         :graphql
@@ -905,9 +906,9 @@
      :content-length (let [len (.getContentLength conn)] (when-not (pos? len) len))}))
 
 (defroutes admin-ui-routes
-           (compojure/GET "/" [] (resp/resource-response "index.html" {:root "adminUI"}))
-           (route/resources "/" {:root "adminUI"})
-           (compojure/GET "/:page" [] (resp/resource-response "index.html" {:root "adminUI"})))
+  (compojure/GET "/" [] (resp/resource-response "index.html" {:root "adminUI"}))
+  (route/resources "/" {:root "adminUI"})
+  (compojure/GET "/:page" [] (resp/resource-response "index.html" {:root "adminUI"})))
 
 
 ;; TODO - handle CORS more reasonably for production
