@@ -253,7 +253,8 @@
 
       (is (= 2 (:block block)))
 
-      (is (every? #{:block :hash :instant :txns :block-bytes :cmd-types :t :sigs :flakes}
+      (is (every? #{:block :hash :instant :txns :block-bytes :cmd-types :t :sigs
+                    :flakes}
                   block-keys)))))
 
 
