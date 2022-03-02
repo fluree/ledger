@@ -115,7 +115,17 @@
                       (str "Waited " elapsed
                            "ms for test ledgers to initialize. Max is "
                            timeout "ms.")))
-             (recur elapsed (map first (remove second ready-ledgers))))))))))
+             (do ; seeing some intermittent failures to initialize sometimes
+                 ; so this starts outputting some diagnostic messages once
+                 ; we've used up 80% of the timeout; if we figure out what's
+                 ; wrong, can remove the (when ...) form below and the (do ...)
+                 ; wrapper
+               (when (<= 80 (* 100 (/ elapsed timeout)))
+                 (println "Running out of time for ledgers to init"
+                          (str "(~" (- timeout elapsed) "ms remaining).")
+                          "Waiting on" (->> ready-ledgers (remove second) count)
+                          "ledger(s) to initialize."))
+               (recur elapsed (map first (remove second ready-ledgers)))))))))))
 
 
 (defn init-ledgers!
