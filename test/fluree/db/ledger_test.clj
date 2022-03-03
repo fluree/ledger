@@ -67,11 +67,11 @@
   (is (= :success
          (test/test-system-deprecated
            (fn []
-             ;; 2- Docs
+             ;; 1- Docs
              (test/print-banner "Docs Tests")
              (basic-schema/basic-schema-test)
 
-             ;; 3- Query
+             ;; 2- Query
              (test/print-banner "Query Tests")
              (basic-query/basic-query-test)
              (block-query/block-query-test)
@@ -82,45 +82,37 @@
              (graphql/graphql-test)
              (sql/query-tests)
 
-             ;; 4- Transactions
+             ;; 3- Transactions
              (test/print-banner "Transaction Tests")
              (transactions/transaction-basics)
 
-             ;; 5- Identity
+             ;; 4- Identity
              (test/print-banner "Identity Tests")
              (auth/auth-test)
 
-             ;; 6- Smart Functions
-             (test/print-banner "Smart Function Tests")
-             (intro/intro-test)
-             (predicate-spec/predicate-spec-test)
-             (collection-spec/collection-spec-test)
-             (rule-example/rule-example-test)
-             (in-transactions/in-transactions-test)
-
-             ;; 7- Schema
+             ;; 5- Schema
              (test/print-banner "Schema Tests")
              (collections/collections-test)
              (predicates/predicates-test)
 
-             ;; 8- Examples
+             ;; 6- Examples
              (test/print-banner "Example Tests")
              (cryptocurrency/cryptocurrency-test)
              (supply-chain/supply-chain-test)
              (voting/voting-test)
 
-             ;; 9- General
+             ;; 7- General
              (test/print-banner "General Tests")
              (todo-perm/todo-auth-tests)
              (invoice/invoice-tests)
 
 
-             ;; 10-Passwword Auth
+             ;; 8-Password Auth
              (test/print-banner "Password Authentication Tests")
              (http-api-test/http-api-tests)
 
 
-             ;; 10- Server health
+             ;; 9- Server health
              (test/print-banner "Server Health")
              (sh-test/server-health-tests))))))
 
