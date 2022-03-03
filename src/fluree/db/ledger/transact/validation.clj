@@ -68,7 +68,7 @@
                            (<?)
                            (map #(if (util/exception? %) (throw %) (.-o ^Flake (first %))))
                            dbfunctions/combine-fns)
-            fn-parsed (<? (dbfunctions/parse-fn db fn-str fn-type nil))]
+            fn-parsed (<? (dbfunctions/parse-and-wrap-fn db fn-str fn-type))]
         (deliver promise fn-parsed))
       (catch Exception e (deliver promise e)))))
 
@@ -207,6 +207,7 @@
                              :credits (:credits @fuel)
                              :spent   0})
             f         @fn-promise
+            _         (log/debug "predicate spec fn:" f)
             res       (f {:db      @db-after
                           :sid     sid
                           :pid     pid
