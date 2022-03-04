@@ -13,7 +13,7 @@
   (:import (java.net ServerSocket)
            (java.util UUID)))
 
-(def ^:constant init-timeout-ms 120000)
+(def ^:constant init-timeout-ms 60000)
 
 (defn get-free-port []
   (let [socket (ServerSocket. 0)]
@@ -115,16 +115,18 @@
                       (str "Waited " elapsed
                            "ms for test ledgers to initialize. Max is "
                            timeout "ms.")))
-             (do ; seeing some intermittent failures to initialize sometimes
-                 ; so this starts outputting some diagnostic messages once
-                 ; we've used up 80% of the timeout; if we figure out what's
-                 ; wrong, can remove the (when ...) form below and the (do ...)
-                 ; wrapper
+             (let [poky-ledgers (remove second ready-ledgers)]
+               ; seeing some intermittent failures to initialize sometimes
+               ; so this starts outputting some diagnostic messages once
+               ; we've used up 80% of the timeout; if we figure out what's
+               ; wrong, can remove the (when ...) form below and the (do ...)
+               ; wrapper
                (when (<= 80 (* 100 (/ elapsed timeout)))
                  (println "Running out of time for ledgers to init"
                           (str "(~" (- timeout elapsed) "ms remaining).")
-                          "Waiting on" (->> ready-ledgers (remove second) count)
-                          "ledger(s) to initialize."))
+                          "Waiting on" (count poky-ledgers)
+                          "ledger(s) to initialize:"
+                          (pr-str (map first poky-ledgers))))
                (recur elapsed (map first (remove second ready-ledgers)))))))))))
 
 
@@ -172,7 +174,7 @@
      (tests)
      (catch Throwable e
        (log/error e "Caught test exception")
-       e)
+       (throw e))
      (finally (stop*)))))
 
 
@@ -266,6 +268,15 @@
                 (fdb/transact-async conn ledger)
                 <!!)])))
 
+(defn create-temp-dir
+  []
+  (let [base-dir (io/file (System/getProperty "java.io.tmpdir"))
+        dir-path (io/file base-dir (str (System/currentTimeMillis) "-"
+                                        (long (rand 10000000000000))))]
+    (if (.mkdirs dir-path)
+      dir-path
+      (throw (ex-info "Failed to create temp directory"
+                      {:dir-path dir-path})))))
 
 ;; ======================== DEPRECATED ===============================
 
