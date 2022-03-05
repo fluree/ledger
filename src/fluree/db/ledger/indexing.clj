@@ -209,6 +209,11 @@
                     (unreduced (xf result* node)))
              (xf result*))))))))
 
+(defn preserve-id
+  [{:keys [id] :as node}]
+  (cond-> node
+    (index/resolved? node) (assoc ::old-id id)))
+
 (defn write-node
   "Writes `node` to storage, and puts any errors onto the `error-ch`"
   [conn idx {:keys [id network dbid] :as node} error-ch]
@@ -244,7 +249,8 @@
 
 (defn refresh-index
   [conn network dbid error-ch {::keys [idx t novelty remove-preds root]}]
-  (let [refresh-xf (integrate-novelty idx t novelty remove-preds)
+  (let [refresh-xf (comp (map preserve-id)
+                         (integrate-novelty idx t novelty remove-preds))
         novel?     (fn [node]
                      (or (seq remove-preds)
                          (seq (index/novelty-subrange node t novelty))))]
