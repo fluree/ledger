@@ -12,7 +12,8 @@
             [fluree.db.api.auth :as fdb-auth]
             [fluree.db.ledger.txgroup.txgroup-proto :as txproto])
   (:import (java.net ServerSocket)
-           (java.util UUID)))
+           (java.util UUID)
+           (java.io File)))
 
 (def ^:constant init-timeout-ms 120000)
 
@@ -303,7 +304,7 @@
                 (fdb/transact-async conn ledger)
                 <!!)])))
 
-(defn create-temp-dir
+(defn create-temp-dir ^File
   []
   (let [base-dir (io/file (System/getProperty "java.io.tmpdir"))
         dir-path (io/file base-dir (str (System/currentTimeMillis) "-"
