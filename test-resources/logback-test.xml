@@ -8,7 +8,7 @@
 <configuration scan="true">
 
     <!-- Console output -->
-    <appender name="STDOUT-TEST" class="ch.qos.logback.core.ConsoleAppender">
+    <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
         <!-- encoder defaults to ch.qos.logback.classic.encoder.PatternLayoutEncoder -->
         <encoder>
             <!-- ensure logs including exceptions are a single line -->
@@ -17,9 +17,10 @@
     </appender>
 
     <root level="OFF">
-        <appender-ref ref="STDOUT-TEST"/>
+        <appender-ref ref="STDOUT"/>
     </root>
 
     <logger name="fluree.db.test-helpers" level="ERROR"/>
+    <!-- <logger name="fluree.db" level="DEBUG"/> -->
 
 </configuration>

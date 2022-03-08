@@ -9,9 +9,11 @@
             [clojure.edn :as edn]
             [fluree.db.util.json :as json]
             [org.httpkit.client :as http]
-            [fluree.db.api.auth :as fdb-auth])
+            [fluree.db.api.auth :as fdb-auth]
+            [fluree.db.ledger.txgroup.txgroup-proto :as txproto])
   (:import (java.net ServerSocket)
-           (java.util UUID)))
+           (java.util UUID)
+           (java.io File)))
 
 (def ^:constant init-timeout-ms 120000)
 
@@ -98,34 +100,38 @@
 (defn wait-for-init
   ([conn ledgers] (wait-for-init conn ledgers init-timeout-ms))
   ([conn ledgers timeout]
-   (loop [elapsed 0
+   (loop [sleep   0
+          elapsed 0
           ledgers ledgers]
-     (let [start         (System/currentTimeMillis)
-           ready-checks  (check-if-ready conn ledgers)
-           ready-ledgers (<!! (async/reduce
-                                (fn [rls [ledger ready?]]
-                                  (assoc rls ledger ready?))
-                                {} ready-checks))]
-       (when (not-every? second ready-ledgers)
-         (Thread/sleep 1000)
-         (let [split   (- (System/currentTimeMillis) start)
-               elapsed (+ elapsed split)]
-           (if (>= elapsed timeout)
-             (throw (RuntimeException.
-                      (str "Waited " elapsed
-                           "ms for test ledgers to initialize. Max is "
-                           timeout "ms.")))
-             (do ; seeing some intermittent failures to initialize sometimes
+     (let [start (System/currentTimeMillis)]
+       (Thread/sleep sleep)
+       (let [ready-checks  (check-if-ready conn ledgers)
+             ready-ledgers (<!! (async/reduce
+                                  (fn [rls [ledger ready?]]
+                                    (assoc rls ledger ready?))
+                                  {} ready-checks))]
+         (when (not-every? second ready-ledgers)
+           (let [split   (- (System/currentTimeMillis) start)
+                 elapsed (+ elapsed split)]
+             (if (>= elapsed timeout)
+               (throw (RuntimeException.
+                        (str "Waited " elapsed
+                             "ms for test ledgers to initialize. Max is "
+                             timeout "ms.")))
+               (let [poky-ledgers (remove second ready-ledgers)]
+                 ; seeing some intermittent failures to initialize sometimes
                  ; so this starts outputting some diagnostic messages once
                  ; we've used up 80% of the timeout; if we figure out what's
                  ; wrong, can remove the (when ...) form below and the (do ...)
                  ; wrapper
-               (when (<= 80 (* 100 (/ elapsed timeout)))
-                 (println "Running out of time for ledgers to init"
-                          (str "(~" (- timeout elapsed) "ms remaining).")
-                          "Waiting on" (->> ready-ledgers (remove second) count)
-                          "ledger(s) to initialize."))
-               (recur elapsed (map first (remove second ready-ledgers)))))))))))
+                 (when (<= 80 (* 100 (/ elapsed timeout)))
+                   (println "Running out of time for ledgers to init"
+                            (str "(~" (- timeout elapsed) "ms remaining).")
+                            "Waiting on" (count poky-ledgers)
+                            "ledger(s) to initialize:"
+                            (pr-str (map first poky-ledgers))))
+                 (recur 1000 elapsed
+                        (map first (remove second ready-ledgers))))))))))))
 
 
 (defn init-ledgers!
@@ -160,19 +166,51 @@
     name))
 
 
+(defn wait-for-system-ready
+  ([timeout] (wait-for-system-ready system timeout))
+  ([system timeout]
+   (print "Waiting for system to be ready ...") (flush)
+   (loop [sleep   0
+          elapsed 0]
+     (let [start (System/currentTimeMillis)]
+       (Thread/sleep sleep)
+       (print ".") (flush)
+       (let [{:keys [status]} (-> system :group txproto/-state)
+             consensus-type (get-in system [:config :consensus :type])]
+         (if (and
+               (or (= :in-memory consensus-type)
+                   (and (= :raft consensus-type)
+                        (= :leader status)))
+               ;; Sometimes even when this node is the raft leader or using
+               ;; in-memory consensus we still don't yet have a default private
+               ;; key to sign unsigned reqs with; so wait for that too
+               (-> system :group txproto/get-shared-private-key))
+           (println " Ready!")
+           (let [split   (- (System/currentTimeMillis) start)
+                 elapsed (+ elapsed split)]
+             (when (>= elapsed timeout)
+               (throw (RuntimeException.
+                        (str "Waited " elapsed
+                             "ms for system to become ready. Max is "
+                             timeout "ms."))))
+             (recur 1000 elapsed))))))))
+
+
 (defn test-system
   "This fixture is intended to be used like this:
   (use-fixture :once test-system)
-  It starts up an in-memory ledger server for testing. It does not create any
-  ledgers. You might find the rand-ledger fn useful for that."
+  It starts up an in-memory (by default) ledger server for testing and waits
+  for it to be ready to use. It does not create any ledgers. You might find
+  the rand-ledger fn useful for that."
   ([tests] (test-system {} tests))
   ([opts tests]
    (try
      (start* opts)
+     (wait-for-system-ready init-timeout-ms)
      (tests)
      (catch Throwable e
        (log/error e "Caught test exception")
-       e)
+       (throw e))
      (finally (stop*)))))
 
 
@@ -266,6 +304,15 @@
                 (fdb/transact-async conn ledger)
                 <!!)])))
 
+(defn create-temp-dir ^File
+  []
+  (let [base-dir (io/file (System/getProperty "java.io.tmpdir"))
+        dir-path (io/file base-dir (str (System/currentTimeMillis) "-"
+                                        (long (rand 10000000000000))))]
+    (if (.mkdirs dir-path)
+      dir-path
+      (throw (ex-info "Failed to create temp directory"
+                      {:dir-path dir-path})))))
 
 ;; ======================== DEPRECATED ===============================
 

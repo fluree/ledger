@@ -97,6 +97,12 @@ target/fluree-ledger.jar: resources/adminUI $(SOURCES) $(RESOURCES)
 
 jar: target/fluree-ledger.jar
 
+unit-test:
+	clojure -X:test :excludes '[:integration]'
+
+integration-test:
+	clojure -X:test :includes '[:integration]'
+
 test:
 	clojure -X:test
 

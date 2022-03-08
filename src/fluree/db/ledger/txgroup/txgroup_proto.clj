@@ -1,7 +1,8 @@
 (ns fluree.db.ledger.txgroup.txgroup-proto
   (:require [clojure.string :as str]
             [fluree.db.util.core :as util]
-            [clojure.core.async :as async]))
+            [clojure.core.async :as async]
+            [fluree.db.util.log :as log]))
 
 (set! *warn-on-reflection* true)
 
@@ -199,6 +200,9 @@ or this server is not responsible for this ledger, will return false. Else true 
 (defn ledger-info
   "Returns all info we have on given ledger."
   [group network ledger-id]
+  (log/debug "Getting ledger-info at key-path"
+             [:networks network :dbs ledger-id]
+             "from:" (-local-state group))
   (kv-get-in group [:networks network :dbs ledger-id]))
 
 (defn ledgers-info-map

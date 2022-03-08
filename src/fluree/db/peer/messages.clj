@@ -191,7 +191,7 @@
   [system network dbid]
   (if (and network dbid)
     (do
-      (log/trace "Get ledger-info request for" (str network "/" dbid))
+      (log/debug "Get ledger-info request for" (str network "/" dbid))
       (-> (txproto/ledger-info (:group system) network dbid)
           (select-keys [:indexes :block :index :status])))
     {}))
@@ -200,13 +200,14 @@
   "Returns more detailed statistics about ledger than base ledger-info"
   [system ledger success! error!]
   (async/go
-    (log/trace "Got ledger-stats req for" ledger)
+    (log/debug "Got ledger-stats req for" ledger)
     (let [[network dbid] (session/resolve-ledger (:conn system) ledger)]
-      (log/trace "ledger-stats resolved ledger" ledger)
+      (log/debug "ledger-stats resolved ledger" ledger)
       (if-not (and network dbid)
         (error! (ex-info (str "Invalid ledger: " ledger)
                          {:status 400 :error :db/invalid-ledger}))
         (let [ledger-info (ledger-info system network dbid)
+              _           (log/debug "Ledger info for" ledger "-" ledger-info)
               db-stat     (when (and (seq ledger-info) ; skip stats if db is still initializing
                                      (not= :initialize (:status ledger-info)))
                             (let [session-db (async/<! (session/db (:conn system) ledger {}))]
@@ -356,7 +357,12 @@
                                               (let [{:keys [network dbid]} cmd-data]
                                                 [network dbid]))
                              private-key (if (nil? jwt)
-                                           (txproto/get-shared-private-key (:group system) network dbid)
+                                           (let [pk (txproto/get-shared-private-key
+                                                      (:group system) network dbid)]
+                                             (if pk
+                                               (log/debug "Signing unsigned cmd with default private key")
+                                               (log/error "No private key found to sign unsigned cmd"))
+                                             pk)
                                            (let [jwt-options (-> system :conn :meta :password-auth)
                                                  {:keys [secret]} jwt-options
                                                  _           (token-auth/verify-jwt secret jwt)]
