@@ -325,6 +325,7 @@
   ([opts f]
    (try
      (do (start opts)
+         (wait-for-system-ready init-timeout-ms)
          (init-ledgers!)
          (f))
      :success
