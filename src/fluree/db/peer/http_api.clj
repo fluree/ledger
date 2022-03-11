@@ -755,14 +755,11 @@
                         _                (when (and (not open-api?) (not signature) (not jwt))
                                            (throw (ex-info (str "To request an item from storage, open-api must be true or your request must be signed.")
                                                            {:status 401
-                                                            :error  :db/invalid-transaction})))
+                                                            :error  :db/invalid-auth})))
                         response-type    (if (str/includes? accept-encodings "application/json")
                                            :json
                                            :avro)
-                        _                (when (and (not open-api?) (= :avro response-type))
-                                           (throw (ex-info (str "If using a closed api, a storage request must be returned as json.")
-                                                           {:status 401
-                                                            :error  :db/invalid-transaction})))
+
                         {:keys [network db type key]} params
                         db-name          (keyword network db)
                         _                (when-not (and network db type)
