@@ -16,8 +16,8 @@
 (def freddie {:auth        "TfKqMRbSU7cFzX9UthQ7Ca4GoEZg7KJWue9"
               :private-key "509a01fe94a32466d7d3ad378297307f897a7d385a219d79725994ce06041896"})
 
-(def scott   {:auth        "TfCFawNeET5FFHAfES61vMf9aGc1vmehjT2"
-              :private-key "a603e772faec02056d4ec3318187487d62ec46647c0cba7320c7f2a79bed2615"})
+(def scott {:auth        "TfCFawNeET5FFHAfES61vMf9aGc1vmehjT2"
+            :private-key "a603e772faec02056d4ec3318187487d62ec46647c0cba7320c7f2a79bed2615"})
 
 
 ;; Helper function: Query-as auth
@@ -97,7 +97,74 @@
       (is (= #{"A-000"} (set scott-res)))
       (is (= #{"B-000"} (set antonio-res))))))
 
+
+(deftest add-context-smartfunction
+  (testing "Adding a context smartfunction"
+    (let [txn       [{:_id       ["_role/id", "level1User"] ;; add CTX to the level1User role
+                      :_role/ctx [{:_id       "_ctx$orgs"
+                                   :_ctx/name "myorg"
+                                   :_ctx/key  "orgs"
+                                   :_ctx/fn   {:_id      "_fn$getOrgs"
+                                               :_fn/name "getOrgs"
+                                               :_fn/code "(get-all (?auth_id) [\"_user/_auth\" \"org/_employees\"])"}}]}]
+          tx-resp   (async/<!! (fdb/transact-async (basic/get-conn) test/ledger-invoice txn))
+          new-db    (basic/get-db test/ledger-invoice {:syncTo (:block tx-resp)
+                                                       :auth   ["_auth/id" (:auth scott)]})
+          newco-sid @(fdb/subid new-db ["org/name" "NewCo"])]
+      (is (= (:ctx (async/<!! new-db)) {"orgs" #{newco-sid}})))))
+
+
+(deftest use-context-in-smartfunction
+  (testing "Use the context added above in a new SmartFunction"
+    (let [txn           [{:_id         ["_role/id" "level1User"],
+                          :_role/rules "_rule$viewOrgEmployees"}
+                         ;; Add rule for query of _user(s) that checks org(s) they belong to and verifies same as requesting user
+                         {:_id                     "_rule$viewOrgEmployees",
+                          :_rule/id                "viewOrgEmployees",
+                          :_rule/doc               "Allow employees to see others in same org.",
+                          :_rule/collection        "_user",
+                          :_rule/fns               ["_fn$userSameOrg"],
+                          :_rule/ops               ["query"],
+                          :_rule/collectionDefault true}
+                         ;; add fn that checks user's 'orgs' context value contains the org the respective _user belongs to
+                         {:_id      "_fn$userSameOrg",
+                          :_fn/name "userSameOrg",
+                          :_fn/code "(contains? (ctx \"orgs\") (get (?sid) \"org/_employees\"))",
+                          :_fn/doc  "Returns truthy if _user is in same org(s) as requesting identity."}
+                         ;; add an extra user in the same org as Scott, so we can see if Scott can see them
+                         {:_id      "_user$fannie"
+                          :username "fannie"}
+                         {:_id       ["org/name" "NewCo"]
+                          :employees ["_user$fannie"]}]
+          tx-resp       (async/<!! (fdb/transact-async (basic/get-conn) test/ledger-invoice txn))
+          scott-db      (basic/get-db test/ledger-invoice {:syncTo (:block tx-resp)
+                                                           :auth   ["_auth/id" (:auth scott)]})
+          antonio-db    (basic/get-db test/ledger-invoice {:syncTo (:block tx-resp)
+                                                           :auth   ["_auth/id" (:auth antonio)]})
+          root-db       (basic/get-db test/ledger-invoice {:syncTo (:block tx-resp)})
+          query         {:select ["_user/username"]
+                         :from   "_user"}
+          root-q-res    @(fdb/query root-db query)
+          scott-q-res   @(fdb/query scott-db query)
+          antonio-q-res @(fdb/query antonio-db query)]
+      ;; root db sees all users:
+      (is (= root-q-res
+             [{"_user/username" "fannie", :_id 87960930223084}
+              {"_user/username" "antonio", :_id 87960930223083}
+              {"_user/username" "scott", :_id 87960930223082}
+              {"_user/username" "freddie", :_id 87960930223081}]))
+      ;; scott can see only _user in the same org
+      (is (= scott-q-res
+             [{:_id 87960930223084, "_user/username" "fannie"}
+              {:_id 87960930223082, "_user/username" "scott"}]))
+      ;; antonio can only see himself, no other users are in same org
+      (is (= antonio-q-res
+             [{"_user/username" "antonio", :_id 87960930223083}])))))
+
+
 (deftest invoice-tests
   (add-schema)
   (add-sample-data)
-  (verify-only-own-invoices-using-auth))
+  (verify-only-own-invoices-using-auth)
+  (add-context-smartfunction)
+  (use-context-in-smartfunction))

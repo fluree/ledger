@@ -107,6 +107,7 @@
                      const/$_auth       (flake/->sid const/$_auth 1000)
                      const/$_role       (flake/->sid const/$_role 1000)
                      const/$_rule       (flake/->sid const/$_rule 1000)
+                     const/$_ctx        (flake/->sid const/$_ctx 1000)
                      const/$_setting    (flake/->sid const/$_setting 1000)
                      const/$_shard      (flake/->sid const/$_shard 1000)})
 
@@ -226,35 +227,35 @@
   "Bootstraps a new db from a signed new-db message."
   [{:keys [conn group]} {:keys [cmd sig]}]
   (go-try
-   (let [txid          (crypto/sha3-256 cmd)
-         new-db-name   (-> cmd json/parse :db)
-         [network dbid] (if (sequential? new-db-name)
-                          new-db-name
-                          (str/split new-db-name #"/"))
-         _             (when (or (txproto/ledger-exists? group network dbid)
-                                 ;; also check for block 1 on disk as a precaution
-                                 (<? (storage/read-block conn network dbid 1)))
-                         (throw (ex-info (str "Ledger " network "/$" dbid " already exists! Create unsuccessful.")
-                                         {:status 500
-                                          :error  :db/unexpected-error})))
-         master-authid (crypto/account-id-from-message cmd sig)
-         block         (bootstrap-memory-db conn [network dbid] {:master-auth-id master-authid :txid txid :cmd cmd :sig sig})
-         new-db        (:db block)
-         block-data    (dissoc block :db)
-         _             (<? (storage/write-block conn network dbid block-data))
-         ;; todo - should create a new command to register new DB that first checks raft
-         _             (<? (txproto/register-genesis-block-async (:group conn) network dbid))
+    (let [txid          (crypto/sha3-256 cmd)
+          new-db-name   (-> cmd json/parse :db)
+          [network dbid] (if (sequential? new-db-name)
+                           new-db-name
+                           (str/split new-db-name #"/"))
+          _             (when (or (txproto/ledger-exists? group network dbid)
+                                  ;; also check for block 1 on disk as a precaution
+                                  (<? (storage/read-block conn network dbid 1)))
+                          (throw (ex-info (str "Ledger " network "/$" dbid " already exists! Create unsuccessful.")
+                                          {:status 500
+                                           :error  :db/unexpected-error})))
+          master-authid (crypto/account-id-from-message cmd sig)
+          block         (bootstrap-memory-db conn [network dbid] {:master-auth-id master-authid :txid txid :cmd cmd :sig sig})
+          new-db        (:db block)
+          block-data    (dissoc block :db)
+          _             (<? (storage/write-block conn network dbid block-data))
+          ;; todo - should create a new command to register new DB that first checks raft
+          _             (<? (txproto/register-genesis-block-async (:group conn) network dbid))
 
-         {:keys [network dbid block fork] :as indexed-db}
-         (<? (indexing/refresh new-db))
+          {:keys [network dbid block fork] :as indexed-db}
+          (<? (indexing/refresh new-db))
 
-         dbgroup       (-> indexed-db :conn :group)
-         indexed-block (get-in indexed-db [:stats :indexed])]
+          dbgroup       (-> indexed-db :conn :group)
+          indexed-block (get-in indexed-db [:stats :indexed])]
 
-     ;; write out new index point
-     (<? (txproto/initialized-ledger-async dbgroup txid network dbid block
-                                           fork indexed-block))
-     indexed-db)))
+      ;; write out new index point
+      (<? (txproto/initialized-ledger-async dbgroup txid network dbid block
+                                            fork indexed-block))
+      indexed-db)))
 
 (def bootstrap-txn
   [{:_id     ["_collection" const/$_predicate]
@@ -296,6 +297,10 @@
    {:_id     ["_collection" const/$_shard]
     :name    "_shard"
     :doc     "Shard settings."
+    :version "1"}
+   {:_id     ["_collection" const/$_ctx]
+    :name    "_ctx"
+    :doc     "Context keys and values."
     :version "1"}
 
 
@@ -665,6 +670,12 @@
     :type               "ref"
     :multi              true
     :restrictCollection "_rule"}
+   {:_id                ["_predicate" const/$_role:ctx]
+    :name               "_role/ctx"
+    :doc                "Reference context definitions and SmartFunctions for this role."
+    :type               "ref"
+    :multi              true
+    :restrictCollection "_ctx"}
 
 
    ;; _rule predicates
@@ -845,4 +856,25 @@
    {:_id  ["_predicate" const/$_shard:mutable]
     :name "_shard/mutable"
     :doc  "Whether this shard is mutable. If not specified, defaults to 'false', meaning the data is immutable."
-    :type "boolean"}])
+    :type "boolean"}
+
+   ; _ctx
+   {:_id    ["_predicate" const/$_ctx:name]
+    :name   "_ctx/name"
+    :doc    "Unique name for context setting"
+    :type   "string"
+    :unique true}
+   {:_id  ["_predicate" const/$_ctx:key]
+    :name "_ctx/key"
+    :doc  "Context map's key value to assign value result to."
+    :type "string"}
+   {:_id                ["_predicate" const/$_ctx:fn]
+    :name               "_ctx/fn"
+    :doc                "SmartFunction that will be executed to populate key's value."
+    :type               "ref"
+    :restrictCollection "_fn"}
+   {:_id  ["_predicate" const/$_ctx:doc]
+    :name "_ctx/doc"
+    :doc  "Optional docstring for context information."
+    :type "string"}
+   ])
