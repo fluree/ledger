@@ -12,8 +12,8 @@
 
 (def ^:const system-predicates
   "List of _tx predicates that only Fluree can assign, any user attempt to modify these should throw."
-  #{const/$_tx:id const/$_tx:tx const/$_tx:sig const/$_tx:hash
-    const/$_tx:auth const/$_tx:authority const/$_tx:nonce
+  #{const/$_tx:id const/$_tx:tx const/$_tx:sig const/$_tx:signed
+    const/$_tx:hash const/$_tx:auth const/$_tx:authority const/$_tx:nonce
     const/$_tx:error const/$_tx:tempids
     const/$_block:number const/$_block:instant
     const/$_block:hash const/$_block:prevHash
@@ -23,13 +23,14 @@
 
 (defn tx-meta-flakes
   ([tx-state] (tx-meta-flakes tx-state nil))
-  ([{:keys [auth authority txid tx-string signature nonce t]} error-str]
+  ([{:keys [auth authority txid tx-string signature signed nonce t]} error-str]
    (let [tx-flakes [(flake/->Flake t const/$_tx:id txid t true nil)
                     (flake/->Flake t const/$_tx:tx tx-string t true nil)
                     (flake/->Flake t const/$_tx:sig signature t true nil)]]
      (cond-> tx-flakes
              auth (conj (flake/->Flake t const/$_tx:auth auth t true nil)) ;; note an error transaction may not have a valid auth
              authority (conj (flake/->Flake t const/$_tx:authority authority t true nil))
+             signed (conj (flake/->Flake t const/$_tx:signed signed t true nil))
              nonce (conj (flake/->Flake t const/$_tx:nonce nonce t true nil))
              error-str (conj (flake/->Flake t const/$_tx:error error-str t true nil))))))
 

@@ -27,15 +27,8 @@
 
 (def ^:dynamic *overflow-children* 500)
 (defn overflow-children?
-  [child-map]
-  (> (count child-map) *overflow-children*))
-
-(defn add-garbage
-  "Adds the `:id` of the outdated index node second argument to the `garbage`
-  list only if the id is not `:empty`."
-  [garbage {id :id}]
-  (cond-> garbage
-          (not= :empty id) (conj id)))
+  [children]
+  (> (count children) *overflow-children*))
 
 (defn dirty?
   "Returns `true` if the index for `db` of type `idx` is out of date, or if `db`
@@ -51,272 +44,222 @@
         (some (partial dirty? db))
         boolean)))
 
-(defn mark-expanded
-  [node]
-  (assoc node ::expanded true))
-
-(defn unmark-expanded
-  [node]
-  (dissoc node ::expanded))
-
-(defn expanded?
-  [node]
-  (or (index/leaf? node)
-      (-> node ::expanded true?)))
-
-(defn except-preds
-  [flakes preds]
-  (->> flakes
-       (filter (fn [f]
-                 (contains? preds (flake/p f))))
-       (flake/disj-all flakes)))
-
-(defn update-node
-  [node t novelty remove-preds]
-  (if (index/leaf? node)
-    (-> node
-        (index/at-t t novelty)
-        (update :flakes except-preds remove-preds))
-    node))
-
-(defn resolve-if-novel
-  "Resolves data associated with `node` from storage configured in the connection
-  `conn` if the `novelty` set contains flakes within the range of node or the
-  `remove-preds` sequence is nonempty. Any errors are put on the `error-ch`"
-  [conn node t novelty remove-preds error-ch]
-  (go
-    (let [node-novelty (index/novelty-subrange node t novelty)]
-      (if (or (seq node-novelty) (seq remove-preds))
-        (try* (let [resolved-node (<? (index/resolve conn node))]
-                (update-node resolved-node t novelty remove-preds))
-              (catch* e
-                (log/error e
-                           "Error resolving novel index node:"
-                           (select-keys node [:id :network :dbid]))
-                (>! error-ch e)))
-        node))))
-
-(defn resolve-children
-  "Resolves a branch's children in parallel, and loads data for each child only if
-  there are novelty flakes associated with that child. Returns a channel that
-  will eventually contain a vector of resolved children."
-  [conn branch t novelty remove-preds error-ch]
-  (->> branch
-       :children
-       (map (fn [[_ child]]
-              (resolve-if-novel conn child t novelty remove-preds error-ch)))
-       (async/map vector)))
-
-(defn resolve-tree
-  "Returns a channel that will eventually contain a stream of index nodes in
-  depth-first order. Only nodes with associated flakes from `index-novelty` will
-  be resolved."
-  [conn index-root index-novelty t remove-preds error-ch]
-  (let [tree-ch (async/chan 4)
-        stat-ch (async/chan 1)]
-    (go
-      (let [root-node (<! (resolve-if-novel conn index-root t index-novelty
-                                            remove-preds error-ch))]
-        (loop [stack [root-node]
-               stats {:novel 0, :unchanged 0, :stale []}]
-          (if (empty? stack)
-            (do (>! stat-ch stats)
-                (async/close! stat-ch)
-                (async/close! tree-ch))
-            (let [node   (peek stack)
-                  stack* (pop stack)]
-              (if (expanded? node)
-                (let [stats* (if (index/resolved? node)
-                               (-> stats
-                                   (update :novel inc)
-                                   (update :stale add-garbage node))
-                               (update stats :unchanged inc))]
-                  (>! tree-ch node)
-                  (recur stack* stats*))
-                (let [children (<! (resolve-children conn node t index-novelty remove-preds error-ch))
-                      stack**  (-> stack*
-                                   (conj (mark-expanded node))
-                                   (into (rseq children)))]
-                  (recur stack** stats))))))))
-    [tree-ch stat-ch]))
+(defn filter-predicates
+  [preds & flake-sets]
+  (if (seq preds)
+    (->> flake-sets
+         (apply concat)
+         (filter (fn [f]
+                   (contains? preds (flake/p f)))))
+    []))
 
 (defn rebalance-leaf
   "Splits leaf nodes if the combined size of it's flakes is greater than
   `*overflow-bytes*`."
   [{:keys [flakes leftmost? rhs] :as leaf}]
-  (let [target-size (/ *overflow-bytes* 2)]
-    (loop [[f & r] flakes
-           cur-size  0
-           cur-first f
-           leaves    []]
-      (if (empty? r)
-        (let [subrange  (flake/subrange flakes >= cur-first)
-              last-leaf (-> leaf
-                            (assoc :flakes subrange
-                                   :first cur-first
-                                   :rhs rhs)
-                            (dissoc :id :leftmost?))]
-          (conj leaves last-leaf))
-        (let [new-size (-> f flake/size-flake (+ cur-size) long)]
-          (if (> new-size target-size)
-            (let [subrange (flake/subrange flakes >= cur-first < f)
-                  new-leaf (-> leaf
-                               (assoc :flakes subrange
-                                      :first cur-first
-                                      :rhs f
-                                      :leftmost? (and (empty? leaves)
-                                                      leftmost?))
-                               (dissoc :id))]
-              (recur r 0 f (conj leaves new-leaf)))
-            (recur r new-size cur-first leaves)))))))
+  (if (overflow-leaf? leaf)
+    (let [target-size (/ *overflow-bytes* 2)]
+      (log/debug "Rebalancing index leaf:"
+                 (select-keys leaf [:id :network :dbid]))
+      (loop [[f & r] flakes
+             cur-size  0
+             cur-first f
+             leaves    []]
+        (if (empty? r)
+          (let [subrange  (flake/subrange flakes >= cur-first)
+                last-leaf (-> leaf
+                              (assoc :flakes subrange
+                                     :first cur-first
+                                     :rhs rhs)
+                              (dissoc :id :leftmost?))]
+            (conj leaves last-leaf))
+          (let [new-size (-> f flake/size-flake (+ cur-size) long)]
+            (if (> new-size target-size)
+              (let [subrange (flake/subrange flakes >= cur-first < f)
+                    new-leaf (-> leaf
+                                 (assoc :flakes subrange
+                                        :first cur-first
+                                        :rhs f
+                                        :leftmost? (and (empty? leaves)
+                                                        leftmost?))
+                                 (dissoc :id))]
+                (recur r 0 f (conj leaves new-leaf)))
+              (recur r new-size cur-first leaves))))))
+    [leaf]))
 
-(def rebalance-leaf-xf
-  (mapcat (fn [node]
-            (if (and (index/leaf? node)
-                     (overflow-leaf? node))
-              (rebalance-leaf node)
-              [node]))))
+(defn update-leaf
+  [{:keys [network dbid] :as leaf} idx t novelty remove-preds]
+  (let [new-flakes (index/novelty-subrange leaf t novelty)
+        to-remove  (filter-predicates remove-preds (:flakes leaf) new-flakes)]
+    (if (or (seq new-flakes) (seq to-remove))
+      (let [new-leaves (-> leaf
+                           (dissoc :id)
+                           (index/add-flakes new-flakes)
+                           (index/rem-flakes to-remove)
+                           rebalance-leaf)]
+        (map (fn [l]
+               (assoc l
+                      :id (storage/random-leaf-id network dbid idx)
+                      :t t))
+             new-leaves))
+      [leaf])))
 
-(defn rebalance-leaves
-  [node-stream]
-  (let [rebalance-ch (async/chan 1 rebalance-leaf-xf)]
-    (async/pipe node-stream rebalance-ch)))
+(defn some-update-after?
+  [t nodes]
+  (->> nodes
+       (map :t)
+       (some (fn [node-t]
+               (> t node-t))) ; t gets smaller as it moves forward!
+       boolean))
+
+(defn update-branch
+  [{:keys [network dbid comparator], branch-t :t, :as branch} idx t child-nodes]
+  (if (some-update-after? branch-t child-nodes)
+    (let [children    (apply index/child-map comparator child-nodes)
+          size        (->> child-nodes
+                           (map :size)
+                           (reduce +))
+          first-flake (->> children first key)
+          rhs         (->> children flake/last val :rhs)
+          new-id      (storage/random-branch-id network dbid idx)]
+      (assoc branch
+             :id new-id
+             :t t
+             :children children
+             :size size
+             :first first-flake
+             :rhs rhs))
+    branch))
+
+(defn update-sibling-leftmost
+  [[maybe-leftmost & not-leftmost]]
+  (into [maybe-leftmost]
+        (map (fn [non-left-node]
+               (assoc non-left-node
+                      :leftmost? false)))
+        not-leftmost))
 
 (defn rebalance-children
-  "Splits branch nodes if they have more than `*overflow-children*` child nodes."
-  [parent children]
+  [branch idx t child-nodes]
   (let [target-count (/ *overflow-children* 2)]
-    (loop [new-branches []
-           remaining    children]
-      (if (> (count remaining) target-count)
-        (let [[new-children rst-children]
-              (avl/split-at target-count remaining)
-
-              first-flake (-> new-children first key)
-              rhs         (-> rst-children first key)
-              new-branch  (-> parent
-                              (dissoc :id)
-                              (assoc :children new-children
-                                     :first first-flake
-                                     :rhs rhs))]
-          (recur (conj new-branches new-branch) rst-children))
-        (let [first-flake (-> remaining first key)
-              last-child  (-> parent
-                              (dissoc :id)
-                              (assoc :children remaining
-                                     :first first-flake))]
-          (conj new-branches last-child))))))
-
-(defn reconcile-leaf-size
-  [{:keys [flakes] :as leaf}]
-  (let [total-size (->> flakes
-                        (map flake/size-flake)
-                        (reduce +))]
-    (assoc leaf :size total-size)))
-
-(defn reconcile-branch-size
-  [{:keys [children] :as branch}]
-  (let [total-size (->> children
-                        vals
-                        (map :size)
-                        (reduce +))]
-    (assoc branch :size total-size)))
-
-(defn write-if-novel
-  "Writes `node` to storage if it has been updated, and puts any errors onto the
-  `error-ch`"
-  [conn network dbid idx error-ch node]
-  (go
-    (if (index/resolved? node)
-      (try* (if (index/leaf? node)
-              (let [leaf (reconcile-leaf-size node)]
-                (<? (storage/write-leaf conn network dbid idx leaf)))
-              (let [branch (reconcile-branch-size node)]
-                (<? (storage/write-branch conn network dbid idx branch))))
-            (catch* e
-              (log/error e
-                         "Error writing novel index node:"
-                         (select-keys node [:id :network :dbid]))
-              (>! error-ch e)))
-      node)))
-
-(defn write-child-nodes
-  [conn network dbid idx error-ch parent child-nodes]
-  (let [cmp (:comparator parent)]
     (->> child-nodes
-         (map (fn [child]
-                (write-if-novel conn network dbid idx error-ch child)))
-         (async/map (fn [& written-nodes]
-                      (apply index/child-map cmp written-nodes))))))
+         (partition-all target-count)
+         (map (fn [kids]
+                (update-branch branch idx t kids)))
+         update-sibling-leftmost)))
 
-(defn write-descendants
-  "Writes the `descendants` of the branch node `parent`, adding new branch levels
-  if any branch node is too large"
-  [conn network dbid idx error-ch parent descendants]
-  (go-loop [children (<! (write-child-nodes conn network dbid idx error-ch parent descendants))]
-    (if (overflow-children? children)
-      (let [child-branches (rebalance-children parent children)]
-        (recur (<! (write-child-nodes conn network dbid idx error-ch parent child-branches))))
-      children)))
+(defn integrate-novelty
+  "Returns a transducer that transforms a stream of index nodes in depth first
+  order by incorporating the novelty flakes into the nodes, removing flakes with
+  predicates in remove-preds, rebalancing the leaves so that none is bigger than
+  *overflow-bytes*, and rebalancing the branches so that none have more children
+  than *overflow-children*. Maintains a 'lifo' stack to preserve the depth-first
+  order of the transformed stream."
+  [idx t novelty remove-preds]
+  (fn [xf]
+    (let [stack (volatile! [])]
+      (fn
+        ;; Initialization: do nothing but initialize the nested transformer by
+        ;; calling its initializing fn.
+        ([]
+         (xf))
 
-(defn descendant?
-  [{:keys [rhs], first-flake :first, :as branch} node]
-  (if-not (index/branch? branch)
-    false
-    (let [cmp (:comparator branch)
-          {node-first :first, node-rhs :rhs} node]
-      (and (not (pos? (cmp first-flake node-first)))
-           (or (nil? rhs)
-               (and (not (nil? node-rhs))
-                    (not (pos? (cmp node-rhs rhs)))))))))
+        ;; Iteration:
+        ;;   1. Incorporate each successive node with its corresponding novelty
+        ;;      flakes.
+        ;;   2. Rebalance both leaves and branches if they become too large after
+        ;;      adding novelty by splitting them.
+        ;;   3. Iterate each resulting node with the nested transformer.
+        ([result node]
+         (if (index/leaf? node)
+           (let [leaves (update-leaf node idx t novelty remove-preds)]
+             (vswap! stack into leaves)
+             result)
 
-(defn pop-descendants
-  "Pops all the descendants of `branch` off of the top of the stack `in-stack`"
-  [branch in-stack]
-  (loop [child-nodes []
-         stack       in-stack]
-    (let [nxt (peek stack)]
-      (if (and nxt (descendant? branch nxt))
-        (recur (conj child-nodes nxt) (pop stack))
-        [child-nodes stack]))))
+           (loop [child-nodes []
+                  stack*      @stack
+                  result*     result]
+             (let [child (peek stack*)]
+               (if (and child
+                        (index/descendant? node child)) ; all of a resolved
+                                                        ; branch's children
+                                                        ; should be at the top
+                                                        ; of the stack
+                 (recur (conj child-nodes child)
+                        (vswap! stack pop)
+                        (xf result* child))
+                 (if (overflow-children? child-nodes)
+                   (let [new-branches (rebalance-children node idx t child-nodes)
+                         result**     (reduce xf result* new-branches)]
+                     (recur new-branches
+                            stack*
+                            result**))
+                   (let [branch (update-branch node idx t child-nodes)]
+                     (vswap! stack conj branch)
+                     result*)))))))
 
-(defn write-tree
-  [conn network dbid idx error-ch node-stream]
-  (let [out (async/chan)]
-    (go-loop [stack []]
-      (if-let [node (<! node-stream)]
-        (if (index/leaf? node)
-          (recur (conj stack node))
-          (let [;; all descendants of a branch node should be at the top of the
-                ;; stack as long as the `node-stream` is in depth-first order
-                [descendants stack*] (pop-descendants node stack)
-                children    (<! (write-descendants conn network dbid idx error-ch
-                                                   node descendants))
-                first-flake (-> children first key)
-                branch      (-> node
-                                unmark-expanded
-                                (dissoc :id)
-                                (assoc :first first-flake
-                                       :children children))]
-            (recur (conj stack* branch))))
-        (async/pipe (write-if-novel conn network dbid idx error-ch (peek stack))
-                    out)))
-    out))
+        ;; Completion: Flush the stack iterating each remaining node with the
+        ;; nested transformer before calling the nested transformer's completion
+        ;; fn on the iterated result.
+        ([result]
+         (loop [stack*  @stack
+                result* result]
+           (if-let [node (peek stack*)]
+             (recur (vswap! stack pop)
+                    (unreduced (xf result* node)))
+             (xf result*))))))))
 
-(defn tally
-  [idx index-ch stat-ch]
-  (go
-    (let [new-root (<! index-ch)
-          stats    (<! stat-ch)]
-      (assoc stats :idx idx, :root new-root))))
+(defn preserve-id
+  "Stores the original id of a node under the `::old-id` key if the `node` was
+  resolved, leaving unresolved nodes unchanged. Useful for keeping track of the
+  original id for modified nodes during the indexing process for garbage
+  collection purposes"
+  [{:keys [id] :as node}]
+  (cond-> node
+    (index/resolved? node) (assoc ::old-id id)))
 
-(defn refresh-root
-  [conn network dbid error-ch {::keys [idx root novelty t remove-preds]}]
-  (let [[tree-ch stat-ch] (resolve-tree conn root novelty t remove-preds error-ch)
-        index-ch (->> tree-ch
-                      rebalance-leaves
-                      (write-tree conn network dbid idx error-ch))]
-    (tally idx index-ch stat-ch)))
+(defn write-node
+  "Writes `node` to storage, and puts any errors onto the `error-ch`"
+  [conn idx {:keys [id network dbid] :as node} error-ch]
+  (let [node         (dissoc node ::old-id)
+        display-node (select-keys node [:id :network :dbid])]
+    (go
+      (try*
+       (if (index/leaf? node)
+         (do (log/debug "Writing index leaf:" display-node)
+             (<? (storage/write-leaf conn network dbid idx id node)))
+         (do (log/debug "Writing index branch:" display-node)
+             (<? (storage/write-branch conn network dbid idx id node))))
+       (catch* e
+               (log/error e
+                          "Error writing novel index node:" display-node)
+               (>! error-ch e))))))
+
+(defn write-resolved-nodes
+  [conn network dbid idx error-ch index-ch]
+  (go-loop [stats     {:idx idx, :novel 0, :unchanged 0, :garbage #{}}
+            last-node nil]
+    (if-let [{::keys [old-id] :as node} (<! index-ch)]
+      (if (index/resolved? node)
+        (let [written-node (<! (write-node conn idx node error-ch))
+              stats*       (cond-> stats
+                             (not= old-id :empty) (update :garbage conj old-id)
+                             true                 (update :novel inc))]
+          (recur stats*
+                 written-node))
+        (recur (update stats :unchanged inc)
+               node))
+      (assoc stats :root last-node))))
+
+(defn refresh-index
+  [conn network dbid error-ch {::keys [idx t novelty remove-preds root]}]
+  (let [refresh-xf (comp (map preserve-id)
+                         (integrate-novelty idx t novelty remove-preds))
+        novel?     (fn [node]
+                     (or (seq remove-preds)
+                         (seq (index/novelty-subrange node t novelty))))]
+    (->> (index/tree-chan conn root novel? (constantly true) 1 refresh-xf error-ch)
+         (write-resolved-nodes conn network dbid idx error-ch))))
 
 (defn extract-root
   [{:keys [novelty t] :as db} remove-preds idx]
@@ -328,12 +271,12 @@
      ::t            t
      ::remove-preds remove-preds}))
 
-(defn update-refresh-status
-  [db-status {:keys [idx root stale]}]
+(defn tally
+  [db-status {:keys [idx root garbage]}]
   (-> db-status
       (update :db assoc idx root)
       (update :indexes conj idx)
-      (update :stale into stale)))
+      (update :garbage into garbage)))
 
 (defn refresh-all
   ([db error-ch]
@@ -341,9 +284,9 @@
   ([{:keys [conn network dbid] :as db} remove-preds error-ch]
    (->> index/types
         (map (partial extract-root db remove-preds))
-        (map (partial refresh-root conn network dbid error-ch))
+        (map (partial refresh-index conn network dbid error-ch))
         async/merge
-        (async/reduce update-refresh-status {:db db, :indexes [], :stale []}))))
+        (async/reduce tally {:db db, :indexes [], :garbage #{}}))))
 
 (defn empty-novelty
   [db]
@@ -377,7 +320,7 @@
                   (throw e))
 
                  refresh-ch
-                 ([{:keys [stale], refreshed-db :db, :as status}]
+                 ([{:keys [garbage], refreshed-db :db, :as status}]
                   (let [indexed-db (-> refreshed-db
                                        empty-novelty
                                        (assoc-in [:stats :indexed] block))
@@ -390,7 +333,7 @@
                     ;; TODO - ideally issue garbage/root writes to RAFT together
                     ;;        as a tx, currently requires waiting for both
                     ;;        through raft sync
-                    (<? (storage/write-garbage indexed-db stale))
+                    (<? (storage/write-garbage indexed-db garbage))
                     (let [end-time  (Instant/now)
                           duration  (- (.toEpochMilli ^Instant end-time)
                                        (.toEpochMilli ^Instant start-time))

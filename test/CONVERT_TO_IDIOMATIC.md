@@ -59,6 +59,8 @@ unconverted ones.
        add a `testing` form where necessary
      - Redundant fn wrappers around things that can behave as fns on their own
        (e.g. sets and keywords)
+     - Use of Thread/sleep instead of :syncTo between a transaction and a db
+       request
      - But overall, use your best judgment. If something seems simple but turns
        into a rabbit hole, leave it for another time.
 10. Run the test suite (`make test`) and make sure your new tests are running

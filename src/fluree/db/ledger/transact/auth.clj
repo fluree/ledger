@@ -39,7 +39,9 @@
     (let [auth-id-ch    (dbproto/-subid db ["_auth/id" auth] true)
           ;; kick off authority check in parallel (when applicable)
           authority-sid (when authority
-                          (let [authority-id (if (string? authority) ["_auth/id" authority] authority)]
+                          (let [authority-id (if (string? authority)
+                                               ["_auth/id" authority]
+                                               authority)]
                             (async/<! (dbproto/-subid db authority-id true))))
           auth-sid      (async/<! auth-id-ch)]
       (cond

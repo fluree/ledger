@@ -4,7 +4,8 @@
             [clojure.string :as str]
             [fluree.db.test-helpers :as test]
             [fluree.db.ledger.docs.getting-started.basic-schema :as basic]
-            [fluree.db.api :as fdb]))
+            [fluree.db.api :as fdb])
+  (:import (clojure.lang ExceptionInfo)))
 
 
 (use-fixtures :once test/test-system-deprecated)
@@ -151,6 +152,26 @@
     ;; there should be 4 tempids
     (is (= 5 (count (:tempids td-resp))))))
 
+(deftest test-restrict-collection
+  (testing "Test restrictCollection using invalid _auth reference"
+    (let [txn  [{:_id  "todo$Sam",
+                 :id   "Sam",
+                 :doc  "Todo item Sam",
+                 :auth ["_role/id", "root"]}]
+          resp (async/<!! (fdb/transact-async (basic/get-conn) test/ledger-todo txn))]
+      (is (instance? ExceptionInfo resp))
+      (is (-> resp
+              ex-data
+              :status
+              (= 400)))
+      (is (-> resp
+              ex-data
+              :error
+              (= :db/invalid-tx)))
+      (is (-> resp
+              ex-message
+              (str/starts-with? "Invalid identity, [\"_role/id\" \"root\"], not in referenced collection: "))))))
+
 (deftest query-auth
   (testing "Verify auth records exist")
   (let [id-list (-> (basic/get-db test/ledger-todo)
@@ -220,7 +241,7 @@
   (let [txn  [{:_id ["todo/id" "Kevin"], :_action "delete"}]
         opts {:auth (:auth scott) :private-key (:private scott) :txid-only false}
         resp (async/<!! (fdb/transact-async (basic/get-conn) test/ledger-todo txn opts))]
-    (is (= clojure.lang.ExceptionInfo (type resp)))
+    (is (= ExceptionInfo (type resp)))
     (is (str/includes? resp "Insufficient permissions"))))
 
 (deftest retract-todo-own
@@ -248,4 +269,5 @@
   (retract-todo-auth-failure)
   (query-auth)                                              ;; verify db cache
   (retract-todo-own)
-  (retract-todo-system-admin))
+  (retract-todo-system-admin)
+  (test-restrict-collection))

@@ -1,7 +1,8 @@
 (ns fluree.db.ledger.txgroup.txgroup-proto
   (:require [clojure.string :as str]
             [fluree.db.util.core :as util]
-            [clojure.core.async :as async]))
+            [clojure.core.async :as async]
+            [fluree.db.util.log :as log]))
 
 (set! *warn-on-reflection* true)
 
@@ -199,6 +200,9 @@ or this server is not responsible for this ledger, will return false. Else true 
 (defn ledger-info
   "Returns all info we have on given ledger."
   [group network ledger-id]
+  (log/debug "Getting ledger-info at key-path"
+             [:networks network :dbs ledger-id]
+             "from:" (-local-state group))
   (kv-get-in group [:networks network :dbs ledger-id]))
 
 (defn ledgers-info-map
@@ -235,8 +239,8 @@ or this server is not responsible for this ledger, will return false. Else true 
 
 (defn new-ledger-async
   "Registers new network to be created by leader."
-  [group network ledger-id cmd-id signed-cmd]
-  (let [command [:new-db network ledger-id cmd-id signed-cmd]]
+  [group network ledger-id cmd-id signed-cmd owners]
+  (let [command [:new-db network ledger-id cmd-id signed-cmd owners]]
     (-new-entry-async group command)))
 
 (defn find-all-dbs-to-initialize
@@ -303,12 +307,13 @@ or this server is not responsible for this ledger, will return false. Else true 
 (defn queue-command-async
   "Writes a new tx to the queue"
   [group network ledger-id command-id command]
-  (kv-assoc-in-async group [:cmd-queue network command-id] {:command command
-                                                            :size (count (:cmd command))
-                                                            :id command-id
-                                                            :network network
-                                                            :dbid ledger-id
-                                                            :instant (System/currentTimeMillis)}))
+  (kv-assoc-in-async group [:cmd-queue network command-id]
+                     {:command command
+                      :size (count (:cmd command))
+                      :id command-id
+                      :network network
+                      :dbid ledger-id
+                      :instant (System/currentTimeMillis)}))
 
 
 ;; Block commands

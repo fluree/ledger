@@ -27,7 +27,7 @@
   "Does sanity checks for a new command and if valid, propagates it.
   Returns command-id/txid upon successful persistence to network, else
   throws."
-  [{:keys [conn] :as system}  {:keys [cmd sig] :as signed-cmd}]
+  [{:keys [conn] :as system}  {:keys [cmd sig signed] :as signed-cmd}]
   (when-not (and (string? cmd) (string? sig))
     (throw-invalid-command (str "Command map requires keys of 'cmd' and 'sig', with a json string command map and signature of the command map respectively. Provided: "
                                 (pr-str signed-cmd))))
@@ -41,11 +41,12 @@
         _        (when-not cmd-type (throw-invalid-command "No 'type' key in command, cannot process."))
         ;; verify signature before passing along
         auth-id  (try
-                   (crypto/account-id-from-message cmd sig)
+                   (crypto/account-id-from-message (or signed cmd) sig)
                    (catch Exception _ (throw-invalid-command "Invalid signature on command.")))]
-    (log/trace "Processing signed command:" (pr-str cmd-data))
+    (log/trace "Processing signed command:" (pr-str signed-cmd))
     (case cmd-type
       :tx (let [{:keys [db tx deps expire nonce]} cmd-data
+                _ (log/trace "tx command:" cmd-data)
                 _ (when-not db (throw-invalid-command "No db specified for transaction."))
                 [network dbid] (session/resolve-ledger conn db)]
 
@@ -94,14 +95,15 @@
             result)
 
           :block
-          (let [query  (assoc qry :opts (assoc (:opts qry) :meta meta :auth auth-id))
+          (let [query  (update qry :opts merge {:meta meta, :auth auth-id})
                 result (async/<!! (fdb/block-query-async conn db query))
                 _      (when (instance? clojure.lang.ExceptionInfo result)
                          (throw result))]
             result)
 
           :history
-          (let [result (async/<!! (fdb/history-query-async db* (assoc-in qry [:opts meta] meta)))
+          (let [query  (update qry :opts merge {:meta meta})
+                result (async/<!! (fdb/history-query-async db* query))
                 _      (when (instance? clojure.lang.ExceptionInfo result)
                          (throw result))]
             result)
@@ -111,20 +113,20 @@
                           {:status 400
                            :error  :db/invalid-action}))))
 
-      :new-db (let [{:keys [db snapshot auth expire nonce]} cmd-data
-                    [network dbid] (if (sequential? db) db (str/split db #"/"))]
+      :new-db (let [{:keys [db snapshot auth expire nonce owners]} cmd-data
+                    [network ledger-id] (if (sequential? db) db (str/split db #"/"))]
                 (when (and auth auth-id (not= auth auth-id))
                   (throw-invalid-command (str "New-db command was signed by auth: " auth-id " but the command specifies auth: " auth ". They must be the same if auth is provided.")))
                 (when-not (re-matches #"^[a-z0-9-]+$" network)
                   (throw-invalid-command (str "Invalid network name: " network)))
-                (when-not (re-matches #"^[a-z0-9-]+$" dbid)
-                  (throw-invalid-command (str "Invalid db name: " dbid)))
+                (when-not (re-matches #"^[a-z0-9-]+$" ledger-id)
+                  (throw-invalid-command (str "Invalid ledger name: " ledger-id)))
                 (when (and expire (or (not (pos-int? expire)) (< expire (System/currentTimeMillis))))
                   (throw-invalid-command (format "Transaction 'expire', when provided, must be epoch millis and be later than now. expire: %s current time: %s" expire (System/currentTimeMillis))))
                 (when (and nonce (not (int? nonce)))
                   (throw-invalid-command (format "Nonce, if provided, must be an integer. Provided: %s" nonce)))
-                (when ((set (txproto/all-ledger-list (:group system))) [network dbid])
-                  (throw-invalid-command (format "Cannot create a new db, it already exists or existed: %s" db)))
+                (when ((set (txproto/all-ledger-list (:group system))) [network ledger-id])
+                  (throw-invalid-command (format "Cannot create a new ledger, it already exists or existed: %s" db)))
                 (when snapshot
                   (let [storage-exists? (-> system :conn :storage-exists)
                         exists?         (storage-exists? (str snapshot))]
@@ -138,7 +140,7 @@
 
                 ;; TODO - do more validation, reconcile with "unsigned-cmd" validation before this
 
-                (async/<!! (txproto/new-ledger-async (:group system) network dbid id signed-cmd))
+                (async/<!! (txproto/new-ledger-async (:group system) network ledger-id id signed-cmd owners))
 
                 id)
       :delete-db (let [{:keys [db]} cmd-data
@@ -188,22 +190,26 @@
   "Returns basic ledger information for incoming requests."
   [system network dbid]
   (if (and network dbid)
-    (-> (txproto/ledger-info (:group system) network dbid)
-        (select-keys [:indexes :block :index :status]))
+    (do
+      (log/debug "Get ledger-info request for" (str network "/" dbid))
+      (-> (txproto/ledger-info (:group system) network dbid)
+          (select-keys [:indexes :block :index :status])))
     {}))
 
 (defn ledger-stats
   "Returns more detailed statistics about ledger than base ledger-info"
   [system ledger success! error!]
   (async/go
+    (log/debug "Got ledger-stats req for" ledger)
     (let [[network dbid] (session/resolve-ledger (:conn system) ledger)]
+      (log/debug "ledger-stats resolved ledger" ledger)
       (if-not (and network dbid)
         (error! (ex-info (str "Invalid ledger: " ledger)
                          {:status 400 :error :db/invalid-ledger}))
         (let [ledger-info (ledger-info system network dbid)
-              db-stat     (when (and (seq ledger-info)      ;; skip stats if db is still initializing
+              _           (log/debug "Ledger info for" ledger "-" ledger-info)
+              db-stat     (when (and (seq ledger-info) ; skip stats if db is still initializing
                                      (not= :initialize (:status ledger-info)))
-
                             (let [session-db (async/<! (session/db (:conn system) ledger {}))]
                               (if (util/exception? session-db)
                                 session-db
@@ -351,7 +357,12 @@
                                               (let [{:keys [network dbid]} cmd-data]
                                                 [network dbid]))
                              private-key (if (nil? jwt)
-                                           (txproto/get-shared-private-key (:group system) network dbid)
+                                           (let [pk (txproto/get-shared-private-key
+                                                      (:group system) network dbid)]
+                                             (if pk
+                                               (log/debug "Signing unsigned cmd with default private key")
+                                               (log/error "No private key found to sign unsigned cmd"))
+                                             pk)
                                            (let [jwt-options (-> system :conn :meta :password-auth)
                                                  {:keys [secret]} jwt-options
                                                  _           (token-auth/verify-jwt secret jwt)]
@@ -360,7 +371,8 @@
                              expire      (or expire (+ 60000 nonce))
                              cmd-data*   (assoc cmd-data :expire expire :nonce nonce)]
                          (when (< expire (System/currentTimeMillis))
-                           (throw-invalid-command (format "Command expired. Expiration: %s. Current time: %s." expire (System/currentTimeMillis))))
+                           (throw-invalid-command (format "Command expired. Expiration: %s. Current time: %s."
+                                                          expire (System/currentTimeMillis))))
                          (when (and (= :new-db cmd-type)
                                     (txproto/ledger-exists? (:group system) network dbid))
                            (throw-invalid-command (str "The database already exists or existed: " db)))
@@ -385,7 +397,7 @@
          :ledger-info (let [[network dbid] (session/resolve-ledger (:conn system) arg)]
                         (success! (ledger-info system network dbid)))
 
-         :ledger-stats (future                              ;; as thread/future - otherwise if this needs to load new db will have new requests and will permanently block
+         :ledger-stats (future ; as thread/future - otherwise if this needs to load new db will have new requests and will permanently block
                          (ledger-stats system arg success! error!))
 
          ;; TODO - change command and all internal calls to :ledger-list, deprecate :db-list

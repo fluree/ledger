@@ -97,6 +97,12 @@ target/fluree-ledger.jar: resources/adminUI $(SOURCES) $(RESOURCES)
 
 jar: target/fluree-ledger.jar
 
+unit-test:
+	clojure -X:test :excludes '[:integration]'
+
+integration-test:
+	clojure -X:test :includes '[:integration]'
+
 test:
 	clojure -X:test
 
@@ -117,9 +123,9 @@ ifneq ($(strip $(shell which git)),)
 endif
 
 docker-image:
-	docker buildx build --platform 'linux/amd64,linux/arm64' --load -t fluree/ledger:$(VERSION) .
+	docker buildx build --load -t fluree/ledger:$(VERSION) .
 ifdef git_tag
-	docker buildx build --platform 'linux/amd64,linux/arm64' --load -t fluree/ledger:$(git_tag) .
+	docker buildx build --load -t fluree/ledger:$(git_tag) .
 endif
 
 docker-push:
