@@ -111,7 +111,7 @@ eastwood:
 
 ci: test eastwood
 
-target/fluree-ledger.standalone.jar: resources/adminUI $(SOURCES) $(RESOURCES)
+target/fluree-ledger.standalone.jar: resources/adminUI deps.edn $(SOURCES) $(RESOURCES)
 	clojure -X:uberjar
 
 uberjar: target/fluree-ledger.standalone.jar
