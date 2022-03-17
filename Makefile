@@ -66,10 +66,10 @@ deps: deps.edn
 	clojure -Stree
 
 package-lock.json: package.json
-	npm install
+	npm install && touch package-lock.json
 
 node_modules/%: package.json package-lock.json
-	npm install
+	npm install && touch $@
 
 resources/adminUI: | node_modules/@fluree/admin-ui/build
 	ln -nsf ../$| $@
