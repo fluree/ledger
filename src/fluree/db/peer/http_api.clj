@@ -509,14 +509,14 @@
 (defn wrap-action-handler
   "Wraps a db request to facilitate proper response format"
   [system {:keys [headers body params remote-addr] :as request}]
-  (log/trace "wrap-action-handler received:" request)
+  (log/debug "wrap-action-handler received:" request)
   (let [{:keys [action network db]} params
         start           (System/nanoTime)
         ledger          (keyword network db)
         action*         (keyword action)
         body'           (when body (decode-body body :string))
         action-param    (some-> body' json/parse)
-        _               (log/trace "wrap-action-handler decoded body:"
+        _               (log/debug "wrap-action-handler decoded body:"
                                    action-param)
         auth-map        (auth-map system ledger request body')
         request-timeout (if-let [timeout (:request-timeout headers)]
