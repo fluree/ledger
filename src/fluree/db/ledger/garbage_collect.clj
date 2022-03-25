@@ -1,5 +1,6 @@
 (ns fluree.db.ledger.garbage-collect
-  (:require [fluree.db.storage.core :as storage]
+  (:require [clojure.core.async :refer [go]]
+            [fluree.db.storage.core :as storage]
             [clojure.tools.logging :as log]
             [clojure.string :as str]
             [fluree.db.util.async :refer [go-try <?]]
@@ -40,28 +41,28 @@
 (defn process
   "Collects garbage (deletes indexes) for any index point(s) between from-block and to-block.
   If from and to blocks are not specified, collects all index points except for current one."
-  ([conn network dbid]
-   (let [dbinfo     (txproto/ledger-info (:group conn) network dbid)
-         idx-points (-> (into #{} (keys (:indexes dbinfo)))
-                        ;; remove current index point
-                        (disj (:index dbinfo)))]
+  ([conn network ledger-id]
+   (let [ledger-info (txproto/ledger-info (:group conn) network ledger-id)
+         idx-points  (-> (into #{} (keys (:indexes ledger-info)))
+                         ;; remove current index point
+                         (disj (:index ledger-info)))]
      (if (empty? idx-points)
-       false                                                ;; nothing to garbage collect
-       (process conn network dbid (apply min idx-points) (apply max idx-points)))))
-  ([conn network dbid from-block to-block]
+       (go false) ;; nothing to garbage collect
+       (process conn network ledger-id (apply min idx-points) (apply max idx-points)))))
+  ([conn network ledger-id from-block to-block]
    (go-try
      (let [[from-block to-block] (if (> from-block to-block) ;; make sure from-block is smallest number
                                    [to-block from-block]
                                    [from-block to-block])
-           dbinfo                (txproto/ledger-info (:group conn) network dbid)
-           index-points          (-> (into #{} (keys (:indexes dbinfo)))
-                                     (disj (:index dbinfo))) ;; remove current index point
+           ledger-info           (txproto/ledger-info (:group conn) network ledger-id)
+           index-points          (-> (into #{} (keys (:indexes ledger-info)))
+                                     (disj (:index ledger-info))) ;; remove current index point
            filtered-index-points (->> index-points
                                       (filter #(<= from-block % to-block))
                                       ;; do smallest indexes first
                                       (sort))]
-       (log/info "Garbage collecting ledger " network "/" dbid " for index points: " filtered-index-points)
+       (log/info "Garbage collecting ledger " network "/" ledger-id " for index points: " filtered-index-points)
        (doseq [idx-point filtered-index-points]
-         (<? (process-index conn network dbid idx-point)))
-       (log/info "Done garbage collecting ledger " network "/" dbid " for index points: " filtered-index-points)
+         (<? (process-index conn network ledger-id idx-point)))
+       (log/info "Done garbage collecting ledger " network "/" ledger-id " for index points: " filtered-index-points)
        true))))
