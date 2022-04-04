@@ -2,7 +2,7 @@
             org.clojure/data.xml           {:mvn/version "0.2.0-alpha6"}
             com.fluree/alphabase           {:mvn/version "3.2.2"}
             com.fluree/db                  {:git/url "https://github.com/fluree/db.git"
-                                            :sha     "690c818e4b988a334a09470af9f1ab3ddb9bd291"}
+                                            :sha     "385a5ea931954885a638d8ebc075c75c6ba559b8"}
             com.fluree/raft                {:mvn/version "1.0.0-beta1"}
             com.fluree/crypto              {:mvn/version "0.3.8"}
 
