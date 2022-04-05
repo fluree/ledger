@@ -1,8 +1,10 @@
 (ns fluree.db.ledger.reindex
   (:require [fluree.db.util.log :as log]
             [fluree.db.storage.core :as storage]
+            [fluree.db.ledger.storage :as ledger-storage]
             [fluree.db.dbproto :as dbproto]
             [fluree.db.flake :as flake]
+            [fluree.db.index :as index]
             [fluree.db.ledger.indexing :as indexing]
             [fluree.db.session :as session]
             [fluree.db.constants :as const]
@@ -10,22 +12,19 @@
             [clojure.core.async :as async]
             [fluree.db.ledger.txgroup.txgroup-proto :as txproto]
             [fluree.db.util.async :refer [<? go-try]]
-            [fluree.db.ledger.bootstrap :as bootstrap])
-  (:import (fluree.db.flake Flake)))
+            [fluree.db.ledger.bootstrap :as bootstrap]
+            [fluree.db.ledger.garbage-collect :as gc]
+            [clojure.string :as str]))
 
 (set! *warn-on-reflection* true)
-
-;; 1) start from block 1
-;; 2) index each block
-
 
 (defn filter-collection
   [cid flakes]
   (let [min (flake/min-subject-id cid)
         max (flake/max-subject-id cid)]
-    (filter (fn [^Flake flake]
-              (and (>= (.-s flake) min)
-                   (<= (.-s flake) max)))
+    (filter (fn [flake]
+              (and (>= (flake/s flake) min)
+                   (<= (flake/s flake) max)))
             flakes)))
 
 
@@ -34,10 +33,10 @@
   [flakes pred-prop]
   (let [pred-flakes (filter-collection const/$_predicate flakes)
         prop-flake  (->> pred-flakes
-                         (filter #(= pred-prop (.-o ^Flake %)))
+                         (filter #(= pred-prop (flake/o %)))
                          first)]
     (when prop-flake
-      (flake/sid->i (.-s ^Flake prop-flake)))))
+      (-> prop-flake flake/s flake/sid->i))))
 
 
 (defn pred-type-sid
@@ -46,9 +45,9 @@
   (let [tags       (filter-collection const/$_tag flakes)
         tag-prefix "_predicate/type:"
         type-str   (str tag-prefix pred-type)
-        flake      (some #(when (= (.-o ^Flake %) type-str) %) tags)]
+        flake      (some #(when (= (flake/o %) type-str) %) tags)]
     (when flake
-      (.-s ^Flake flake))))
+      (flake/s flake))))
 
 
 (defn ref-preds
@@ -59,14 +58,14 @@
         ref-pred-props #{"_predicate/type:tag" "_predicate/type:ref"}
         ref-sids       (->> flakes
                             (filter-collection const/$_tag) ;; tags only
-                            (filter #(ref-pred-props (.-o ^Flake %)))
-                            (map #(.-s ^Flake %))
+                            (filter #(ref-pred-props (flake/o %)))
+                            (map #(flake/s %))
                             (into #{}))
         ref-preds      (->> flakes
                             (filter-collection const/$_predicate) ;; only include predicates
-                            (filter #(= type-pred-id (.-p ^Flake %))) ;; filter out just _predicate/type flakes
-                            (filter #(ref-sids (.-o ^Flake %))) ;; only those whose value is _predicate/type:tag or ref
-                            (map #(flake/sid->i (.-s ^Flake %))) ;; turn into pred-id
+                            (filter #(= type-pred-id (flake/p %))) ;; filter out just _predicate/type flakes
+                            (filter #(ref-sids (flake/o %))) ;; only those whose value is _predicate/type:tag or ref
+                            (map #(flake/sid->i (flake/s %))) ;; turn into pred-id
                             (into #{}))]
     ref-preds))
 
@@ -78,8 +77,8 @@
                              (map #(find-pred-prop flakes %))
                              (into #{}))
         index-pred-sids (->> (filter-collection const/$_predicate flakes)
-                             (filter #(find-sids (.-p ^Flake %)))
-                             (map #(.-s ^Flake %))
+                             (filter #(find-sids (flake/p %)))
+                             (map #(flake/s %))
                              (map flake/sid->i)
                              (into #{}))]
     ;; add in refs
@@ -93,10 +92,10 @@
   (let [ref-pred?   (ref-preds flakes)
         idx-pred?   (idx-preds flakes)
         opst-flakes (->> flakes
-                         (filter #(ref-pred? (.-p ^Flake %)))
+                         (filter #(ref-pred? (flake/p %)))
                          (into #{}))
         post-flakes (->> flakes
-                         (filter #(idx-pred? (.-p ^Flake %)))
+                         (filter #(idx-pred? (flake/p %)))
                          (into opst-flakes))
         size        (flake/size-bytes flakes)
         novelty     (:novelty blank-db)
@@ -106,7 +105,7 @@
                      :opst (into (:opst novelty) opst-flakes)
                      :tspo (into (:tspo novelty) flakes)
                      :size size}
-        t           (apply min (map #(.-t ^Flake %) flakes))]
+        t           (apply min (map #(flake/t %) flakes))]
     (assoc blank-db :block 1
                     :t t
                     :ecount bootstrap/genesis-ecount
@@ -149,6 +148,44 @@
          (txproto/write-index-point-async group network dbid index-point submission-server {})
          indexed-db)))))
 
+(defn stale-index-ids
+  [{:keys [conn network dbid] :as db} idx]
+  (go-try
+   (log/debug "Finding stale node for index" idx)
+   (let [{:keys [storage-list]} conn
+
+         root        (get db idx)
+         always      (constantly true)
+         error-ch    (async/chan)
+         id-ch       (->> (index/tree-chan conn root always always
+                                           1 (map :id) error-ch)
+                          (async/into #{}))
+         current-ids (async/alt!
+                       error-ch
+                       ([e] (throw e))
+
+                       id-ch
+                       ([ids] ids))
+         idx-name    (name idx)
+         files       (<? (->> [network dbid idx-name]
+                              (str/join "/")
+                              storage-list))]
+     (->> files
+          (map :name)
+          (remove #{idx-name})
+          (map (fn [f]
+                 (str/replace (str/join "_" [network dbid idx-name f])
+                              #"\.fdbd" "")))
+          (remove current-ids)))))
+
+(defn remove-stale-files
+  [{:keys [conn] :as db} idx]
+  (go-try
+   (log/info "Removing stale files for index" idx)
+   (let [stale-ids (<? (stale-index-ids db idx))]
+     (doseq [id stale-ids]
+       (log/trace "Deleting stale index node" id)
+       (<? (gc/delete-file-raft conn id))))))
 
 (defn reindex
   ([conn network dbid]
@@ -172,19 +209,23 @@
          (let [block-data (<? (storage/read-block conn network dbid block))]
            (if (nil? block-data)
              (do (log/info (str "-->> Reindex finished dbid: " dbid " block: " (dec block)))
-                 (if (> (get-in db [:novelty :size]) 0)
-                   (let [indexed-db        (async/<! (indexing/refresh db {:status  status
-                                                                           :message message
-                                                                           :ecount  ecount}))
-                         group             (-> indexed-db :conn :group)
-                         network           (:network indexed-db)
-                         dbid              (:dbid indexed-db)
-                         index-point       (get-in indexed-db [:stats :indexed])
-                         state-atom        (-> conn :group :state-atom)
-                         submission-server (get-in @state-atom [:_work :networks network])]
-                     (<? (txproto/write-index-point-async group network dbid index-point submission-server {}))
-                     indexed-db)                            ;; final index if any novelty
-                   db))
+                 (let [final-db (if (> (get-in db [:novelty :size]) 0)
+                                  (let [indexed-db        (async/<! (indexing/refresh db {:status  status
+                                                                                          :message message
+                                                                                          :ecount  ecount}))
+                                        group             (-> indexed-db :conn :group)
+                                        network           (:network indexed-db)
+                                        dbid              (:dbid indexed-db)
+                                        index-point       (get-in indexed-db [:stats :indexed])
+                                        state-atom        (-> conn :group :state-atom)
+                                        submission-server (get-in @state-atom [:_work :networks network])]
+                                    (<? (txproto/write-index-point-async group network dbid index-point submission-server {}))
+                                    indexed-db)                            ;; final index if any novelty
+                                  db)]
+                   (log/info "Removing stale index files")
+                   (doseq [idx index/types]
+                     (<? (remove-stale-files final-db idx)))
+                   final-db))
              (let [{:keys [flakes]} block-data
                    db*          (<? (dbproto/-with db block flakes {:reindex? true}))
                    novelty-size (get-in db* [:novelty :size])]
