@@ -108,7 +108,7 @@
       ; Are all the collection names what we expect?
       (is (= #{"_rule" "_fn" "nestedComponent" "_predicate" "_setting" "chat"
                "_auth" "_user" "person" "_shard" "_tag" "comment" "_role"
-               "_collection"}
+               "_collection" "_ctx"}
              collections)))))
 
 
@@ -157,7 +157,7 @@
 
       (is (= collections #{"_rule" "nestedComponent" "_fn" "_predicate"
                            "_setting" "chat" "_auth" "_user" "person" "_shard"
-                           "_tag" "comment" "_role" "_collection"}))
+                           "_tag" "comment" "_role" "_collection" "_ctx"}))
 
       ; Are some of the predicates we expect returned?
       (is (every? predicates ["comment/nestedComponent" "person/stringUnique"])))))
@@ -301,7 +301,7 @@
                   collections))
 
       (is (= #{"_rule" "_fn" "_predicate" "_setting" "_auth" "_user" "_shard"
-               "_tag" "_role" "_collection"}
+               "_tag" "_role" "_collection" "_ctx"}
              collection-names)))))
 
 
