@@ -35,7 +35,8 @@
             [fluree.db.meta :as meta]
             [fluree.db.storage.core :as storage-core]
             [fluree.db.ledger.transact.core :as tx-core]
-            [fluree.db.util.tx :as tx-util])
+            [fluree.db.util.tx :as tx-util]
+            [fluree.db.ledger.garbage-collect :as garbage-collect])
   (:import (java.time Instant)
            (java.net BindException URL)
            (fluree.db.flake Flake)
@@ -509,14 +510,14 @@
 (defn wrap-action-handler
   "Wraps a db request to facilitate proper response format"
   [system {:keys [headers body params remote-addr] :as request}]
-  (log/trace "wrap-action-handler received:" request)
+  (log/debug "wrap-action-handler received:" request)
   (let [{:keys [action network db]} params
         start           (System/nanoTime)
         ledger          (keyword network db)
         action*         (keyword action)
         body'           (when body (decode-body body :string))
         action-param    (some-> body' json/parse)
-        _               (log/trace "wrap-action-handler decoded body:"
+        _               (log/debug "wrap-action-handler decoded body:"
                                    action-param)
         auth-map        (auth-map system ledger request body')
         request-timeout (if-let [timeout (:request-timeout headers)]
@@ -720,6 +721,39 @@
     resp))
 
 
+(defn garbage-collect-ledger
+  [{:keys [conn] :as system} {:keys [body remote-addr] :as request}]
+  (let [body-str     (when body (decode-body body :string))
+        body'        (some-> body-str json/parse)
+        ledger-ident (or (:ledger/id body')
+                         (when-let [db-id (:db/id body')]
+                           (log/warn "db/id is deprecated in garbage-collect command. Please use ledger/id instead.")
+                           db-id)
+                         (throw
+                           (ex-info "ledger/id is required"
+                                    {:status 401, :error :db/invalid-command})))
+        [nw db] (str/split ledger-ident #"/")
+        ledger       (keyword nw db)
+        auth-map     (auth-map system ledger request body-str)
+        session      (session/session conn [nw db])
+        db*          (<?? (session/current-db session))
+        ;; TODO - root role just checks if the auth has a role with id 'root' this can
+        ;; be manipulated, so we need a better way of handling this.
+        _            (when-not (or (open-api? system)
+                                   (<?? (auth/root-role? db* (:auth auth-map))))
+                       (throw
+                         (ex-info
+                           (str "To garbage-collect a ledger you must be using an open API or an auth record with a root role.")
+                           {:status 401 :error, :db/invalid-auth})))
+        result       (<?? (garbage-collect/process conn nw db))
+        resp         {:status  200
+                      :headers {"Content-Type" "application/json; charset=utf-8"}
+                      :body    (json/stringify-UTF8 {(if result "garbage-collected" "no-garbage")
+                                                     (str nw "/" db)})}]
+    (log/info (str ledger ":garbage-collected" " [" (or resp 400) "] " remote-addr))
+    resp))
+
+
 (defn deserialize
   [serializer key data]
   (cond
@@ -893,6 +927,7 @@
     (compojure/GET "/fdb/dbs" request (get-ledgers system request))
     (compojure/POST "/fdb/new-db" request (new-ledger system request))
     (compojure/POST "/fdb/delete-db" request (delete-ledger system request))
+    (compojure/POST "/fdb/garbage-collect-ledger" request (garbage-collect-ledger system request))
     (compojure/POST "/fdb/:network/:db/pw/:action" request (password-handler system request))
     (compojure/POST "/fdb/:network/:db/:action" request (wrap-action-handler system request))
     (compojure/GET "/fdb/:network/:db/:action" request (wrap-action-handler system request))

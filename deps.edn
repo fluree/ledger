@@ -4,7 +4,7 @@
             com.fluree/db                  {:git/url "https://github.com/fluree/db.git"
                                             :sha     "f2563568a77475129079cfcb4a514f07c099c831"}
             com.fluree/raft                {:mvn/version "1.0.0-beta1"}
-            com.fluree/crypto              {:mvn/version "0.3.8"}
+            com.fluree/crypto              {:mvn/version "0.3.9"}
 
             ;; network comm
             net.async/async                {:mvn/version "0.1.1"}
