@@ -18,12 +18,6 @@
             [fluree.db.ledger.docs.query.graphql :as graphql]
             [fluree.db.ledger.docs.query.sql-query :as sql]
 
-            [fluree.db.ledger.docs.smart-functions.intro :as intro]
-            [fluree.db.ledger.docs.smart-functions.predicate-spec :as predicate-spec]
-            [fluree.db.ledger.docs.smart-functions.collection-spec :as collection-spec]
-            [fluree.db.ledger.docs.smart-functions.rule-example :as rule-example]
-            [fluree.db.ledger.docs.smart-functions.in-transactions :as in-transactions]
-
             [fluree.db.ledger.docs.transact.transactions :as transactions]
 
             [fluree.db.ledger.docs.identity.auth :as auth]
