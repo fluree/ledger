@@ -37,7 +37,12 @@
                       (io/copy xin xout)
                       (.toByteArray xout))
                     (catch FileNotFoundException _
-                      nil)))]
+                      nil)
+                    (catch Exception e
+                      (log/error e "Failed to read file at path" path
+                                 ". Retrying.")
+                      (throw e))))]
+    ;; Filestore reads can sometimes fail transiently for large databases
     (try-try-again {:sleep 100, :tries 3} read-fn path)))
 
 
