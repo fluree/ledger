@@ -28,7 +28,10 @@
         ;; config
         environ/environ                   {:git/url   "https://github.com/cap10morgan/environ.git"
                                            :sha       "32682e865e8248d9df09643d6321ca4259fdbc19"
-                                           :deps/root "environ"}}
+                                           :deps/root "environ"}
+
+        ;; retries
+        robert/bruce                      {:mvn/version "0.8.0"}}
 
  :paths ["src" "resources"]
 

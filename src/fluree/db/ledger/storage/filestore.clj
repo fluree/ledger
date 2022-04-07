@@ -3,7 +3,8 @@
             [clojure.tools.logging :as log]
             [clojure.core.async :as async]
             [fluree.db.ledger.storage :refer [key->unix-path]]
-            [fluree.db.ledger.storage.crypto :as crypto])
+            [fluree.db.ledger.storage.crypto :as crypto]
+            [robert.bruce :refer [try-try-again]])
   (:import (java.io ByteArrayOutputStream FileNotFoundException File)))
 
 (set! *warn-on-reflection* true)
@@ -29,14 +30,15 @@
 (defn read-file
   "Returns nil if file does not exist."
   [path]
-  (try
-    (with-open [xin  (io/input-stream path)
-                xout (ByteArrayOutputStream.)]
-      (io/copy xin xout)
-      (.toByteArray xout))
-    (catch FileNotFoundException _
-      nil)
-    (catch Exception e (throw e))))
+  (let [read-fn (fn [p]
+                  (try
+                    (with-open [xin  (io/input-stream p)
+                                xout (ByteArrayOutputStream.)]
+                      (io/copy xin xout)
+                      (.toByteArray xout))
+                    (catch FileNotFoundException _
+                      nil)))]
+    (try-try-again {:sleep 100, :tries 3} read-fn path)))
 
 
 (defn exists?
