@@ -97,15 +97,6 @@
     (is (contains? (first res) "person/_favArtists"))
     (is (vector? (get (first res) "person/_favArtists")))))
 
-(deftest analytical-where-clause-optional-option
-  (testing "Analytical query Optional option in Where clause")
-  (let [analytical-query     {:select "?person",
-                         :where [["$fdb" "?person" "person/fullName" "?fullName" {:optional true}]
-                                 ]}
-        db  (basic/get-db test/ledger-chat)
-        res (async/<!! (fdb/query-async db analytical-query))]
-    (is (coll? res))
-    (is (integer? (first res)))))
 
 (deftest analytical-where-clause-filter-option
   (testing "Analytical query Filter option in Where clause")
@@ -114,8 +105,7 @@
                                       [["$fdb"
                                         "?person"
                                         "person/favNums"
-                                        "?nums"
-                                        {:filter "(> ?nums 1000)"}]]}
+                                        "(> ?nums 1000)"]]}
 
         db  (basic/get-db test/ledger-chat)
         res (async/<!! (fdb/query-async db analytical-query))]
@@ -169,7 +159,6 @@
   ;(analytical-select-one-with-aggregate-sum)
   ;(analytical-select-one-with-aggregate-sample)
   (analytical-reverse-crawl-from-bound-variable)
-  (analytical-where-clause-optional-option)
   (analytical-where-clause-filter-option)
   (analytical-across-sources-db-blocks)
   ;(analytical-across-sources-wikidata)
