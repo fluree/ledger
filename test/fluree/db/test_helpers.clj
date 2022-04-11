@@ -147,10 +147,16 @@
   ([] (init-ledgers! system all-ledgers))
   ([ledgers] (init-ledgers! system ledgers))
   ([{:keys [conn] :as _system} ledgers]
-   (let [ledgers-with-opts (map #(if (map? %) % {:name %}) ledgers)]
-     (dorun
-       (for [{ledger :name, opts :opts} ledgers-with-opts]
-         (fdb/new-ledger-async conn ledger opts)))
+   (let [ledgers-with-opts (map #(if (map? %) % {:name %}) ledgers)
+         results (doall
+                   (for [{ledger :name, opts :opts} ledgers-with-opts]
+                     (fdb/new-ledger-async conn ledger opts)))]
+     ;; check for any immediate errors (like invalid names) in create requests
+     (when-let [result (some #(when (instance? Exception %) %)
+                             (map async/poll! results))]
+       (throw (ex-info (str "Error creating at least one test ledger: "
+                            (.getMessage result))
+                       {:cause result})))
      (wait-for-init conn (map :name ledgers-with-opts)))))
 
 
