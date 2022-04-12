@@ -156,7 +156,7 @@
      (when-let [result (some #(when (instance? Exception %) %)
                              (map async/poll! results))]
        (throw (ex-info (str "Error creating at least one test ledger: "
-                            (.getMessage result))
+                            (ex-message result))
                        {:cause result})))
      (wait-for-init conn (map :name ledgers-with-opts)))))
 
