@@ -210,7 +210,7 @@
            (if (nil? block-data)
              (do (log/info (str "-->> Reindex finished dbid: " dbid " block: " (dec block)))
                  (let [final-db (if (> (get-in db [:novelty :size]) 0)
-                                  (let [indexed-db        (async/<? (indexing/refresh db {:status  status
+                                  (let [indexed-db        (<? (indexing/refresh db {:status  status
                                                                                           :message message
                                                                                           :ecount  ecount}))
                                         group             (-> indexed-db :conn :group)
