@@ -94,9 +94,8 @@
           data  (-> (basic/get-db test/ledger-chat)
                     (fdb/sql-async query)
                     (async/<!!))]
-
-      ;; should be 4 items returned
-      (is (= 4 (count data)))))
+      ;; should be 2 items returned
+      (is (= 2 (count data)))))
 
   (testing "Select all persons older than 34 or who have a favNum less than 50"
     (let [query "select * from person where age > 34 or favNums < 50"

@@ -11,7 +11,6 @@
             [fluree.crypto :as crypto]
             [fluree.db.api :as fdb]
             [fluree.db.flake :as flake]
-            [fluree.db.query.fql :as fql]
             [fluree.db.dbproto :as dbproto]
             [fluree.db.session :as session]
             [fluree.db.graphdb :as graphdb]
@@ -36,7 +35,8 @@
             [fluree.db.storage.core :as storage-core]
             [fluree.db.ledger.transact.core :as tx-core]
             [fluree.db.util.tx :as tx-util]
-            [fluree.db.ledger.garbage-collect :as garbage-collect])
+            [fluree.db.ledger.garbage-collect :as garbage-collect]
+            [fluree.db.query.fql-resp :refer [flakes->res]])
   (:import (java.time Instant)
            (java.net BindException URL)
            (fluree.db.flake Flake)
@@ -376,7 +376,7 @@
                   res-map           (async/go-loop [vals' (vals flakes-by-subject)
                                                     acc []]
                                       (let [val' (first vals')
-                                            res  (<? (fql/flakes->res db-after
+                                            res  (<? (flakes->res db-after
                                                                       (volatile! {})
                                                                       (volatile! fuel-tot)
                                                                       1000000 {:wildcard? true, :select {}} val'))
