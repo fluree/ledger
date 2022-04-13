@@ -26,6 +26,13 @@
     (swap! memory-store dissoc key)
     true))
 
+(defn connection-storage-list
+  [_]
+  (go-try
+   (->> @memory-store
+        keys
+        (map (fn [k] {:name k})))))
+
 
 (defn close
   "Resets memory store."

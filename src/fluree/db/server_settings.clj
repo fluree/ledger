@@ -446,7 +446,7 @@
                                            file-ledger-storage-path)
                                    :s3 (s3store/connection-storage-list
                                          s3-conn s3-ledger-storage-prefix)
-                                   :memory nil)
+                                   :memory memorystore/connection-storage-list)
         serializer               (get-serializer settings)
         close-fn                 (case storage-type
                                    :file   (fn [] nil)
