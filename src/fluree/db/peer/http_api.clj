@@ -868,14 +868,21 @@
       (update response :headers merge header-map))))
 
 
-(defn deprecated-handler
-  [redirect-to]
+(defn deprecated-redirect-handler
+  [{:keys [uri]} redirect-to]
   {:status  308 ; like 301 but requires that the request method stay the same
    :headers {"Location"     redirect-to
              "Content-Type" "application/json"}
    :body    (json/stringify-UTF8
               {:error
-               (str "This endpoint has been deprecated. Please use " redirect-to " instead.")})})
+               (str "The " uri " endpoint has been deprecated. Please use " redirect-to " instead.")})})
+
+
+(defn deprecated-passthrough-handler
+  [{:keys [uri] :as request} passthrough-handler message]
+  (log/warn (str "The " uri " endpoint has been deprecated and will be removed in a future release."
+                 message))
+  (passthrough-handler request))
 
 
 (defn- api-routes
@@ -887,8 +894,6 @@
     (compojure/ANY "/fdb/health" request (server-health/health-handler system request))
     (compojure/ANY "/fdb/nw-state" request (server-health/nw-state-handler system request))
     (compojure/GET "/fdb/version" request (version-handler system request))
-    (compojure/POST "/fdb/add-server" request (add-server system request))
-    (compojure/POST "/fdb/remove-server" request (remove-server system request))
     (compojure/GET "/fdb/new-keys" request (keys-handler system request))
     (compojure/POST "/fdb/new-keys" request (keys-handler system request))
     (compojure/POST "/fdb/ledgers" request (get-ledgers system request))
@@ -900,10 +905,16 @@
     (compojure/POST "/fdb/:network/:ledger/:action" request (wrap-action-handler system request))
 
     ;; deprecations
-    (compojure/GET "/fdb/dbs" _request (deprecated-handler "/fdb/ledgers"))
-    (compojure/POST "/fdb/dbs" _request (deprecated-handler "/fdb/ledgers"))
-    (compojure/POST "/fdb/new-db" _request (deprecated-handler "/fdb/new-ledger"))
-    (compojure/POST "/fdb/delete-db" _request (deprecated-handler "/fdb/delete-ledger"))
+    (compojure/GET "/fdb/dbs" request (deprecated-redirect-handler request "/fdb/ledgers"))
+    (compojure/POST "/fdb/dbs" request (deprecated-redirect-handler request "/fdb/ledgers"))
+    (compojure/POST "/fdb/new-db" request (deprecated-redirect-handler request "/fdb/new-ledger"))
+    (compojure/POST "/fdb/delete-db" request (deprecated-redirect-handler request "/fdb/delete-ledger"))
+    (compojure/POST "/fdb/add-server" request (deprecated-passthrough-handler
+                                                request (partial add-server system)
+                                                "You should configure a raft group of 3 or 5 servers at startup."))
+    (compojure/POST "/fdb/remove-server" request (deprecated-passthrough-handler
+                                                   request (partial remove-server system)
+                                                   "You should configure a raft group of 3 or 5 servers at startup."))
 
     ;; fallback 404 for unknown API paths
     (compojure/ANY "/fdb/*" [] not-found)))
