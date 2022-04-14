@@ -256,7 +256,7 @@
                    ;; a new block is accepted only if
                    ;; (a) the submission-server is currently the worker for the network
                    ;; (b) the block-id is exactly one block increment from the previous block
-                   ;; if it contains a command-type of :new-db, we also establish a new db record
+                   ;; if it contains a command-type of :new-ledger, we also establish a new ledger record
                    :new-block (let [[_ network dbid block-map submission-server] command
                                     {:keys [block txns cmd-types]} block-map
                                     txids           (keys txns)
@@ -267,9 +267,9 @@
                                                       (= 1 block))
                                     server-allowed? (= submission-server
                                                        (get-in @state-atom [:_work :networks network]))]
-                                ;; if :new-db in cmd-types, then register new-db
-                                (when (cmd-types :new-db)
-                                  (update-state/register-new-dbs txns state-atom block-map))
+                                ;; if :new-ledger in cmd-types, then register new-ledger
+                                (when (cmd-types :new-ledger)
+                                  (update-state/register-new-ledgers txns state-atom block-map))
 
                                 (if (and is-next-block? server-allowed?)
                                   (try
@@ -304,11 +304,11 @@
 
 
                    ;; stages a new db to be created
-                   :new-db (update-state/stage-new-db command state-atom)
+                   :new-ledger (update-state/stage-new-db command state-atom)
 
-                   :delete-db (update-state/delete-db command state-atom)
+                   :delete-ledger (update-state/delete-db command state-atom)
 
-                   :initialized-db (update-state/initialized-db command state-atom)
+                   :initialized-ledger (update-state/initialized-db command state-atom)
 
                    :new-index (update-state/new-index command state-atom)
 
@@ -818,7 +818,7 @@
            (let [file-storage? (some? (-> conn :meta :file-storage-path))]
              (when file-storage?                            ; TODO: Support full-text indexes on s3 storage too
                (let [ledgers-info (txproto/ledgers-info-map conn)
-                     others       (-> group :raft :other-servers) ]
+                     others       (-> group :raft :other-servers)]
                  (when-let [exception (<! (filter-exception
                                            (dbsync2/consistency-full-check conn ledgers-info others)))]
                    (dbsync2/terminate! conn (str "Terminating due to file syncing error, "

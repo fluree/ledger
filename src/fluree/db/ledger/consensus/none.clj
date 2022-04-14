@@ -71,9 +71,9 @@
                                     is-next-block? (if current-block
                                                      (= block (inc current-block))
                                                      (= 1 block))]
-                                ;; if :new-db in cmd-types, then register new-db
-                                (when (cmd-types :new-db)
-                                  (update-state/register-new-dbs txns state-atom block-map))
+                                ;; if :new-ledger in cmd-types, then register new-ledger
+                                (when (cmd-types :new-ledger)
+                                  (update-state/register-new-ledgers txns state-atom block-map))
 
                                 (if is-next-block?
                                   (do
@@ -94,9 +94,9 @@
                                                :state-dump     @state-atom}) false)))
 
                    ;; stages a new db to be created
-                   :new-db (update-state/stage-new-db entry state-atom)
+                   :new-ledger (update-state/stage-new-db entry state-atom)
 
-                   :initialized-db (update-state/initialized-db entry state-atom)
+                   :initialized-ledger (update-state/initialized-db entry state-atom)
 
                    :new-index (update-state/new-index entry state-atom)
 

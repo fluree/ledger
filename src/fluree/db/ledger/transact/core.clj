@@ -429,9 +429,9 @@
 (defn ->tx-state
   [db block-instant {:keys [auth auth-sid authority authority-sid tx-permissions txid cmd sig nonce type] :as tx-map}]
   (let [tx-type   (keyword type)
-        tx        (case tx-type                             ;; command type is either :tx or :new-db
+        tx        (case tx-type                             ;; command type is either :tx or :new-ledger
                     :tx (:tx tx-map)
-                    :new-db (tx-util/create-new-db-tx tx-map))
+                    :new-ledger (tx-util/create-new-ledger-tx tx-map))
         db-before (cond-> db
                           tx-permissions (assoc :permissions tx-permissions))]
     {:db-before        db-before
@@ -480,7 +480,6 @@
      :validate-fn      (atom {:queue   (list) :cache {}
                               ;; need to track respective flakes for predicates (for tx-spec) and subject changes (collection-specs)
                               :tx-spec nil :c-spec nil})}))
-
 
 
 (defn resolve-temp-flakes

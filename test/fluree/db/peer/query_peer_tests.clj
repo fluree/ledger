@@ -39,14 +39,14 @@
                             :fdb-storage-type       "memory"
                             :fdb-consensus-type     "in-memory"})]
     (testing "can create a ledger"
-      (let [new-ledger1       @(http/post (str "http://localhost:" query-port "/fdb/new-db")
+      (let [new-ledger1       @(http/post (str "http://localhost:" query-port "/fdb/new-ledger")
                                           {:headers {"content-type" "application/json"}
                                            :body    (json/stringify {:db/id "test/test1"})})
-            new-ledger2       @(http/post (str "http://localhost:" ledger-port "/fdb/new-db")
+            new-ledger2       @(http/post (str "http://localhost:" ledger-port "/fdb/new-ledger")
                                           {:headers {"content-type" "application/json"}
                                            :body    (json/stringify {:db/id "test/test2"})})
-            ledger-list-resp1 @(http/post (str "http://localhost:" query-port "/fdb/dbs"))
-            ledger-list-resp2 @(http/post (str "http://localhost:" ledger-port "/fdb/dbs"))
+            ledger-list-resp1 @(http/post (str "http://localhost:" query-port "/fdb/ledgers"))
+            ledger-list-resp2 @(http/post (str "http://localhost:" ledger-port "/fdb/ledgers"))
             ;; wait for initialization!
             _                 (Thread/sleep 2000)
             ledger1-ready?    @(http/post (str "http://localhost:" query-port "/fdb/test/test1/ledger-stats"))

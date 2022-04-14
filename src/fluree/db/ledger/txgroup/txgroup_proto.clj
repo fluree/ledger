@@ -226,7 +226,7 @@ or this server is not responsible for this ledger, will return false. Else true 
                                     :fork      fork
                                     :forkBlock (when fork block)
                                     :index     index})
-        command [:initialized-db cmd-id network ledger-id status]]
+        command [:initialized-ledger cmd-id network ledger-id status]]
     (-new-entry-async group command)))
 
 (defn lowercase-all-names
@@ -236,7 +236,7 @@ or this server is not responsible for this ledger, will return false. Else true 
 (defn new-ledger-async
   "Registers new network to be created by leader."
   [group network ledger-id cmd-id signed-cmd]
-  (let [command [:new-db network ledger-id cmd-id signed-cmd]]
+  (let [command [:new-ledger network ledger-id cmd-id signed-cmd]]
     (-new-entry-async group command)))
 
 (defn find-all-dbs-to-initialize

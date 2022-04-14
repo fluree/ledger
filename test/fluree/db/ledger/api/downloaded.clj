@@ -51,14 +51,15 @@
           body          (-> schema-res :body bs/to-string json/parse)
           body-keys     (keys body)]
 
-      (is (= 200 status))
+      (is (= 200 status)
+          (str "Response: " (pr-str schema-res)))
 
       (is (test/contains-many? schema-res :opts :body :headers :status))
 
-      (is (map #(#{:tx-subid :tx :txid :authority :auth :signature :tempids
-                   :block :hash :fuel-remaining :time :fuel :status :block-bytes
-                   :timestamp :flakes})
-               body-keys))
+      (is (every? #{:t :id :authority :auth :signature :tempids
+                    :block :hash :fuel-remaining :time :fuel :status :bytes
+                    :timestamp :flakes :instant :type :duration}
+                  body-keys))
 
       (is (= 2 (:block body)))
 
@@ -72,21 +73,21 @@
 
 (deftest new-people-comments-chats-auth
   (testing "Add auth, roles, rules to test.two"
-    (let [filename      "../test/fluree/db/ledger/Resources/ChatAltVersion/people-comments-chats-auth.edn"
-          tx            (edn/read-string (slurp (io/resource filename)))
-          new-data-res  @(http/post (str endpoint-url "transact") (standard-request tx))
-          status        (:status new-data-res)
-          body          (-> new-data-res :body bs/to-string json/parse)
-          bodyKeys      (keys body)]
+    (let [filename     "../test/fluree/db/ledger/Resources/ChatAltVersion/people-comments-chats-auth.edn"
+          tx           (edn/read-string (slurp (io/resource filename)))
+          new-data-res @(http/post (str endpoint-url "transact") (standard-request tx))
+          status       (:status new-data-res)
+          body         (-> new-data-res :body bs/to-string json/parse)
+          body-keys    (keys body)]
 
-      (is (= 200 status))
+      (is (= 200 status)
+          (str "Response: " (pr-str new-data-res)))
 
-      ; The keys in the response are -> :opts :body :headers :status
       (is (test/contains-many? new-data-res :opts :body :headers :status))
 
-      ; The keys in the body are :tempids :block :hash :time :status :block-bytes :timestamp :flakes
-      (is (not (empty? (remove nil? (map #(#{:tempids :block :hash :fuel-remaining :time :fuel :status :block-bytes :timestamp :flakes} %)
-                                         bodyKeys)))))
+      (is (every? #{:t :tempids :block :hash :instant :type :duration :fuel
+                    :auth :status :id :bytes :timestamp :flakes}
+                  body-keys))
 
       ; the tempids should be _auth$chatUser, _auth$temp, comment$1 -> 12
       ; chat$1 -> 13, nestedComponent$1 ->12, _user$jdoe, :_user$zsmith,
@@ -597,13 +598,13 @@
 
 
 
-;; ENDPOINT TEST: /new-db
+;; ENDPOINT TEST: /new-ledger
 
 
 (deftest create-database-test*
   (testing "Creating a new database"
     (let [new-database-body {:db/id "test/three"}
-          res               @(http/post (str endpoint-url-short "new-db") (standard-request new-database-body))
+          res               @(http/post (str endpoint-url-short "new-ledger") (standard-request new-database-body))
           body              (-> res :body bs/to-string json/parse)]
 
       (is (= 200 (:status res)))
@@ -678,25 +679,26 @@
             network' (keyword network)
             db'      (keyword db)
             status   (some-> body :raft :networks first network' :dbs db' :status)]
-      (if (= "ready" status)
-        true
-        (do
-          (Thread/sleep 200)
-          (recur (dec counter))))))))
+        (if (= "ready" status)
+          true
+          (do
+            (Thread/sleep 200)
+            (recur (dec counter))))))))
 
-;; ENDPOINT TEST: signed /delete-db request
+;; ENDPOINT TEST: signed /delete-ledger request
 (deftest delete-ledger-tests
   (testing "delete ledger - open api"
     (let [network      "deleteme"
           db-id        "one"
           ledger-id (str network "/" db-id)
-          new-db-res   @(http/post (str endpoint-url-short "new-db") (standard-request {:db/id ledger-id}))
+          new-db-res   @(http/post (str endpoint-url-short "new-ledger")
+                                   (standard-request {:db/id ledger-id}))
           new-db-body  (-> new-db-res :body bs/to-string json/parse)]
       (is (= 200 (:status new-db-res)))
       (is (string? new-db-body))
       (is (= 64 (count new-db-body)))
       (when (wait-for-db network db-id 100)
-        (let [res  @(http/post (str endpoint-url-short "delete-db")
+        (let [res  @(http/post (str endpoint-url-short "delete-ledger")
                                (standard-request {:db/id ledger-id}))
               body (some-> res :body bs/to-string json/parse)]
           (is (= 200 (:status res)))
