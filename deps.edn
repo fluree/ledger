@@ -2,7 +2,7 @@
             org.clojure/data.xml           {:mvn/version "0.2.0-alpha6"}
             com.fluree/alphabase           {:mvn/version "3.2.2"}
             com.fluree/db                  {:git/url "https://github.com/fluree/db.git"
-                                            :sha     "af57b5dfdbfae96475a29d2ace41f7b61ba3ed3f"}
+                                            :sha     "77c6702a0f9d01376ec658c7b7ede2108b74af17"}
             com.fluree/raft                {:mvn/version "1.0.0-beta1"}
             com.fluree/crypto              {:mvn/version "0.3.9"}
 
@@ -29,7 +29,10 @@
             ;; config
             environ/environ                {:git/url   "https://github.com/cap10morgan/environ.git"
                                             :sha       "32682e865e8248d9df09643d6321ca4259fdbc19"
-                                            :deps/root "environ"}}
+                                            :deps/root "environ"}
+
+            ;; retries
+            robert/bruce                   {:mvn/version "0.8.0"}}
 
  :paths    ["src" "resources"]
 

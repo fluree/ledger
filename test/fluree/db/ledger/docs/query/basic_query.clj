@@ -178,7 +178,7 @@
   (testing "Select with groupBy")
   (let [base-query {:select {"?person" ["handle", "favNums"]}
                     :where  [["?person" "person/handle" "?handle"]]
-                    :orderBy ["ASC" "?handle"]}
+                    :orderBy ["ASC" "handle"]}
         groupBy-query {:select ["?handle", "(as (avg ?nums) avg)"],
                        :where [["?person", "person/handle", "?handle"],
                                ["?person", "person/favNums", "?nums"]],
@@ -192,27 +192,27 @@
         db         (basic/get-db test/ledger-chat)
         ; groupBy on favNums excludes any entries without a favNum
         ; exclude these from base set for validation purposes
-        base-res   (->> (async/<!! (fdb/query-async db base-query))
-                        (reduce-kv (fn [m k v]
-                                     (if-let [favNums (get v "favNums")]
-                                       (assoc m (get v "handle")
-                                                (merge v
-                                                       {:index k
-                                                        :count (count favNums)
-                                                        :avg (average favNums)
-                                                        :avg-dec (average-decimal favNums)}))
-                                       m))
-                                   {}))
+        base-res     (async/<!! (fdb/query-async db base-query))
+        base-res*    (reduce-kv (fn [m k v]
+                                (if-let [favNums (get v "favNums")]
+                                  (assoc m (get v "handle")
+                                           (merge v
+                                                  {:index k
+                                                   :count (count favNums)
+                                                   :avg (average favNums)
+                                                   :avg-dec (average-decimal favNums)}))
+                                  m))
+                              {} base-res)
         groupBy-res  (async/<!! (fdb/query-async db groupBy-query))
         groupBy-res' (async/<!! (fdb/query-async db groupBy-query'))]
 
     ; validate string groupBy
     (is (not= clojure.lang.ExceptionInfo (type groupBy-res)))
-    (is (= (-> groupBy-res keys count) (-> base-res keys count))) ;validate # of handles - groupBy is a subset
+    (is (= (-> groupBy-res keys count) (-> base-res* keys count))) ;validate # of handles - groupBy is a subset
     (is (empty?
           (utils/without-nils
-            (loop [[k & r-k] (keys base-res)
-                     [v & r-v] (vals base-res)
+            (loop [[k & r-k] (keys base-res*)
+                     [v & r-v] (vals base-res*)
                      errs {}]
                 (if (or (nil? k) (empty k))
                   errs
@@ -238,11 +238,11 @@
 
     ;validate vector groupBy
     (is (not= clojure.lang.ExceptionInfo (type groupBy-res')))
-    (is (= (-> groupBy-res' keys count) (-> base-res keys count))) ;validate # of handles - groupBy is a subset
+    (is (= (-> groupBy-res' keys count) (-> base-res* keys count))) ;validate # of handles - groupBy is a subset
     (is (empty?
           (utils/without-nils
-            (loop [[k & r-k] (keys base-res)
-                   [v & r-v] (vals base-res)
+            (loop [[k & r-k] (keys base-res*)
+                   [v & r-v] (vals base-res*)
                    errs {}]
               (if (or (nil? k) (empty k))
                 errs

@@ -11,7 +11,6 @@
             [fluree.crypto :as crypto]
             [fluree.db.api :as fdb]
             [fluree.db.flake :as flake]
-            [fluree.db.query.fql :as fql]
             [fluree.db.dbproto :as dbproto]
             [fluree.db.session :as session]
             [fluree.db.graphdb :as graphdb]
