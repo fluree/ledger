@@ -10,7 +10,8 @@
             [fluree.db.util.json :as json]
             [org.httpkit.client :as http]
             [fluree.db.api.auth :as fdb-auth]
-            [fluree.db.ledger.txgroup.txgroup-proto :as txproto])
+            [fluree.db.ledger.txgroup.txgroup-proto :as txproto]
+            [clojure.string :as str])
   (:import (java.net ServerSocket)
            (java.util UUID)
            (java.io File)))
@@ -147,10 +148,16 @@
   ([] (init-ledgers! system all-ledgers))
   ([ledgers] (init-ledgers! system ledgers))
   ([{:keys [conn] :as _system} ledgers]
-   (let [ledgers-with-opts (map #(if (map? %) % {:name %}) ledgers)]
-     (dorun
-       (for [{ledger :name, opts :opts} ledgers-with-opts]
-         (fdb/new-ledger-async conn ledger opts)))
+   (let [ledgers-with-opts (map #(if (map? %) % {:name %}) ledgers)
+         results (doall
+                   (for [{ledger :name, opts :opts} ledgers-with-opts]
+                     (fdb/new-ledger-async conn ledger opts)))]
+     ;; check for any immediate errors (like invalid names) in create requests
+     (when-let [result (some #(when (instance? Exception %) %)
+                             (map async/poll! results))]
+       (throw (ex-info (str "Error creating at least one test ledger: "
+                            (ex-message result))
+                       {:cause result})))
      (wait-for-init conn (map :name ledgers-with-opts)))))
 
 
@@ -161,7 +168,10 @@
   Also takes an optional opts map that will be passed to
   fluree.db.api/new-ledger-async."
   [base-name & [opts]]
-  (let [name (str base-name "-" (UUID/randomUUID))]
+  (let [base-name* (if (str/includes? base-name "/")
+                     base-name
+                     (str "test/" base-name))
+        name (str base-name* "-" (UUID/randomUUID))]
     (init-ledgers! [{:name name, :opts opts}])
     name))
 

@@ -57,8 +57,10 @@
                               :body (json/stringify {:db/id ledger}))
           signed-create-req (http-sig/sign-request :post new-db-endpoint
                                                    create-req private)
-          {create-status :status} @(http/post new-db-endpoint
-                                              signed-create-req)
+
+          {create-status :status :as create-resp}
+          @(http/post new-db-endpoint signed-create-req)
+
           _                 (fdb/wait-for-ledger-ready
                               (:conn test/system) ledger)
           query-endpoint    (str endpoint ledger "/query")
@@ -70,9 +72,11 @@
                                                              query-endpoint $q
                                                              private)))
 
-          {owners-query-status :status, owners-query-body :body}
+          {owners-query-status :status, owners-query-body :body :as owners-query-resp}
           @(http/post query-endpoint owners-query)]
-      (is (every? #(= 200 %) [create-status owners-query-status]))
+      (is (every? #(= 200 %) [create-status owners-query-status])
+          (str "Responses were: create: " (pr-str create-resp)
+               " owners-query: " (pr-str owners-query-resp)))
       (is (= id (-> owners-query-body json/parse first :_auth/id)))))
 
   (testing "request signer can transact against new db (actually ledger) they create"
@@ -91,7 +95,7 @@
       (is (= 200 create-status))
       (let [[success? txn-response query-response]
             (transact-and-query-user? ledger private)]
-        (is success? (str "Transaction response: " (pr-str txn-response)
+        (is success? (str "Transaction response: " (pr-str txn-response) " "
                           "Query response: " (pr-str query-response))))))
 
   (testing "new db (ledger actually) is owned by owners specified in request"

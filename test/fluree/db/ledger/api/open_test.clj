@@ -20,7 +20,7 @@
 (defn- rand-str
   []
   (apply str
-         (take (+ 5 (rand-int 20))                          ;; at least 5 characters
+         (take (+ 5 (rand-int 20)) ;; at least 5 characters
                (repeatedly #(char (+ (rand 26) 65))))))
 
 (defn- get-unique-count
@@ -576,7 +576,7 @@
       (is (test/contains-every? tx-keys :auth :block :hash :fuel :status :bytes
                                 :flakes :instant :type :duration :id :t))
 
-      #_(is (< 100 (count flakes)))                         ; TODO: why?
+      #_(is (< 100 (count flakes))) ; TODO: why?
 
       (is (nil? tempids))
 
