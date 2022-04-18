@@ -3,6 +3,7 @@
             [fluree.db.test-helpers :as test]
             [fluree.db.ledger.docs.getting-started.basic-schema :as basic]
             [fluree.db.api :as fdb]
+            [fluree.db.api.auth :as fdb-auth]
             [clojure.core.async :as async]
             [clojure.string :as str]))
 
@@ -10,7 +11,7 @@
 
 ; Add new auth record with permissions and test
 (deftest viewPersonNoHandle
-  (let [{:keys [private public id]} (fdb/new-private-key)
+  (let [{:keys [private public id]} (fdb-auth/new-private-key)
         addAuth         [{:_id   "_auth"
                           :id    id
                           :roles ["_role$standardUser"]}
@@ -60,7 +61,7 @@
 
 (deftest createAuthority
   ;; TODO - sometimes fails, does this have to do with padding in crypto?
-  (let [{:keys [private public id]} (fdb/new-private-key)
+  (let [{:keys [private public id]} (fdb-auth/new-private-key)
         opts          {:timeout 240000}
         addAuth       [{:_id "_auth$authority"
                         :id  id}
