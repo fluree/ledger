@@ -36,7 +36,7 @@
 (defn split-flakes
   "Splits into n parts. "
   [flakes size]
-  (if (< size *overflow-bytes*)                             ;; shouldn't be called if this is the case, log warning and return unaffected
+  (if (< size *overflow-bytes*) ;; shouldn't be called if this is the case, log warning and return unaffected
     (do
       (log/warn "Split flakes called on flakes that are < *overflow-kb*" {:size size :overflow-kb *overflow-bytes*})
       [flakes])
@@ -59,7 +59,7 @@
             (if full?
               (recur r [] 0 segments*)
               (recur r curr* curr-size* segments*))
-            (if full?                                       ;; ensure if full? not exact, last segment gets added in properly
+            (if full? ;; ensure if full? not exact, last segment gets added in properly
               segments*
               (conj segments {:flakes curr* :size curr-size*}))))))))
 
@@ -82,17 +82,17 @@
   [children leaf-i t idx-novelty direction remove-preds]
   (go-try
     (let [next-node (if (= :next direction)
-                      (fn [n] (val (nth children (- leaf-i n)))) ;; original children, work left from current index
-                      (fn [n] (val (nth children (dec n))))) ;; new children, so immediate next node is (nth children 0) and so on
+                      (fn [n] (val (nth children (- leaf-i n)))) ; original children, work left from current index
+                      (fn [n] (val (nth children (dec n))))) ; new children, so immediate next node is (nth children 0) and so on
           end?      (if (= :next direction)
                       (fn [n]
                         (= 0 (- leaf-i n)))
-                      (let [prev-leaf-n (count children)]   ;; total count of previous leafs
+                      (let [prev-leaf-n (count children)] ; total count of previous leafs
                         (fn [n]
                           (= n prev-leaf-n))))]
       (loop [n   1
              his nil]
-        (let [combine-node (next-node n)                    ;; gets neighboring node (left or right) when n=1, second node when n=2, etc.
+        (let [combine-node (next-node n) ; gets neighboring node (left or right) when n=1, second node when n=2, etc.
               resolved     (<? (dbproto/-resolve-to-t combine-node t idx-novelty false remove-preds))
               history      (<? (dbproto/-resolve-history-range combine-node nil t idx-novelty))
               his*         (into history his)]
@@ -115,7 +115,7 @@
    (index-leaf conn network dbid node block t idx-novelty rhs old-children new-children leaf-i #{}))
   ([conn network dbid node block t idx-novelty rhs old-children new-children leaf-i remove-preds]
    (go-try
-     (let [resolved-ch     (dbproto/-resolve-to-t node t idx-novelty false remove-preds) ;; pull history and node in parallel
+     (let [resolved-ch     (dbproto/-resolve-to-t node t idx-novelty false remove-preds) ; pull history and node in parallel
            history-ch      (dbproto/-resolve-history-range node nil t idx-novelty)
            {:keys [config leftmost?]} node
            fflake          (:first node)
@@ -135,7 +135,7 @@
                   acc     (list)]
              (let [{:keys [flakes size]} (nth splits split-i)
                    first-flake     (if (zero? split-i)
-                                     fflake                 ;; don't change the node's existing first-flake, even if flake no longer exists to keep :rhs of left index segment consistent
+                                     fflake ; don't change the node's existing first-flake, even if flake no longer exists to keep :rhs of left index segment consistent
                                      (first flakes))
                    base-id         (str (util/random-uuid))
                    his-split       (get-history-in-range history first-flake rhs' comparator)
@@ -221,7 +221,7 @@
     (cond
       (and leftmost? rhs) (avl/subrange novelty < rhs)
       rhs (avl/subrange novelty >= first-flake < rhs)
-      leftmost? novelty                                     ;; at left and no rhs... all novelty applies
+      leftmost? novelty ; at left and no rhs... all novelty applies
       :else (avl/subrange novelty >= first-flake))
     (catch Exception e
       (log/error (str "Error indexing. Novelty subrange error: " (.getMessage e))
@@ -268,42 +268,42 @@
            children*  (loop [child-i   (dec child-n)
                              rhs       rhs
                              children* (empty children)]
-                        (if (< child-i 0)                   ;; at end of result set
+                        (if (< child-i 0) ;; at end of result set
                           children*
-                          (let [child              (val (nth children child-i))
-                                child-rhs          (:rhs child)
-                                _                  (when-not (or (= (dec child-i) child-n) (= child-rhs rhs))
-                                                     (throw (ex-info (str "Something went wrong. Child-rhs does not equal rhs: " {:child-rhs child-rhs :rhs rhs})
-                                                                     {:status 500
-                                                                      :error  :db/unexpected-error})))
-                                child-first        (:first child)
-                                novelty            (novelty-subrange idx-novelty child-first child-rhs (:leftmost? child))
-                                remove-preds?      (if remove-preds
-                                                     (let [child-first-pred (:p child-first)
-                                                           child-rhs-pred   (when child-rhs (:p child-rhs))]
-                                                       (reduce #(if (and (>= %2 child-first-pred)
-                                                                         (if child-rhs-pred
-                                                                           (<= %2 child-rhs-pred) true))
-                                                                  (conj %1 %2) %1) #{} remove-preds))
-                                                     #{})
-                                dirty?             (or (seq novelty) (seq remove-preds?))
+                          (let [child         (val (nth children child-i))
+                                child-rhs     (:rhs child)
+                                _             (when-not (or (= (dec child-i) child-n) (= child-rhs rhs))
+                                                (throw (ex-info (str "Something went wrong. Child-rhs does not equal rhs: " {:child-rhs child-rhs :rhs rhs})
+                                                                {:status 500
+                                                                 :error  :db/unexpected-error})))
+                                child-first   (:first child)
+                                novelty       (novelty-subrange idx-novelty child-first child-rhs (:leftmost? child))
+                                remove-preds? (if remove-preds
+                                                (let [child-first-pred (:p child-first)
+                                                      child-rhs-pred   (when child-rhs (:p child-rhs))]
+                                                  (reduce #(if (and (>= %2 child-first-pred)
+                                                                    (if child-rhs-pred
+                                                                      (<= %2 child-rhs-pred) true))
+                                                             (conj %1 %2) %1) #{} remove-preds))
+                                                #{})
+                                dirty?        (or (seq novelty) (seq remove-preds?))
                                 [new-nodes skip n] (if dirty?
                                                      (if at-leaf?
                                                        (<? (index-leaf conn network dbid child block t idx-novelty child-rhs children children* child-i remove-preds?))
                                                        [(<? (index-branch conn network dbid child idx-novelty block t child-rhs progress remove-preds?)) nil nil])
                                                      [[child] nil nil])
-                                new-rhs            (:first (first new-nodes))
-                                next-i             (if (= :next skip)
-                                                     (- child-i (inc n)) ;; already combined with at least the next left node, so skip
-                                                     (dec child-i))
-                                acc*               (cond-> (reduce #(assoc %1 (:first %2) %2) children* new-nodes)
-                                                           ;; if we had underflow and went right/:previous, we have to remove the previous node from children*
-                                                           (= :previous skip) (dissoc (key (first children*))))]
+                                new-rhs       (:first (first new-nodes))
+                                next-i        (if (= :next skip)
+                                                (- child-i (inc n)) ;; already combined with at least the next left node, so skip
+                                                (dec child-i))
+                                acc*          (cond-> (reduce #(assoc %1 (:first %2) %2) children* new-nodes)
+                                                      ;; if we had underflow and went right/:previous, we have to remove the previous node from children*
+                                                      (= :previous skip) (dissoc (key (first children*))))]
 
                             ;; add dirty node indexes to garbage
                             (when dirty?
                               (add-garbage (:id child) at-leaf? progress))
-                            (when skip                      ;; combined this node with nodes to the left or right, add those to garbage
+                            (when skip ;; combined this node with nodes to the left or right, add those to garbage
                               (case skip
                                 :previous (add-garbage (:id (val (first children*))) at-leaf? progress)
                                 ;; when going left/:next, could be multiple nodes if immediate left node was also empty
@@ -360,7 +360,7 @@
            db-dirty?           (or (some #(not-empty (get novelty %)) [:spot :psot :post :opst])
                                    remove-preds)
            novelty-size        (:size novelty)
-           progress            (atom {:garbage   []                ;; hold keys of old index segments we can garbage collect
+           progress            (atom {:garbage   [] ;; hold keys of old index segments we can garbage collect
                                       :size      novelty-size
                                       :completed 0})
            ^Instant start-time (Instant/now)]
@@ -371,7 +371,7 @@
                                                              :novelty-size novelty-size})
        (if-not db-dirty?
          db
-         (let [spot-ch    (index-root db progress :spot)    ;; indexes run in parallel
+         (let [spot-ch    (index-root db progress :spot) ;; indexes run in parallel
                psot-ch    (index-root db progress :psot)
                post-ch    (index-root db progress :post remove-preds)
                opst-ch    (index-root db progress :opst)
@@ -441,7 +441,7 @@
           (<? (txproto/write-index-point-async (-> db :conn :group) indexed-db))
           ;; updated-db might have had additional block(s) written to it, so instead
           ;; of using it, reload from disk.
-          (session/clear-db! session)                       ;; clear db cache to force reload
+          (session/clear-db! session) ;; clear db cache to force reload
           (async/put! pc indexed-db))))
     pc))
 
