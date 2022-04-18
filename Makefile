@@ -155,6 +155,7 @@ clean:
 	@# only delete contents of build dir if full delete fails (e.g. b/c we're mounting it as a Docker volume)
 	rm -rf build 2>/dev/null || rm -rf build/*
 	rm -rf target
+	rm -rf classes
 	rm -f resources/adminUI
 	rm -rf node_modules
 	rm -f pom.xml
