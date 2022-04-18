@@ -221,32 +221,32 @@
 
 
 (defn bootstrap-db
-  "Bootstraps a new db from a signed new-db message."
+  "Bootstraps a new db from a signed new-ledger message."
   [{:keys [conn group]} command]
   (go-try
     (let [{:keys [cmd sig]} command
-          txid          (crypto/sha3-256 cmd)
-          new-db-name   (-> cmd
-                            (json/parse)
-                            :db)
-          [network dbid] (if (sequential? new-db-name)
-                           new-db-name
-                           (str/split new-db-name #"/"))
-          _             (when (or (txproto/ledger-exists? group network dbid)
-                                  ;; also check for block 1 on disk as a precaution
-                                  (<? (storage/block conn network dbid 1)))
-                          (throw (ex-info (str "Ledger " network "/$" dbid " already exists! Create unsuccessful.")
-                                          {:status 500
-                                           :error  :db/unexpected-error})))
-          master-authid (crypto/account-id-from-message cmd sig)
-          block         (boostrap-memory-db conn [network dbid] {:master-auth-id master-authid :txid txid :cmd cmd :sig sig})
-          new-db        (:db block)
-          block-data    (dissoc block :db)
-          _             (<? (storage/write-block conn network dbid block-data))
+          txid            (crypto/sha3-256 cmd)
+          new-ledger-name (-> cmd
+                              (json/parse)
+                              :ledger)
+          [network dbid] (if (sequential? new-ledger-name)
+                           new-ledger-name
+                           (str/split new-ledger-name #"/"))
+          _               (when (or (txproto/ledger-exists? group network dbid)
+                                    ;; also check for block 1 on disk as a precaution
+                                    (<? (storage/block conn network dbid 1)))
+                            (throw (ex-info (str "Ledger " network "/$" dbid " already exists! Create unsuccessful.")
+                                            {:status 500
+                                             :error  :db/unexpected-error})))
+          master-authid   (crypto/account-id-from-message cmd sig)
+          block           (boostrap-memory-db conn [network dbid] {:master-auth-id master-authid :txid txid :cmd cmd :sig sig})
+          new-db          (:db block)
+          block-data      (dissoc block :db)
+          _               (<? (storage/write-block conn network dbid block-data))
           ;; todo - should create a new command to register new DB that first checks raft
-          _             (<? (txproto/register-genesis-block-async (:group conn) network dbid))
+          _               (<? (txproto/register-genesis-block-async (:group conn) network dbid))
           ;block-point-success? (async/<! (txproto/propose-new-block-async (:group conn) network dbid block-data))
-          indexed-db    (<? (indexing/index new-db))]
+          indexed-db      (<? (indexing/index new-db))]
       ;; write out new index point
       (<? (txproto/initialized-ledger-async (-> indexed-db :conn :group) txid (:network indexed-db) (:dbid indexed-db)
                                             (:block indexed-db) (:fork indexed-db) (get-in indexed-db [:stats :indexed])))

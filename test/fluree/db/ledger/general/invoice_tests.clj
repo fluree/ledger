@@ -91,7 +91,7 @@
           antonio-res (-> antonio
                           :auth
                           query-as
-                          (get-values-for-key "invoice/id"))   ]
+                          (get-values-for-key "invoice/id"))]
 
       (is (= #{"A-000" "B-000"} (set root-res)))
       (is (= #{"A-000"} (set scott-res)))

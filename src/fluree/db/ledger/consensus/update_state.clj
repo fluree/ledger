@@ -60,6 +60,7 @@
                                           state))))]
     (= swap-v (get-in new-state ks))))
 
+
 (defn max-in
   [command state-atom]
   (let [[_ ks proposed-v] command
@@ -72,11 +73,12 @@
                              current-val)))]
     (= proposed-v (get-in new-state ks))))
 
-(defn register-new-dbs
-  "Register new dbs. Part of state-machine. Updates state-atom, and publishes out :new-db on event-bus"
+
+(defn register-new-ledgers
+  "Register new ledgers. Part of state-machine. Updates state-atom, and publishes out :new-ledger on event-bus"
   [txns state-atom block-map]
   (let [init-db-status (->> txns
-                            (filter #(and (= :new-db (:type (val %)))
+                            (filter #(and (= :new-ledger (:type (val %)))
                                           (= 200 (:status (val %)))))
                             (map (fn [[_ tx-data]]
                                    (let [t             (:t tx-data)
@@ -89,8 +91,10 @@
                                                                 (.-o ^Flake %))
                                                              (:flakes block-map))
                                          orig-cmd-data (when orig-cmd (json/parse orig-cmd))
-                                         {:keys [db fork forkBlock]} orig-cmd-data
-                                         [network dbid] (when orig-cmd (if (sequential? db) db (str/split db #"/")))]
+                                         {:keys [ledger fork forkBlock]} orig-cmd-data
+                                         [network dbid] (when orig-cmd (if (sequential? ledger)
+                                                                         ledger
+                                                                         (str/split ledger #"/")))]
                                      [network dbid (util/without-nils
                                                      {:status    :initialize
                                                       :command   {:cmd orig-cmd
@@ -105,7 +109,7 @@
     ;; publish out new db
     (doseq [[network dbid db-status] init-db-status]
       ;; publish out new db events
-      (event-bus/publish :new-db [network dbid] db-status))))
+      (event-bus/publish :new-ledger [network dbid] db-status))))
 
 
 (defn stage-new-db

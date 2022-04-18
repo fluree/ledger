@@ -4,6 +4,7 @@
             [fluree.db.ledger.docs.getting-started.basic-schema :as basic]
             [fluree.db.ledger.api.downloaded :as downloaded]
             [fluree.db.api :as fdb]
+            [fluree.db.api.auth :as fdb-auth]
             [org.httpkit.client :as http]
             [clojure.core.async :as async]
             [fluree.db.util.json :as json]
@@ -28,7 +29,7 @@
 (defn add-keys-to-atom
   [n]
   (dotimes [k n]
-    (swap! key-maps assoc k (fdb/new-private-key))))
+    (swap! key-maps assoc k (fdb-auth/new-private-key))))
 
 
 (defn send-parse-request

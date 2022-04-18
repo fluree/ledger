@@ -207,11 +207,11 @@ or this server is not responsible for this ledger, will return false. Else true 
   [conn]
   (let [group-raft    (:group conn)
         current-state @(:state-atom group-raft)
-        db-list       (ledger-list* current-state)]
+        ledger-list   (ledger-list* current-state)]
     (mapv (fn [[network ledger]]
             (-> (ledger-info group-raft network ledger)
                 (assoc :network network :ledger ledger)))
-          db-list)))
+          ledger-list)))
 
 (defn update-ledger-status
   [group network ledger-id status-msg]
@@ -226,7 +226,7 @@ or this server is not responsible for this ledger, will return false. Else true 
                                     :fork      fork
                                     :forkBlock (when fork block)
                                     :index     index})
-        command [:initialized-db cmd-id network ledger-id status]]
+        command [:initialized-ledger cmd-id network ledger-id status]]
     (-new-entry-async group command)))
 
 (defn lowercase-all-names
@@ -236,7 +236,7 @@ or this server is not responsible for this ledger, will return false. Else true 
 (defn new-ledger-async
   "Registers new network to be created by leader."
   [group network ledger-id cmd-id signed-cmd]
-  (let [command [:new-db network ledger-id cmd-id signed-cmd]]
+  (let [command [:new-ledger network ledger-id cmd-id signed-cmd]]
     (-new-entry-async group command)))
 
 (defn find-all-dbs-to-initialize
