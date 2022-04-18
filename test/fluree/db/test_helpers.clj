@@ -4,9 +4,7 @@
             [fluree.db.server :as server]
             [fluree.db.api :as fdb]
             [fluree.db.server-settings :as setting]
-            [fluree.db.util.log :as log]
-            [fluree.db.ledger.txgroup.txgroup-proto :as txproto]
-            [clojure.string :as str])
+            [fluree.db.util.log :as log])
   (:import (java.net ServerSocket)))
 
 (defn get-free-port []
