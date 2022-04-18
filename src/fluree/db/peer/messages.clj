@@ -405,7 +405,6 @@
          :ledger-stats (future ;; as thread/future - otherwise if this needs to load new db will have new requests and will permanently block
                          (ledger-stats system arg success! error!))
 
-         ;; TODO - change command and all internal calls to :ledger-list, deprecate :db-list
          :ledger-list (let [response (txproto/ledger-list (:group system))]
                         (success! response))
 

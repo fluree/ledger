@@ -207,11 +207,11 @@ or this server is not responsible for this ledger, will return false. Else true 
   [conn]
   (let [group-raft    (:group conn)
         current-state @(:state-atom group-raft)
-        db-list       (ledger-list* current-state)]
+        ledger-list   (ledger-list* current-state)]
     (mapv (fn [[network ledger]]
             (-> (ledger-info group-raft network ledger)
                 (assoc :network network :ledger ledger)))
-          db-list)))
+          ledger-list)))
 
 (defn update-ledger-status
   [group network ledger-id status-msg]
