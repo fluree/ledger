@@ -6,8 +6,7 @@
             [fluree.db.event-bus :as event-bus]
             [fluree.db.util.json :as json]
             [fluree.db.util.log :as log]
-            [clojure.set :as set])
-  (:import (fluree.db.flake Flake)))
+            [clojure.set :as set]))
 
 (set! *warn-on-reflection* true)
 
@@ -82,12 +81,12 @@
            (flake/o %))
         flakes))
 
-(defn register-new-dbs
-  "Register new dbs. Part of state-machine. Updates state-atom, and publishes out :new-db on event-bus"
+(defn register-new-ledgers
+  "Register new ledgers. Part of state-machine. Updates state-atom, and publishes out :new-ledger on event-bus"
   [txns state-atom block-map]
   (let [init-db-status
         (->> txns
-             (filter #(and (= :new-db (:type (val %)))
+             (filter #(and (= :new-ledger (:type (val %)))
                            (= 200 (:status (val %)))))
              (map (fn [[_ tx-data]]
                     (let [efo           (partial extract-flake-object block-map
@@ -116,7 +115,7 @@
     ;; publish out new db
     (doseq [[network dbid db-status] init-db-status]
       ;; publish out new db events
-      (event-bus/publish :new-db [network dbid] db-status))))
+      (event-bus/publish :new-ledger [network dbid] db-status))))
 
 
 (defn stage-new-db

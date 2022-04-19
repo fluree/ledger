@@ -14,8 +14,8 @@
 
             ;; AWS S3 API
             com.cognitect.aws/api          {:mvn/version "0.8.539"}
-            com.cognitect.aws/endpoints    {:mvn/version "1.1.12.168"}
-            com.cognitect.aws/s3           {:mvn/version "820.2.1083.0"}
+            com.cognitect.aws/endpoints    {:mvn/version "1.1.12.192"}
+            com.cognitect.aws/s3           {:mvn/version "822.2.1109.0"}
 
             ;; web server
             http-kit/http-kit              {:mvn/version "2.5.3"}
@@ -24,7 +24,7 @@
             compojure/compojure            {:mvn/version "1.6.2"}
 
             ;; logging
-            ch.qos.logback/logback-classic {:mvn/version "1.2.10"}
+            ch.qos.logback/logback-classic {:mvn/version "1.2.11"}
 
             ;; config
             environ/environ                {:git/url   "https://github.com/cap10morgan/environ.git"
@@ -41,7 +41,7 @@
  :aliases
  {:mvn/group-id    com.fluree
   :mvn/artifact-id ledger
-  :mvn/version     "1.0.0-beta18"
+  :mvn/version     "1.0.1"
 
   :dev
   {:extra-paths ["dev", "test"]
@@ -107,7 +107,7 @@
 
   :coverage
   {:extra-paths ["test"]
-   :extra-deps  {cloverage/cloverage {:mvn/version "1.2.2"}}
+   :extra-deps  {cloverage/cloverage {:mvn/version "1.2.3"}}
    :main-opts   ["-m" "cloverage.coverage" "-p" "src" "-s" "test" "--test-ns-regex" "^fluree\\.db\\.ledger\\.ledger-test*$" "--output" "scanning_results/coverage"]}
 
   :eastwood
@@ -120,5 +120,5 @@
    :main-opts  ["-m" "antq.core" "--skip=github-action"]}
 
   :clj-kondo
-  {:extra-deps {clj-kondo/clj-kondo {:mvn/version "2022.02.09"}}
+  {:extra-deps {clj-kondo/clj-kondo {:mvn/version "2022.04.08"}}
    :main-opts  ["-m" "clj-kondo.main" "--lint" "src" "--config" ".clj-kondo/config.edn"]}}}

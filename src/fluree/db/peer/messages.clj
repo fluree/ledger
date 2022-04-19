@@ -45,40 +45,39 @@
                    (catch Exception _ (throw-invalid-command "Invalid signature on command.")))]
     (log/trace "Processing signed command:" (pr-str signed-cmd))
     (case cmd-type
-      :tx (let [{:keys [db tx deps expire nonce]} cmd-data
+      :tx (let [{:keys [ledger tx deps expire nonce]} cmd-data
                 _ (log/trace "tx command:" cmd-data)
-                _ (when-not db (throw-invalid-command "No db specified for transaction."))
-                [network dbid] (session/resolve-ledger conn db)]
-
+                _ (when-not ledger (throw-invalid-command "No ledger specified for transaction."))
+                [network ledger-id] (session/resolve-ledger conn ledger)]
             (when-not tx
               (throw-invalid-command "No tx specified for transaction."))
             (when (and deps (or (not (sequential? deps)) (not (every? string? deps))))
               (throw-invalid-command (format "Transaction 'deps', when provided, must be a sequence of txid(s). Provided: %s" deps)))
             (when (and expire (or (not (pos-int? expire)) (< expire (System/currentTimeMillis))))
               (throw-invalid-command (format "Transaction 'expire', when provided, must be epoch millis and be later than now. expire: %s current time: %s" expire (System/currentTimeMillis))))
-            (when-not (txproto/ledger-exists? (:group system) network dbid)
-              (throw-invalid-command (str "The database does not exist within this ledger group: " db)))
+            (when-not (txproto/ledger-exists? (:group system) network ledger-id)
+              (throw-invalid-command (str "Ledger does not exist: " ledger)))
             (when (and nonce (not (int? nonce)))
               (throw-invalid-command (format "Nonce, if provided, must be an integer. Provided: %s" nonce)))
-            (async/<!! (txproto/queue-command-async (:group system) network dbid id signed-cmd))
+            (async/<!! (txproto/queue-command-async (:group system) network ledger-id id signed-cmd))
             id)
 
       :signed-qry
-      (let [{:keys [db qry expire nonce meta]} cmd-data
-            _      (when-not db (throw-invalid-command "No db specified for signed query."))
+      (let [{:keys [ledger qry expire nonce meta]} cmd-data
+            _      (when-not ledger (throw-invalid-command "No ledger specified for signed query."))
             _      (when-not qry (throw-invalid-command "No qry specified for signed query."))
             _      (when (and expire (or (not (pos-int? expire)) (< expire (System/currentTimeMillis))))
                      (throw-invalid-command (format "Signed query 'expire', when provided, must be epoch millis and be later than now. expire: %s current time: %s" expire (System/currentTimeMillis))))
             _      (when (and nonce (not (int? nonce)))
                      (throw-invalid-command (format "Nonce, if provided, must be an integer. Provided: %s" nonce)))
-            [network dbid] (session/resolve-ledger conn db)
-            _      (when-not (txproto/ledger-exists? (:group system) network dbid)
-                     (throw-invalid-command (str "The database does not exist within this ledger group: " db)))
+            [network ledger-id] (session/resolve-ledger conn ledger)
+            _      (when-not (txproto/ledger-exists? (:group system) network ledger-id)
+                     (throw-invalid-command (str "The ledger does not exist: " ledger)))
             action (keyword (:action cmd-data))
             meta   (if (nil? meta) false meta)
             db*    (if (= action :block)
                      nil
-                     (fdb/db conn db {:auth (when auth-id ["_auth/id" auth-id])}))]
+                     (fdb/db conn ledger {:auth (when auth-id ["_auth/id" auth-id])}))]
 
         ; 1) execute the query or 2) queue the execution of the signed query?
         (case action
@@ -113,47 +112,50 @@
                           {:status 400
                            :error  :db/invalid-action}))))
 
-      :new-db (let [{:keys [db snapshot auth expire nonce owners]} cmd-data
-                    [network ledger-id] (if (sequential? db) db (str/split db #"/"))]
-                (when (and auth auth-id (not= auth auth-id))
-                  (throw-invalid-command (str "New-db command was signed by auth: " auth-id " but the command specifies auth: " auth ". They must be the same if auth is provided.")))
-                (when-not (re-matches #"^[a-z0-9-]+$" network)
-                  (throw-invalid-command (str "Invalid network name: " network)))
-                (when-not (re-matches #"^[a-z0-9-]+$" ledger-id)
-                  (throw-invalid-command (str "Invalid ledger name: " ledger-id)))
-                (when (and expire (or (not (pos-int? expire)) (< expire (System/currentTimeMillis))))
-                  (throw-invalid-command (format "Transaction 'expire', when provided, must be epoch millis and be later than now. expire: %s current time: %s" expire (System/currentTimeMillis))))
-                (when (and nonce (not (int? nonce)))
-                  (throw-invalid-command (format "Nonce, if provided, must be an integer. Provided: %s" nonce)))
-                (when ((set (txproto/all-ledger-list (:group system))) [network ledger-id])
-                  (throw-invalid-command (format "Cannot create a new ledger, it already exists or existed: %s" db)))
-                (when snapshot
-                  (let [storage-exists? (-> system :conn :storage-exists)
-                        exists?         (storage-exists? (str snapshot))]
-                    (when-not exists?
-                      (throw-invalid-command
-                        (format "Cannot create a new db, snapshot file, %s, does not exist in storage, %s"
-                                snapshot (case (-> system :conn :storage-type)
-                                           :s3 (-> system :conn :meta :s3-storage)
-                                           :file (-> system :conn :meta :file-storage-path)
-                                           (-> system :conn :storage-type)))))))
+      :new-ledger (let [{:keys [ledger snapshot auth expire nonce owners]} cmd-data
+                        [network ledger-id] (if (sequential? ledger) ledger (str/split ledger #"/"))]
+                    (when (and auth auth-id (not= auth auth-id))
+                      (throw-invalid-command (str "New-ledger command was signed by auth: " auth-id
+                                                  " but the command specifies auth: " auth
+                                                  ". They must be the same if auth is provided.")))
+                    (when-not (re-matches #"^[a-z0-9-]+$" network)
+                      (throw-invalid-command (str "Invalid network name: " network)))
+                    (when-not (re-matches #"^[a-z0-9-]+$" ledger-id)
+                      (throw-invalid-command (str "Invalid ledger name: " ledger-id)))
+                    (when (and expire (or (not (pos-int? expire)) (< expire (System/currentTimeMillis))))
+                      (throw-invalid-command (format "Transaction 'expire', when provided, must be epoch millis and be later than now. expire: %s current time: %s"
+                                                     expire (System/currentTimeMillis))))
+                    (when (and nonce (not (int? nonce)))
+                      (throw-invalid-command (format "Nonce, if provided, must be an integer. Provided: %s" nonce)))
+                    (when ((set (txproto/all-ledger-list (:group system))) [network ledger-id])
+                      (throw-invalid-command (format "Cannot create a new ledger, it already exists or existed: %s" ledger)))
+                    (when snapshot
+                      (let [storage-exists? (-> system :conn :storage-exists)
+                            exists?         (storage-exists? (str snapshot))]
+                        (when-not exists?
+                          (throw-invalid-command
+                            (format "Cannot create a new db, snapshot file, %s, does not exist in storage, %s"
+                                    snapshot (case (-> system :conn :storage-type)
+                                               :s3 (-> system :conn :meta :s3-storage)
+                                               :file (-> system :conn :meta :file-storage-path)
+                                               (-> system :conn :storage-type)))))))
 
-                ;; TODO - do more validation, reconcile with "unsigned-cmd" validation before this
+                    ;; TODO - do more validation, reconcile with "unsigned-cmd" validation before this
 
-                (async/<!! (txproto/new-ledger-async (:group system) network ledger-id id signed-cmd owners))
+                    (async/<!! (txproto/new-ledger-async (:group system) network ledger-id id signed-cmd owners))
 
-                id)
-      :delete-db (let [{:keys [db]} cmd-data
-                       [network dbid] (if (sequential? db) db (str/split db #"/"))
-                       old-session    (session/session conn db)
-                       db*            (async/<!! (session/current-db old-session))
-                       _ (when-not (or (-> system :group :open-api)
-                                       (async/<!! (auth/root-role? db* ["_auth/id" auth-id])))
-                           (throw (ex-info (str "To delete a ledger, must be using an open API or an auth record with a root role.")
-                                           {:status 401 :error :db/invalid-auth})))]
-                   (async/<!! (ledger-delete/process conn network dbid))
-                   (session/close old-session))
-      :default-key (let [{:keys [expire nonce network dbid private-key]} cmd-data
+                    id)
+      :delete-ledger (let [{:keys [ledger]} cmd-data
+                           [network ledger-id] (if (sequential? ledger) ledger (str/split ledger #"/"))
+                           old-session (session/session conn ledger)
+                           db          (async/<!! (session/current-db old-session))
+                           _           (when-not (or (-> system :group :open-api)
+                                                     (async/<!! (auth/root-role? db ["_auth/id" auth-id])))
+                                         (throw (ex-info (str "To delete a ledger, must be using an open API or an auth record with a root role.")
+                                                         {:status 401 :error :db/invalid-auth})))]
+                       (async/<!! (ledger-delete/process conn network ledger-id))
+                       (session/close old-session))
+      :default-key (let [{:keys [expire nonce network ledger-id private-key]} cmd-data
                          default-auth-id (some-> (txproto/get-shared-private-key (:group system))
                                                  (crypto/account-id-from-private))
                          network-auth-id (some->> network
@@ -169,13 +171,13 @@
                        (throw-invalid-command (format "Transaction 'expire', when provided, must be epoch millis and be later than now. expire: %s current time: %s" expire (System/currentTimeMillis))))
                      (when (and nonce (not (int? nonce)))
                        (throw-invalid-command (format "Nonce, if provided, must be an integer. Provided: %s" nonce)))
-                     (when (and dbid (not (string? dbid)))
-                       (throw-invalid-command (str "Dbid must be a string if provided. Provided: " (pr-str dbid))))
+                     (when (and ledger-id (not (string? ledger-id)))
+                       (throw-invalid-command (str "Ledger-id must be a string if provided. Provided: " (pr-str ledger-id))))
                      (when (and network (not (string? network)))
                        (throw-invalid-command (str "Network must be a string if provided. Provided: " (pr-str network))))
                      (cond
-                       (and network dbid)
-                       (txproto/set-shared-private-key (:group system) network dbid private-key)
+                       (and network ledger-id)
+                       (txproto/set-shared-private-key (:group system) network ledger-id private-key)
 
                        network
                        (txproto/set-shared-private-key (:group system) network private-key)
@@ -188,11 +190,11 @@
 
 (defn ledger-info
   "Returns basic ledger information for incoming requests."
-  [system network dbid]
-  (if (and network dbid)
+  [system network ledger-id]
+  (if (and network ledger-id)
     (do
-      (log/debug "Get ledger-info request for" (str network "/" dbid))
-      (-> (txproto/ledger-info (:group system) network dbid)
+      (log/debug "Get ledger-info request for" (str network "/" ledger-id))
+      (-> (txproto/ledger-info (:group system) network ledger-id)
           (select-keys [:indexes :block :index :status])))
     {}))
 
@@ -201,12 +203,12 @@
   [system ledger success! error!]
   (async/go
     (log/debug "Got ledger-stats req for" ledger)
-    (let [[network dbid] (session/resolve-ledger (:conn system) ledger)]
+    (let [[network ledger-id] (session/resolve-ledger (:conn system) ledger)]
       (log/debug "ledger-stats resolved ledger" ledger)
-      (if-not (and network dbid)
+      (if-not (and network ledger-id)
         (error! (ex-info (str "Invalid ledger: " ledger)
                          {:status 400 :error :db/invalid-ledger}))
-        (let [ledger-info (ledger-info system network dbid)
+        (let [ledger-info (ledger-info system network ledger-id)
               _           (log/debug "Ledger info for" ledger "-" ledger-info)
               db-stat     (when (and (seq ledger-info) ; skip stats if db is still initializing
                                      (not= :initialize (:status ledger-info)))
@@ -250,70 +252,70 @@
                          has-auth? (-> (get-in @subscription-auth [ws-id])
                                        (as-> wsm (reduce-kv (fn [res _ val] (if (map? val) (into res (vals val)) res)) [] wsm))
                                        seq)]
-                     (cond-> {:open-api?          open-api?
-                              :password-enabled?  (-> system :conn pw-auth/password-enabled?)}
+                     (cond-> {:open-api?         open-api?
+                              :password-enabled? (-> system :conn pw-auth/password-enabled?)}
                              (or open-api? has-auth?) (assoc :jwt-secret (-> system :conn :meta :password-auth :secret
                                                                              (ab-core/byte-array-to-base :hex)))
                              true success!))
 
          :cmd (success! (process-command system arg))
 
-         :subscribe (let [pw-enabled? (pw-auth/password-enabled? (:conn system))
-                          open-api?   (-> system :group :open-api)
-                          transactor? (-> system :conn :transactor?)
-                          _           (when (and (sequential? arg) (not (or pw-enabled? (not open-api?))))
-                                        (throw (ex-info (str "Supplying an auth/jwt is not allowed.")
-                                                        {:status 400 :error :db/invalid-db})))
+         :subscribe (let [pw-enabled?     (pw-auth/password-enabled? (:conn system))
+                          open-api?       (-> system :group :open-api)
+                          transactor?     (-> system :conn :transactor?)
+                          _               (when (and (sequential? arg) (not (or pw-enabled? (not open-api?))))
+                                            (throw (ex-info (str "Supplying an auth/jwt is not allowed.")
+                                                            {:status 400 :error :db/invalid-db})))
                           [ledger auth-or-jwt] (cond
-                                                 (sequential? (first arg)) ;; [ [network, dbid], auth ]
+                                                 (sequential? (first arg)) ;; [ [network, ledger-id], auth ]
                                                  arg
 
-                                                 :else      ;; network/dbid or [network, dbid]
+                                                 :else ;; network/ledger-id or [network, ledger-id]
                                                  [arg])
 
-                          auth        (cond
-                                        (and (nil? auth-or-jwt)
-                                             (or open-api? transactor?)) ;; open, give root access
-                                        0
+                          auth            (cond
+                                            (and (nil? auth-or-jwt)
+                                                 (or open-api? transactor?)) ;; open, give root access
+                                            0
 
-                                        (and (int? auth-or-jwt) open-api?) ;; open, allow them to select any auth
-                                        auth-or-jwt
+                                            (and (int? auth-or-jwt) open-api?) ;; open, allow them to select any auth
+                                            auth-or-jwt
 
-                                        (and (string? auth-or-jwt) pw-enabled?) ;; jwt, figure out auth
-                                        (-> (pw-auth/fluree-auth-map (:conn system) auth-or-jwt)
-                                            :id)
+                                            (and (string? auth-or-jwt) pw-enabled?) ;; jwt, figure out auth
+                                            (-> (pw-auth/fluree-auth-map (:conn system) auth-or-jwt)
+                                                :id)
 
-                                        (or (string? auth-or-jwt) (sequential? auth-or-jwt)) ;; ["_auth/id", "TfG81..."]  or "TfG81..."
-                                        (let [auth-id (if (string? auth-or-jwt)
-                                                        ["_auth/id" auth-or-jwt]
-                                                        auth-or-jwt)
-                                              root-db (async/<!! (fdb/db (:conn system) ledger))]
-                                          (async/<!! (dbproto/-subid root-db auth-id))))
-                          _           (when-not (or auth open-api?)
-                                        (throw (ex-info "To access the server, either open-api must be true or a valid auth must be provided."
-                                                        {:status 401
-                                                         :error  :db/invalid-request})))
+                                            (or (string? auth-or-jwt) (sequential? auth-or-jwt)) ;; ["_auth/id", "TfG81..."]  or "TfG81..."
+                                            (let [auth-id (if (string? auth-or-jwt)
+                                                            ["_auth/id" auth-or-jwt]
+                                                            auth-or-jwt)
+                                                  root-db (async/<!! (fdb/db (:conn system) ledger))]
+                                              (async/<!! (dbproto/-subid root-db auth-id))))
+                          _               (when-not (or auth open-api?)
+                                            (throw (ex-info "To access the server, either open-api must be true or a valid auth must be provided."
+                                                            {:status 401
+                                                             :error  :db/invalid-request})))
 
-                          dbv         (session/resolve-ledger (:conn system) ledger)
-                          [network dbid] dbv
-                          _           (when-not (txproto/ledger-exists? (:group system) network dbid)
-                                        (throw (ex-info (str "Ledger " ledger " does not exist on this server.")
-                                                        {:status 400 :error :db/invalid-db})))
-                          _           (swap! subscription-auth assoc-in [ws-id network dbid] auth)]
-                      (event-bus/subscribe-db dbv producer-chan)
+                          resolved-ledger (session/resolve-ledger (:conn system) ledger)
+                          [network ledger-id] resolved-ledger
+                          _               (when-not (txproto/ledger-exists? (:group system) network ledger-id)
+                                            (throw (ex-info (str "Ledger " ledger " does not exist on this server.")
+                                                            {:status 400 :error :db/invalid-db})))
+                          _               (swap! subscription-auth assoc-in [ws-id network ledger-id] auth)]
+                      (event-bus/subscribe-db resolved-ledger producer-chan)
                       (success! true))
 
-         :unsubscribe (let [ledger (if (sequential? (first arg))
-                                     ;; Expect [ [network, dbid], auth ] or [network, dbid] or network/dbid
-                                     (first arg)
-                                     arg)
-                            dbv (session/resolve-ledger (:conn system) ledger)
-                            [network dbid] dbv
-                            _   (when-not (txproto/ledger-exists? (:group system) network dbid)
-                                  (throw (ex-info (str "Db " dbv " does not exist on this ledger.")
-                                                  {:status 400 :error :db/invalid-db})))
-                            _   (swap! subscription-auth update-in [ws-id network] dbid)]
-                        (event-bus/unsubscribe-db dbv producer-chan)
+         :unsubscribe (let [ledger          (if (sequential? (first arg))
+                                              ;; Expect [ [network, ledger-id], auth ] or [network, ledger-id] or network/ledger-id
+                                              (first arg)
+                                              arg)
+                            resolved-ledger (session/resolve-ledger (:conn system) ledger)
+                            [network ledger-id] resolved-ledger
+                            _               (when-not (txproto/ledger-exists? (:group system) network ledger-id)
+                                              (throw (ex-info (str "Ledger " resolved-ledger " does not exist.")
+                                                              {:status 400 :error :db/invalid-db})))
+                            _               (swap! subscription-auth update-in [ws-id network] ledger-id)]
+                        (event-bus/unsubscribe-db resolved-ledger producer-chan)
                         (success! true))
 
          :nw-subscribe (if (-> system :group :open-api)
@@ -335,30 +337,32 @@
          :nw-unsubscribe (raft/monitor-raft-stop (-> system :group))
 
          :unsigned-cmd (let [cmd-data    arg
-                             {:keys [db jwt]} cmd-data
-                             cmd-type    (keyword (:type cmd-data))
-                             _           (when-not (#{:tx :new-db :default-key :delete-db} cmd-type)
-                                           (throw-invalid-command (str "Invalid command type (:type) provided in unsigned command: " (:type cmd-data))))
-                             [network dbid] (cond
-                                              (= :new-db cmd-type)
-                                              (cond
-                                                (string? db) (str/split db #"/")
-                                                (sequential? db) db
-                                                :else (throw (ex-info (str "Invalid db provided for new-db: " (pr-str db))
+                             {:keys [type ledger jwt]} cmd-data
+                             cmd-type    type
+                             _           (when-not (#{:tx :new-ledger :default-key :delete-ledger} cmd-type)
+                                           (throw-invalid-command
+                                             (str "Invalid command type (:type) provided in unsigned command: "
+                                                  (:type cmd-data))))
+                             [network ledger-id] (cond
+                                                   (= :new-ledger cmd-type)
+                                                   (cond
+                                                     (string? ledger) (str/split ledger #"/")
+                                                     (sequential? ledger) ledger
+                                                     :else (throw (ex-info (str "Invalid ledger provided for new-ledger: " (pr-str ledger))
                                                                       {:status 400 :error :db/invalid-command})))
 
-                                              (= :delete-db cmd-type)
-                                              (session/resolve-ledger (:conn system) db)
+                                                   (= :delete-ledger cmd-type)
+                                                   (session/resolve-ledger (:conn system) ledger)
 
-                                              (= :tx cmd-type)
-                                              (session/resolve-ledger (:conn system) db)
+                                                   (= :tx cmd-type)
+                                                   (session/resolve-ledger (:conn system) ledger)
 
-                                              (= :default-key cmd-type)
-                                              (let [{:keys [network dbid]} cmd-data]
-                                                [network dbid]))
+                                                   (= :default-key cmd-type)
+                                                   (let [{:keys [network ledger-id]} cmd-data]
+                                                     [network ledger-id]))
                              private-key (if (nil? jwt)
                                            (let [pk (txproto/get-shared-private-key
-                                                      (:group system) network dbid)]
+                                                      (:group system) network ledger-id)]
                                              (if pk
                                                (log/debug "Signing unsigned cmd with default private key")
                                                (log/error "No private key found to sign unsigned cmd"))
@@ -373,49 +377,48 @@
                          (when (< expire (System/currentTimeMillis))
                            (throw-invalid-command (format "Command expired. Expiration: %s. Current time: %s."
                                                           expire (System/currentTimeMillis))))
-                         (when (and (= :new-db cmd-type)
-                                    (txproto/ledger-exists? (:group system) network dbid))
-                           (throw-invalid-command (str "The database already exists or existed: " db)))
+                         (when (and (= :new-ledger cmd-type)
+                                    (txproto/ledger-exists? (:group system) network ledger-id))
+                           (throw-invalid-command (str "The ledger already exists or existed: " ledger)))
                          (when (and (= :tx cmd-type)
-                                    (not (txproto/ledger-exists? (:group system) network dbid)))
-                           (throw-invalid-command (str "The database does not exist within this ledger group: " db)))
+                                    (not (txproto/ledger-exists? (:group system) network ledger-id)))
+                           (throw-invalid-command (str "Ledger does not exist: " ledger)))
                          (when-not private-key
                            (throw-invalid-command (str "The ledger group is not configured with a default private "
-                                                       "key for use with database: " db ". Unable to process an unsigned "
+                                                       "key for use with ledger: " ledger ". Unable to process an unsigned "
                                                        "transaction.")))
                          (let [cmd        (-> cmd-data*
                                               (util/without-nils)
                                               (json/stringify))
                                sig        (crypto/sign-message cmd private-key)
                                id         (crypto/sha3-256 cmd)
-                               signed-cmd {:cmd cmd
-                                           :sig sig
-                                           :id  id
-                                           :db  db}]
+                               signed-cmd {:cmd    cmd
+                                           :sig    sig
+                                           :id     id
+                                           :ledger ledger}]
                            (success! (process-command system signed-cmd))))
 
-         :ledger-info (let [[network dbid] (session/resolve-ledger (:conn system) arg)]
-                        (success! (ledger-info system network dbid)))
+         :ledger-info (let [[network ledger-id] (session/resolve-ledger (:conn system) arg)]
+                        (success! (ledger-info system network ledger-id)))
 
          :ledger-stats (future ; as thread/future - otherwise if this needs to load new db will have new requests and will permanently block
                          (ledger-stats system arg success! error!))
 
-         ;; TODO - change command and all internal calls to :ledger-list, deprecate :db-list
-         :db-list (let [response (txproto/ledger-list (:group system))]
-                    (success! response))
+         :ledger-list (let [response (txproto/ledger-list (:group system))]
+                        (success! response))
 
          ;; TODO - unsigned-cmd should cover a 'tx', remove below
          :tx (let [tx-map      arg
-                   {:keys [db tx]} tx-map
-                   [network dbid] (session/resolve-ledger (:conn system) db)
-                   _           (when-not (txproto/ledger-exists? (:group system) network dbid)
-                                 (throw-invalid-command (str "The database does not exist within this ledger group: " db)))
-                   private-key (txproto/get-shared-private-key (:group system) network dbid)
+                   {:keys [ledger tx]} tx-map
+                   [network ledger-id] (session/resolve-ledger (:conn system) ledger)
+                   _           (when-not (txproto/ledger-exists? (:group system) network ledger-id)
+                                 (throw-invalid-command (str "Ledger does not exist: " ledger)))
+                   private-key (txproto/get-shared-private-key (:group system) network ledger-id)
                    _           (when-not private-key
                                  (throw-invalid-command (str "The ledger group is not configured with a default private "
-                                                             "key for use with database: " db ". Unable to process an unsigned "
+                                                             "key for use with ledger: " ledger ". Unable to process an unsigned "
                                                              "transaction.")))
-                   cmd         (fdb/tx->command db tx private-key tx-map)]
+                   cmd         (fdb/tx->command ledger tx private-key tx-map)]
                (success! (process-command system cmd)))
 
          :pw-login (let [{:keys [ledger password user auth]} arg]
@@ -481,9 +484,9 @@
                               (success! jwt))))))
 
        (catch Exception e
-         (log/info "Error caught in incoming message handler: "
-                   {:error   (ex-message e)
-                    :message msg})
+         (log/error {:error   e
+                     :message msg}
+                   "Error caught in incoming message handler:")
          (error! e))))))
 
 

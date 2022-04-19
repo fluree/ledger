@@ -385,7 +385,7 @@
           (<? (txproto/write-index-point-async (-> db :conn :group) indexed-db))
           ;; updated-db might have had additional block(s) written to it, so instead
           ;; of using it, reload from disk.
-          (session/clear-db! session)                       ;; clear db cache to force reload
+          (session/clear-db! session) ;; clear db cache to force reload
           (async/put! pc indexed-db))))
     pc))
 

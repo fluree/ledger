@@ -370,18 +370,6 @@
             (async/put! (db-queue conn network dbid) ::kick))
           true)))))
 
-(defn new-db?
-  "Returns [network dbid] if state update involves a new db.
-
-  Monitors for :new-block commands, which look like this:
-  [op network dbid block-map submission-server]"
-  [state-change]
-  (let [{:keys [command result]} state-change]
-    (when (and (contains? (:cmd-types (nth command 3)) :new-db)
-               (true? result))
-      ;; we have a new DB!
-      ;; return network db is within
-      (second command))))
 
 (defn state-updates-monitor
   "Function to be called with every state change, to possibly kick of an action.
@@ -394,7 +382,7 @@
   (let [op   (get-in state-change [:command 0])
         conn (:conn system)]
     (case op
-      :new-db
+      :new-ledger
       (future
         (when (txproto/-is-leader? (:group conn))
           (let [initialize-dbs (txproto/find-all-dbs-to-initialize (:group conn))]
@@ -409,7 +397,7 @@
                 ;; force session close, so next request will cause session to keep in sync
                 (session/close session))))))
 
-      :initialized-db
+      :initialized-ledger
       (future
         (when-not (txproto/-is-leader? (:group conn))
           (let [command (:command state-change)

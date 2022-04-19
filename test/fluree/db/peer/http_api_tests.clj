@@ -13,7 +13,7 @@
 
 ;; helper functions
 (defn object->stream
- [obj]
+  [obj]
   (let [ba (if (bytes? obj)
              obj
              (json/stringify-UTF8 obj))]
@@ -25,7 +25,7 @@
     (testing "user with root permissions"
       (let [rqst-base {:params {:action  :generate
                                 :network "fluree"
-                                :db      "invoice"}}
+                                :ledger  "invoice"}}
             resp      (->> {:password     "fluree"
                             :user         "freddie"
                             :create-user? false}
@@ -41,7 +41,7 @@
     (testing "user with level1User permissions (1)"
       (let [rqst-base {:params {:action  :generate
                                 :network "fluree"
-                                :db      "invoice"}}
+                                :ledger  "invoice"}}
             resp      (->> {:password     "fluree"
                             :user         "scott"
                             :create-user? false}
@@ -57,7 +57,7 @@
     (testing "user with level1User permissions (2)"
       (let [rqst-base {:params {:action  :generate
                                 :network "fluree"
-                                :db      "invoice"}}
+                                :ledger  "invoice"}}
             resp      (->> {:password     "fluree"
                             :user         "antonio"
                             :create-user? false}
@@ -74,15 +74,15 @@
     (testing "invalid password"
       (let [rqst {:params {:action  :login
                            :network "fluree"
-                           :db      "invoice"}
+                           :ledger  "invoice"}
                   :body   (object->stream {:password "invalid" :user "freddie"})}]
         (is (thrown-with-msg? ExceptionInfo #"Invalid password" (http-api/password-handler test/system rqst)))))
     (testing "valid password"
       (let [rqst-base {:params {:action  :login
                                 :network "fluree"
-                                :db      "invoice"}}
-            resp      (->> {:password     "fluree"
-                            :user         "freddie"}
+                                :ledger  "invoice"}}
+            resp      (->> {:password "fluree"
+                            :user     "freddie"}
                            object->stream
                            (assoc rqst-base :body)
                            (http-api/password-handler test/system))
@@ -94,39 +94,39 @@
         (is (string? token)))))
   (testing "renew password auth token"
     (testing "without valid header"
-      (let [renew-rqst  {:params {:action  :renew
-                                  :network "fluree"
-                                  :db      "invoice"}
-                         :body (object->stream {:expire 600000})}]
+      (let [renew-rqst {:params {:action  :renew
+                                 :network "fluree"
+                                 :ledger  "invoice"}
+                        :body   (object->stream {:expire 600000})}]
         (is (thrown-with-msg?
               ExceptionInfo #"A valid JWT token must be supplied in the header for a token renewal."
               (http-api/password-handler test/system renew-rqst)))))
     (testing "with valid header"
-      (let [login-rqst  {:params {:action  :login
+      (let [login-rqst {:params {:action  :login
+                                 :network "fluree"
+                                 :ledger  "invoice"}}
+            login-resp (->> {:password "fluree"
+                             :user     "scott"}
+                            object->stream
+                            (assoc login-rqst :body)
+                            (http-api/password-handler test/system))
+            token      (some-> login-resp
+                               :body
+                               bs/to-string
+                               json/parse)
+            renew-rqst {:params  {:action  :renew
                                   :network "fluree"
-                                  :db      "invoice"}}
-            login-resp  (->> {:password     "fluree"
-                              :user         "scott"}
-                             object->stream
-                             (assoc login-rqst :body)
-                             (http-api/password-handler test/system))
-            token       (some-> login-resp
-                                :body
-                                bs/to-string
-                                json/parse)
-            renew-rqst  {:params {:action  :renew
-                                  :network "fluree"
-                                  :db      "invoice"}
-                         :headers {"authorization" (str "Bearer " token)}}
-            renew-resp  (->> {:jwt token
-                              :expire 600000}
-                             object->stream
-                             (assoc renew-rqst :body)
-                             (http-api/password-handler test/system))
-            token-2     (some-> renew-resp
-                                :body
-                                bs/to-string
-                                json/parse)]
+                                  :ledger  "invoice"}
+                        :headers {"authorization" (str "Bearer " token)}}
+            renew-resp (->> {:jwt    token
+                             :expire 600000}
+                            object->stream
+                            (assoc renew-rqst :body)
+                            (http-api/password-handler test/system))
+            token-2    (some-> renew-resp
+                               :body
+                               bs/to-string
+                               json/parse)]
         (is (= 200 (:status login-resp) (:status renew-resp)))
         (is (string? token))
         (is (string? token-2))
