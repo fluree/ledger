@@ -485,12 +485,12 @@
       (is (:ready result)))))
 
 
-;; ENDPOINT TEST: /dbs
+;; ENDPOINT TEST: /ledgers
 
-(deftest get-all-dbs-test
-  (testing "Get all dbs"
+(deftest get-all-ledgers-test
+  (testing "Get all ledgers"
     (test/init-ledgers! (conj test/all-ledgers "test/three"))
-    (let [{:keys [status body]} @(http/post (str endpoint-url-short "dbs"))
+    (let [{:keys [status body]} @(http/post (str endpoint-url-short "ledgers"))
           result (-> body json/parse set)]
 
       (is (= 200 status))
@@ -639,9 +639,9 @@
 
 (deftest create-ledger-test
   (testing "Creating a new ledger"
-    (let [new-ledger-body {:db/id (str "test/three-" (UUID/randomUUID))}
+    (let [new-ledger-body {:ledger/id (str "test/three-" (UUID/randomUUID))}
           {:keys [status body]} @(http/post
-                                   (str endpoint-url-short "new-db")
+                                   (str endpoint-url-short "new-ledger")
                                    (test/standard-request new-ledger-body))
           result          (json/parse body)]
 
@@ -720,8 +720,8 @@
   (testing "delete ledger - open api"
     (let [ledger (test/rand-ledger test/ledger-endpoints)
           {:keys [status body]} @(http/post
-                                   (str endpoint-url-short "delete-db")
-                                   (test/standard-request {:db/id ledger}))
+                                   (str endpoint-url-short "delete-ledger")
+                                   (test/standard-request {:ledger/id ledger}))
           result (json/parse body)]
       (is (= 200 status))
       (is (= ledger (:deleted result))))))

@@ -1,12 +1,10 @@
 (ns fluree.db.peer.http-api-tests
   (:require [clojure.test :refer :all]
-            [clojure.core.async :as async]
             [fluree.db.peer.http-api :as http-api]
             [fluree.db.test-helpers :as test]
             [fluree.db.util.json :as json]
             [byte-streams :as bs])
-  (:import (java.io ByteArrayInputStream)
-           (org.httpkit BytesInputStream)
+  (:import (org.httpkit BytesInputStream)
            (clojure.lang ExceptionInfo)))
 
 (use-fixtures :once test/test-system-deprecated)

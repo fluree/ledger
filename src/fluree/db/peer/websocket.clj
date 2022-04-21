@@ -54,14 +54,14 @@
 
 (defn filter-flakes
   [conn ws-id msg]
-  (util/go-try (let [[type [network dbid] data] msg
-                     auth   (get-in @messages/subscription-auth [ws-id network dbid])
+  (util/go-try (let [[type [network ledger-id] data] msg
+                     auth   (get-in @messages/subscription-auth [ws-id network ledger-id])
                      db     (->> (cond
                                    (= 0 auth) {}
                                    (string? auth) {:auth ["_auth/id" auth]}
                                    :else
                                    {:auth auth})
-                                 (fdb/db conn (str network "/" dbid))
+                                 (fdb/db conn (str network "/" ledger-id))
                                  util/<?)
                      ;; short-circuit flake check when :root? permissions
                      flakes (if (true? (-> db :permissions :root?))
@@ -69,7 +69,7 @@
                               (->> (:flakes data)
                                    (permissions-validate/allow-flakes? db)
                                    (util/<?)))]
-                 [type [network dbid] {:block (:block data) :t (:t data) :flakes flakes :txns (:txns data)}])))
+                 [type [network ledger-id] {:block (:block data) :t (:t data) :flakes flakes :txns (:txns data)}])))
 
 
 (defn msg-producer

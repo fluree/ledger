@@ -479,16 +479,16 @@
 (comment)
 
 ;; db-identfiers
-;; https://network.flur.ee/fdb/db/network/dbid-or-name
-;; https://network.flur.ee/fdb/db/network/dbid-or-name/time
+;; https://network.flur.ee/fdb/db/network/ledger-id-or-name
+;; https://network.flur.ee/fdb/db/network/ledger-id-or-name/time
 
 ;; explore data
-;; https://network.flur.ee/fdb/db/network/dbid-or-name/entity-subject
+;; https://network.flur.ee/fdb/db/network/ledger-id-or-name/entity-subject
 
 ;; storage
-;; https://network.flur.ee/fdb/storage/network/dbid-or-name/root
-;; https://network.flur.ee/fdb/storage/network/dbid-or-name/root/time
-;; https://network.flur.ee/fdb/storage/network/dbid-or-name/garbage/time
-;; https://network.flur.ee/fdb/storage/network/dbid-or-name/block/time
-;; https://network.flur.ee/fdb/storage/network/dbid-or-name/block/time-start/time-end
-;; https://network.flur.ee/fdb/storage/network/dbid-or-name/idx-type/id
+;; https://network.flur.ee/fdb/storage/network/ledger-id-or-name/root
+;; https://network.flur.ee/fdb/storage/network/ledger-id-or-name/root/time
+;; https://network.flur.ee/fdb/storage/network/ledger-id-or-name/garbage/time
+;; https://network.flur.ee/fdb/storage/network/ledger-id-or-name/block/time
+;; https://network.flur.ee/fdb/storage/network/ledger-id-or-name/block/time-start/time-end
+;; https://network.flur.ee/fdb/storage/network/ledger-id-or-name/idx-type/id

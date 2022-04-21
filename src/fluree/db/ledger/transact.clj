@@ -136,12 +136,12 @@
 
 (defn propose-block
   "Proposes block to consensus network. Returns core async channel with success or failure."
-  [{:keys [group] :as _conn} network dbid {:keys [flakes] :as block-map}]
+  [{:keys [group] :as _conn} network ledger-id {:keys [flakes] :as block-map}]
   (let [block-map' (-> block-map
                        (dissoc :fuel :db-orig :db-before :db-after :before-t :prev-hash :remove-preds)
                        (assoc :flakes (into [] flakes)))]
-    (log/trace (str "Proposing new block for " network "/" dbid ":") block-map')
-    (txproto/propose-new-block-async group network dbid block-map')))
+    (log/trace (str "Proposing new block for " network "/" ledger-id ":") block-map')
+    (txproto/propose-new-block-async group network ledger-id block-map')))
 
 
 (defn- error-unexpected-tx
@@ -196,13 +196,13 @@
 
 (defn build-block
   "Builds a new block with supplied transaction(s)."
-  [{:keys [conn network dbid] :as session} db-before transactions]
+  [{:keys [conn network ledger-id] :as session} db-before transactions]
   (go-try
     (when (nil? db-before)
       ;; TODO - think about this error, if it is possible, and what to do with any pending transactions
-      (log/warn "Unable to find a current db. Db transaction processor closing for db: %s/%s." network dbid)
+      (log/warn "Unable to find a current db. Db transaction processor closing for db: %s/%s." network ledger-id)
       (session/close session)
-      (throw (ex-info (format "Unable to find a current db for: %s/%s." network dbid)
+      (throw (ex-info (format "Unable to find a current db for: %s/%s." network ledger-id)
                       {:status 400 :error :db/invalid-transaction})))
     (let [prev-hash (<? (retrieve-prev-hash db-before))]
       ;; perform each transaction in order
@@ -238,7 +238,7 @@
                                         block-result))
 
                     block-approved? (when block-result*
-                                      (async/<! (propose-block conn network dbid block-result*)))]
+                                      (async/<! (propose-block conn network ledger-id block-result*)))]
                 (cond
                   (true? block-approved?)
                   (do

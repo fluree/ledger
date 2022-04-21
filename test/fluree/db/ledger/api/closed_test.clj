@@ -48,29 +48,29 @@
 
 
 (deftest new-db-test
-  (testing "new db (ledger actually) is owned by request signer"
+  (testing "new ledger is owned by request signer"
     (let [{:keys [private id]} (fdb-auth/new-private-key)
-          new-db-endpoint   (str endpoint "new-db")
-          base-req          {:headers {"content-type" "application/json"}}
-          ledger            (str "test/ledger-" (UUID/randomUUID))
-          create-req        (assoc base-req
-                              :body (json/stringify {:db/id ledger}))
-          signed-create-req (http-sig/sign-request :post new-db-endpoint
-                                                   create-req private)
+          new-ledger-endpoint (str endpoint "new-ledger")
+          base-req            {:headers {"content-type" "application/json"}}
+          ledger              (str "test/ledger-" (UUID/randomUUID))
+          create-req          (assoc base-req
+                                :body (json/stringify {:ledger/id ledger}))
+          signed-create-req   (http-sig/sign-request :post new-ledger-endpoint
+                                                     create-req private)
 
           {create-status :status :as create-resp}
-          @(http/post new-db-endpoint signed-create-req)
+          @(http/post new-ledger-endpoint signed-create-req)
 
-          _                 (fdb/wait-for-ledger-ready
-                              (:conn test/system) ledger)
-          query-endpoint    (str endpoint ledger "/query")
-          owners-query      (-> {:select ["*"], :from "_auth"}
-                                json/stringify
-                                (as-> $q
-                                      (assoc base-req :body $q)
-                                      (http-sig/sign-request :post
-                                                             query-endpoint $q
-                                                             private)))
+          _                   (fdb/wait-for-ledger-ready
+                                (:conn test/system) ledger)
+          query-endpoint      (str endpoint ledger "/query")
+          owners-query        (-> {:select ["*"], :from "_auth"}
+                                  json/stringify
+                                  (as-> $q
+                                        (assoc base-req :body $q)
+                                        (http-sig/sign-request :post
+                                                               query-endpoint $q
+                                                               private)))
 
           {owners-query-status :status, owners-query-body :body :as owners-query-resp}
           @(http/post query-endpoint owners-query)]
@@ -79,50 +79,50 @@
                " owners-query: " (pr-str owners-query-resp)))
       (is (= id (-> owners-query-body json/parse first :_auth/id)))))
 
-  (testing "request signer can transact against new db (actually ledger) they create"
+  (testing "request signer can transact against new ledger they create"
     (let [{:keys [private]} (fdb-auth/new-private-key)
-          new-db-endpoint   (str endpoint "new-db")
-          base-req          {:headers {"content-type" "application/json"}}
-          ledger            (str "test/ledger-" (UUID/randomUUID))
-          create-req        (assoc base-req
-                              :body (json/stringify {:db/id ledger}))
-          signed-create-req (http-sig/sign-request :post new-db-endpoint
-                                                   create-req private)
-          {create-status :status} @(http/post new-db-endpoint
+          new-ledger-endpoint (str endpoint "new-ledger")
+          base-req            {:headers {"content-type" "application/json"}}
+          ledger              (str "test/ledger-" (UUID/randomUUID))
+          create-req          (assoc base-req
+                                :body (json/stringify {:ledger/id ledger}))
+          signed-create-req   (http-sig/sign-request :post new-ledger-endpoint
+                                                     create-req private)
+          {create-status :status} @(http/post new-ledger-endpoint
                                               signed-create-req)
-          _                 (fdb/wait-for-ledger-ready
-                              (:conn test/system) ledger)]
+          _                   (fdb/wait-for-ledger-ready
+                                (:conn test/system) ledger)]
       (is (= 200 create-status))
       (let [[success? txn-response query-response]
             (transact-and-query-user? ledger private)]
         (is success? (str "Transaction response: " (pr-str txn-response) " "
                           "Query response: " (pr-str query-response))))))
 
-  (testing "new db (ledger actually) is owned by owners specified in request"
+  (testing "new ledger is owned by owners specified in request"
     (let [{private-1 :private, auth-id-1 :id} (fdb-auth/new-private-key)
           {private-2 :private, auth-id-2 :id} (fdb-auth/new-private-key)
           {private-3 :private, auth-id-3 :id} (fdb-auth/new-private-key)
-          new-db-endpoint   (str endpoint "new-db")
-          base-req          {:headers {"content-type" "application/json"}}
-          ledger            (str "test/ledger-" (UUID/randomUUID))
-          create-req        (assoc base-req
-                              :body (json/stringify
-                                      {:db/id  ledger
-                                       :owners [auth-id-2 auth-id-3]}))
-          signed-create-req (http-sig/sign-request :post new-db-endpoint
-                                                   create-req private-1)
-          {create-status :status} @(http/post new-db-endpoint
+          new-ledger-endpoint (str endpoint "new-ledger")
+          base-req            {:headers {"content-type" "application/json"}}
+          ledger              (str "test/ledger-" (UUID/randomUUID))
+          create-req          (assoc base-req
+                                :body (json/stringify
+                                        {:ledger/id ledger
+                                         :owners    [auth-id-2 auth-id-3]}))
+          signed-create-req   (http-sig/sign-request :post new-ledger-endpoint
+                                                     create-req private-1)
+          {create-status :status} @(http/post new-ledger-endpoint
                                               signed-create-req)
-          _                 (fdb/wait-for-ledger-ready
-                              (:conn test/system) ledger)
-          query-endpoint    (str endpoint ledger "/query")
-          owners-query      (-> {:select ["*"], :from "_auth"}
-                                json/stringify
-                                (as-> $q
-                                      (assoc base-req :body $q)
-                                      (http-sig/sign-request :post
-                                                             query-endpoint $q
-                                                             private-2)))
+          _                   (fdb/wait-for-ledger-ready
+                                (:conn test/system) ledger)
+          query-endpoint      (str endpoint ledger "/query")
+          owners-query        (-> {:select ["*"], :from "_auth"}
+                                  json/stringify
+                                  (as-> $q
+                                        (assoc base-req :body $q)
+                                        (http-sig/sign-request :post
+                                                               query-endpoint $q
+                                                               private-2)))
 
           {owners-query-status :status, owners-query-body :body}
           @(http/post query-endpoint owners-query)]

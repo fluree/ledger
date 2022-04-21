@@ -75,34 +75,34 @@
                      (throw-invalid-command (str "The ledger does not exist: " ledger)))
             action (keyword (:action cmd-data))
             meta   (if (nil? meta) false meta)
-            db*    (if (= action :block)
+            db     (if (= action :block)
                      nil
                      (fdb/db conn ledger {:auth (when auth-id ["_auth/id" auth-id])}))]
 
         ; 1) execute the query or 2) queue the execution of the signed query?
         (case action
           :query
-          (let [result (async/<!! (fdb/query-async db* (assoc-in qry [:opts :meta] meta)))
+          (let [result (async/<!! (fdb/query-async db (assoc-in qry [:opts :meta] meta)))
                 _      (when (instance? clojure.lang.ExceptionInfo result)
                          (throw result))]
             result)
 
           :multi-query
-          (let [result (async/<!! (fdb/multi-query-async db* (assoc-in qry [:opts :meta] meta)))
+          (let [result (async/<!! (fdb/multi-query-async db (assoc-in qry [:opts :meta] meta)))
                 _      (when (instance? clojure.lang.ExceptionInfo result)
                          (throw result))]
             result)
 
           :block
           (let [query  (update qry :opts merge {:meta meta, :auth auth-id})
-                result (async/<!! (fdb/block-query-async conn db query))
+                result (async/<!! (fdb/block-query-async conn ledger query))
                 _      (when (instance? clojure.lang.ExceptionInfo result)
                          (throw result))]
             result)
 
           :history
           (let [query  (update qry :opts merge {:meta meta})
-                result (async/<!! (fdb/history-query-async db* query))
+                result (async/<!! (fdb/history-query-async db query))
                 _      (when (instance? clojure.lang.ExceptionInfo result)
                          (throw result))]
             result)
@@ -134,7 +134,7 @@
                             exists?         (storage-exists? (str snapshot))]
                         (when-not exists?
                           (throw-invalid-command
-                            (format "Cannot create a new db, snapshot file, %s, does not exist in storage, %s"
+                            (format "Cannot create a new ledger, snapshot file %s does not exist in storage %s"
                                     snapshot (case (-> system :conn :storage-type)
                                                :s3 (-> system :conn :meta :s3-storage)
                                                :file (-> system :conn :meta :file-storage-path)
@@ -223,7 +223,7 @@
 (defn message-handler
   "Response messages are [operation subject data opts]"
   ([system producer-chan msg]
-   (message-handler system producer-chan (str (util/random-uuid)) msg))
+   (message-handler system producer-chan (str (random-uuid)) msg))
   ([system producer-chan ws-id msg]
    (let [[operation req-id arg] msg
          success! (fn [resp] (async/put! producer-chan [:response req-id resp nil]))
@@ -265,7 +265,7 @@
                           transactor?     (-> system :conn :transactor?)
                           _               (when (and (sequential? arg) (not (or pw-enabled? (not open-api?))))
                                             (throw (ex-info (str "Supplying an auth/jwt is not allowed.")
-                                                            {:status 400 :error :db/invalid-db})))
+                                                            {:status 400 :error :db/invalid-request})))
                           [ledger auth-or-jwt] (cond
                                                  (sequential? (first arg)) ;; [ [network, ledger-id], auth ]
                                                  arg
@@ -300,7 +300,7 @@
                           [network ledger-id] resolved-ledger
                           _               (when-not (txproto/ledger-exists? (:group system) network ledger-id)
                                             (throw (ex-info (str "Ledger " ledger " does not exist on this server.")
-                                                            {:status 400 :error :db/invalid-db})))
+                                                            {:status 400 :error :db/invalid-ledger})))
                           _               (swap! subscription-auth assoc-in [ws-id network ledger-id] auth)]
                       (event-bus/subscribe-db resolved-ledger producer-chan)
                       (success! true))
@@ -313,7 +313,7 @@
                             [network ledger-id] resolved-ledger
                             _               (when-not (txproto/ledger-exists? (:group system) network ledger-id)
                                               (throw (ex-info (str "Ledger " resolved-ledger " does not exist.")
-                                                              {:status 400 :error :db/invalid-db})))
+                                                              {:status 400 :error :db/invalid-ledger})))
                             _               (swap! subscription-auth update-in [ws-id network] ledger-id)]
                         (event-bus/unsubscribe-db resolved-ledger producer-chan)
                         (success! true))

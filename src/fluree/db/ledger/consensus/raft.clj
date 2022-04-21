@@ -235,7 +235,7 @@
 (defn rejected-block-handler
   "If a block is rejected for some reason, handles exception and logging."
   [state-atom command error-msg]
-  (let [[_ network dbid block-map submission-server] command
+  (let [[_ network ledger-id block-map submission-server] command
         {:keys [block txns cmd-types]} block-map
         txids (keys txns)]
     (swap! state-atom
@@ -257,11 +257,11 @@
                    ;; (a) the submission-server is currently the worker for the network
                    ;; (b) the block-id is exactly one block increment from the previous block
                    ;; if it contains a command-type of :new-ledger, we also establish a new ledger record
-                   :new-block (let [[_ network dbid block-map submission-server] command
+                   :new-block (let [[_ network ledger-id block-map submission-server] command
                                     {:keys [block txns cmd-types]} block-map
                                     txids           (keys txns)
-                                    file-key        (storage/ledger-block-key network dbid block)
-                                    current-block   (get-in @state-atom [:networks network :dbs dbid :block])
+                                    file-key        (storage/ledger-block-key network ledger-id block)
+                                    current-block   (get-in @state-atom [:networks network :ledgers ledger-id :block])
                                     is-next-block?  (if current-block
                                                       (= block (inc current-block))
                                                       (= 1 block))
@@ -278,15 +278,15 @@
 
                                     ;; update current block, and remove txids from queue
                                     (swap! state-atom
-                                           (fn [state] (update-state/update-ledger-block network dbid txids state block)))
+                                           (fn [state] (update-state/update-ledger-block network ledger-id txids state block)))
 
-                                    (log/info (str network "/" dbid " new-block " {:block         block
+                                    (log/info (str network "/" ledger-id " new-block " {:block         block
                                                                                    :txns          txids
                                                                                    :server        submission-server
                                                                                    :network-queue (count (get-in @state-atom [:cmd-queue network]))}))
 
                                     ;; publish new-block event
-                                    (event-bus/publish :block [network dbid] block-map)
+                                    (event-bus/publish :block [network ledger-id] block-map)
                                     ;; return success!
                                     true
                                     (catch Exception e
@@ -304,11 +304,11 @@
 
 
                    ;; stages a new db to be created
-                   :new-ledger (update-state/stage-new-db command state-atom)
+                   :new-ledger (update-state/stage-new-ledger command state-atom)
 
                    :delete-ledger (update-state/delete-db command state-atom)
 
-                   :initialized-ledger (update-state/initialized-db command state-atom)
+                   :initialized-ledger (update-state/initialized-ledger command state-atom)
 
                    :new-index (update-state/new-index command state-atom)
 
@@ -738,13 +738,13 @@
   (go-try
     (let [current-state @(:state-atom group)]
       (when-let [ledgers (not-empty (txproto/ledger-list* current-state))]
-        (doseq [[network dbid] ledgers]
-          (let [latest-block (txproto/block-height* current-state network dbid)]
+        (doseq [[network ledger-id] ledgers]
+          (let [latest-block (txproto/block-height* current-state network ledger-id)]
 
-            (log/debug "Raft startup - latest block: " [network dbid] latest-block)
+            (log/debug "Raft startup - latest block: " [network ledger-id] latest-block)
             (loop [next-block (inc latest-block)]
-              (when (<? (ledger-storage/block-exists? conn network dbid next-block))
-                (let [block-data  (<? (storage/read-block conn network dbid next-block))
+              (when (<? (ledger-storage/block-exists? conn network ledger-id next-block))
+                (let [block-data  (<? (storage/read-block conn network ledger-id next-block))
                       ;; incoming raft event expects a map of txns in block, with txid being keys. and :cmd-types
                       ;; would error in raft if these are not included, recreate from block data
                       block-data* (assoc block-data :cmd-types #{:tx}
@@ -754,10 +754,10 @@
                                                                           [(.-o f) nil])))
                                                                (into {})))]
 
-                  (log/info (str "Ledger " network "/" dbid
+                  (log/info (str "Ledger " network "/" ledger-id
                                  " has block file(s) beyond raft known block height of "
                                  latest-block ". Found block: " next-block))
-                  (<? (txproto/propose-new-block-async group network dbid block-data*)))
+                  (<? (txproto/propose-new-block-async group network ledger-id block-data*)))
                 (recur (inc next-block))))))))))
 
 
@@ -780,7 +780,7 @@
                                 :indexes (into {} (map #(vector % time) indexes))
                                 :status  :ready}
                   resp         (async/<! (new-entry-async group [:assoc-in
-                                                                 [:networks network :dbs ledger]
+                                                                 [:networks network :ledgers ledger]
                                                                  ledger-state]))]
               (when (util/exception? resp)
                 (log/error resp (str "EXITING: Unexpected raft error syncing existing ledgers at startup. "

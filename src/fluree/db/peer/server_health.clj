@@ -4,7 +4,7 @@
             [fluree.db.ledger.txgroup.txgroup-proto :as txproto]
             [fluree.db.util.json :as json]))
 
-(def ^:const default-nwstate-timeout-ms 60000)              ;; TODO - What should be the default setting?
+(def ^:const default-nwstate-timeout-ms 60000) ;; TODO - What should be the default setting?
 
 ;200 OK. The client request has succeeded
 (def ^:const http-ok 200)
@@ -64,24 +64,24 @@
          acc []]
     (if cq
       (let [[k v] cq
-            acc* (into acc [{(keyword k) (count v)
-                             :txn-count  (count v)
+            acc* (into acc [{(keyword k)         (count v)
+                             :txn-count          (count v)
                              :txn-oldest-instant (some->> v vals (map :instant) (apply min))}])]
 
         (recur r acc*))
       acc)))
 
-(defn parse-new-db-queue
+(defn parse-new-ledger-queue
   "Retrieves current backlog from consensus state based on the current server's view.
 
   Inputs:
-  new-db-queue - a map of outstanding 'new ledger' requests from the consensus state
+  new-ledger-queue - a map of outstanding 'new-ledger' requests from the consensus state
 
   returns: a vector of maps, each map with
      * the network as a keyword (e.g., given a new ledger test/one; the id becomes :test)
      * the count of pending new ledger requests as the value of the keyword"
-  [new-db-queue]
-  (loop [[nq & r] new-db-queue
+  [new-ledger-queue]
+  (loop [[nq & r] new-ledger-queue
          acc []]
     (if nq
       (let [[k v] nq
@@ -106,9 +106,9 @@
         svr-state  (when leases
                      (extract-state-from-leases leases instant))
         raft'      (-> raft
-                       (assoc :cmd-queue    cmd-queue
-                              :new-db-queue (parse-new-db-queue new-db-queue)
-                              :networks     (some->> networks (remove-deep [:private-key]) vector)))]
+                       (assoc :cmd-queue cmd-queue
+                              :new-ledger-queue (parse-new-ledger-queue new-db-queue)
+                              :networks (some->> networks (remove-deep [:private-key]) vector)))]
     (-> (txproto/-state group)
         (select-keys [:snapshot-term
                       :latest-index

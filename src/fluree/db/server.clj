@@ -113,9 +113,9 @@
 
 
 (defn migrated?
-  [{:keys [storage-list] :as conn} [network dbid]]
+  [{:keys [storage-list] :as conn} [network ledger-id]]
   (go-try
-    (let [tspo-dir (str/join "/" [network dbid "tspo"])
+    (let [tspo-dir (str/join "/" [network ledger-id "tspo"])
           list-res (<? (storage-list tspo-dir))]
       (-> list-res seq boolean))))
 

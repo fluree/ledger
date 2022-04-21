@@ -411,8 +411,8 @@
   ;; For now, does not require authentication
   (go-try
     (let [conn      (:conn system)
-          [network dbid] (graphdb/validate-ledger-ident ledger)
-          reindexed (<? (reindex/reindex conn network dbid))]
+          [network ledger-id] (graphdb/validate-ledger-ident ledger)
+          reindexed (<? (reindex/reindex conn network ledger-id))]
       [{:status 200} {:block (:block reindexed)
                       :t     (:t reindexed)
                       :stats (:stats reindexed)}])))

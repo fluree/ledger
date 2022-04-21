@@ -20,8 +20,8 @@
   (<!! (fdb/db conn ledger {:syncTo expected-block})))
 
 (defn mark-invalid-pred
-  [{:keys [conn network dbid] :as db}]
-  (let [ledger [network dbid]]
+  [{:keys [conn network ledger-id] :as db}]
+  (let [ledger [network ledger-id]]
     (when-let [pred-id (dbproto/-p-prop db :id pred-name)]
       (when-not (= pred-id
                    const/$_predicate:fullText)
@@ -34,9 +34,9 @@
                                    :_predicate/deprecated true}]))))))
 
 (defn add-valid-pred
-  [{:keys [conn network dbid] :as db}]
+  [{:keys [conn network ledger-id] :as db}]
   (let [pred-id (dbproto/-p-prop db :id pred-name)
-        ledger  [network dbid]]
+        ledger  [network ledger-id]]
     (if (nil? pred-id)
       (do (log/info "Adding valid fullText predicate to ledger" ledger)
           (<!! (fdb/transact-async conn ledger
@@ -58,9 +58,9 @@
       responses)))
 
 (defn update-subjects
-  [{:keys [conn network dbid] :as db}]
+  [{:keys [conn network ledger-id] :as db}]
   (let [invalid-pred-id (dbproto/-p-prop db :id invalid-name)
-        ledger          [network dbid]]
+        ledger          [network ledger-id]]
     (when invalid-pred-id
       (let [subject-flakes (<!! (query-range/index-range db :psot = [invalid-pred-id]))]
         (loop [flakes subject-flakes
@@ -74,9 +74,9 @@
             (transact-in-batches conn ledger txns 50)))))))
 
 (defn reset-index
-  [{:keys [conn network dbid] :as db}]
+  [{:keys [conn network ledger-id] :as db}]
   (let [indexer (-> conn :full-text/indexer :process)
-        ledger  [network dbid]]
+        ledger  [network ledger-id]]
     (<!! (indexer {:action :reset, :db db}))))
 
 (defn repair

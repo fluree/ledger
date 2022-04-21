@@ -101,11 +101,12 @@
 (defn latest-index*
   "Returns latest index for given ledger given current state."
   [current-state network ledger-id]
-  (let [dbs        (get-in current-state [:networks network :dbs])
+  (log/debug "Getting latest index for" network ledger-id "in current-state:" current-state)
+  (let [ledgers    (get-in current-state [:networks network :ledgers])
         ledger-id* (str/lower-case ledger-id)]
     (some (fn [key']
             (when (= ledger-id* (str/lower-case key'))
-              (get-in dbs [key' :index]))) (keys dbs))))
+              (get-in ledgers [key' :index]))) (keys ledgers))))
 
 (defn latest-index
   "Returns latest index for given ledger."
@@ -115,7 +116,7 @@
 (defn write-index-point-async
   "Attempts to register a new index point. If older than the previous index point,
 or this server is not responsible for this ledger, will return false. Else true upon success."
-  ([group db] (write-index-point-async group (:network db) (:dbid db) (get-in db [:stats :indexed])
+  ([group db] (write-index-point-async group (:network db) (:ledger-id db) (get-in db [:stats :indexed])
                                        (:this-server group) {}))
   ([group network ledger-id index-point submission-server opts]
    (let [command [:new-index network ledger-id index-point submission-server opts]]
@@ -123,20 +124,20 @@ or this server is not responsible for this ledger, will return false. Else true 
 
 (defn remove-current-index
   "Removes current index point from raft network."
-  [group network dbid]
-  (let [ks [:networks network :dbs dbid :index]]
+  [group network ledger-id]
+  (let [ks [:networks network :ledgers ledger-id :index]]
     (kv-dissoc-in group ks)))
 
 (defn remove-index-point
   "Removes an index point. Returns true if index point existed and was successfully removed."
-  [group network dbid idx-point]
-  (let [ks [:networks network :dbs dbid :indexes idx-point]]
+  [group network ledger-id idx-point]
+  (let [ks [:networks network :ledgers ledger-id :indexes idx-point]]
     (kv-dissoc-in group ks)))
 
 (defn remove-ledger
   "Removes current index point from raft network."
-  [group network dbid]
-  (let [ks [:networks network :dbs dbid]]
+  [group network ledger-id]
+  (let [ks [:networks network :ledgers ledger-id]]
     (kv-dissoc-in group ks)))
 
 
@@ -161,7 +162,7 @@ or this server is not responsible for this ledger, will return false. Else true 
   (let [networks (-> current-state :networks (keys))]
     (reduce
       (fn [acc network]
-        (let [ledgers  (get-in current-state [:networks network :dbs])
+        (let [ledgers  (get-in current-state [:networks network :ledgers])
               ledgers' (filter #(#{:ready :initialize :reindex}
                                  (:status (get ledgers %))) (keys ledgers))]
           (reduce #(conj %1 [network %2]) acc ledgers')))
@@ -173,7 +174,7 @@ or this server is not responsible for this ledger, will return false. Else true 
   (let [networks (-> current-state :networks (keys))]
     (reduce
       (fn [acc network]
-        (let [ledgers (keys (get-in current-state [:networks network :dbs]))]
+        (let [ledgers (keys (get-in current-state [:networks network :ledgers]))]
           (reduce #(conj %1 [network %2]) acc ledgers)))
       [] networks)))
 
@@ -191,7 +192,7 @@ or this server is not responsible for this ledger, will return false. Else true 
 (defn ledger-status
   "Returns current status for given ledger"
   [group network ledger-id]
-  (kv-get-in group [:networks network :dbs ledger-id :status]))
+  (kv-get-in group [:networks network :ledgers ledger-id :status]))
 
 (defn ledger-exists?
   [group network ledger-id]
@@ -201,9 +202,9 @@ or this server is not responsible for this ledger, will return false. Else true 
   "Returns all info we have on given ledger."
   [group network ledger-id]
   (log/debug "Getting ledger-info at key-path"
-             [:networks network :dbs ledger-id]
+             [:networks network :ledgers ledger-id]
              "from:" (-local-state group))
-  (kv-get-in group [:networks network :dbs ledger-id]))
+  (kv-get-in group [:networks network :ledgers ledger-id]))
 
 (defn ledgers-info-map
   "Returns vector of maps with include 'ledger-info' data
@@ -219,11 +220,11 @@ or this server is not responsible for this ledger, will return false. Else true 
 
 (defn update-ledger-status
   [group network ledger-id status-msg]
-  (kv-assoc-in group [:networks network :dbs ledger-id :status] status-msg))
+  (kv-assoc-in group [:networks network :ledgers ledger-id :status] status-msg))
 
 (defn initialized-ledger-async
   "Registers first block of initialized db. Rejects if db already initialized.
-  Always removes command-id from qeued new dbs."
+  Always removes command-id from qeued new ledgers."
   [group cmd-id network ledger-id block fork index]
   (let [status  (util/without-nils {:status    :ready
                                     :block     block
@@ -243,17 +244,17 @@ or this server is not responsible for this ledger, will return false. Else true 
   (let [command [:new-ledger network ledger-id cmd-id signed-cmd owners]]
     (-new-entry-async group command)))
 
-(defn find-all-dbs-to-initialize
-  "Finds all dbs that need to be initialized in a given network.
-  Returns a list of tuples: [network dbid command fork forkBlock]"
+(defn find-all-ledgers-to-initialize
+  "Finds all ledgers that need to be initialized in a given network.
+  Returns a list of tuples: [network ledger-id command fork forkBlock]"
   [group]
   (let [initialize-cmds (-> (-local-state group)
-                            (get :new-db-queue)
+                            (get :new-ledger-queue)
                             (vals)
                             (#(mapcat vals %)))]
     (reduce
-      (fn [acc {:keys [network dbid command]}]
-        (conj acc [network dbid command]))
+      (fn [acc {:keys [network ledger-id command]}]
+        (conj acc [network ledger-id command]))
       [] initialize-cmds)))
 
 ;; private key commands
@@ -269,7 +270,7 @@ or this server is not responsible for this ledger, will return false. Else true 
   ([group network private-key]
    (kv-assoc-in group [:networks network :private-key] private-key))
   ([group network ledger-id private-key]
-   (kv-assoc-in group [:networks network :dbs ledger-id :private-key] private-key)))
+   (kv-assoc-in group [:networks network :ledgers ledger-id :private-key] private-key)))
 
 (defn get-shared-private-key
   "Both network and ledger are optional"
@@ -277,7 +278,7 @@ or this server is not responsible for this ledger, will return false. Else true 
   ([group network] (or (kv-get-in group [:networks network :private-key])
                        (kv-get-in group [:private-key])))
   ([group network ledger-id]
-   (or (kv-get-in group [:networks network :dbs ledger-id :private-key])
+   (or (kv-get-in group [:networks network :ledgers ledger-id :private-key])
        (get-shared-private-key group network))))
 
 ;; Command queue commands
@@ -290,7 +291,7 @@ or this server is not responsible for this ledger, will return false. Else true 
     2. command    - command data (map)
     3. size    - size of command in bytes
     4. network
-    5. dbid
+    5. ledger-id
     6. instant - instant we put this tx into our state machine"
   ([group]
    (->> (get-in (-local-state group) [:cmd-queue])
@@ -302,17 +303,17 @@ or this server is not responsible for this ledger, will return false. Else true 
   ([group network ledger-id]
    (->> (get-in (-local-state group) [:cmd-queue network])
         vals
-        (filter #(= ledger-id (:dbid %))))))
+        (filter #(= ledger-id (:ledger-id %))))))
 
 (defn queue-command-async
   "Writes a new tx to the queue"
   [group network ledger-id command-id command]
   (kv-assoc-in-async group [:cmd-queue network command-id]
                      {:command command
-                      :size (count (:cmd command))
-                      :id command-id
+                      :size    (count (:cmd command))
+                      :id      command-id
                       :network network
-                      :dbid ledger-id
+                      :ledger-id    ledger-id
                       :instant (System/currentTimeMillis)}))
 
 
@@ -322,7 +323,7 @@ or this server is not responsible for this ledger, will return false. Else true 
 (defn block-height*
   "Returns block height given the group's state atom."
   [group-state network ledger-id]
-  (get-in group-state [:networks network :dbs ledger-id :block]))
+  (get-in group-state [:networks network :ledgers ledger-id :block]))
 
 (defn propose-new-block-async
   [group network ledger-id block-data]
@@ -341,7 +342,7 @@ or this server is not responsible for this ledger, will return false. Else true 
   ([group network ledger-id]
    (register-genesis-block-async group network ledger-id 1))
   ([group network ledger-id block]
-   (kv-assoc-in-async group [:networks network :dbs ledger-id :block] block)))
+   (kv-assoc-in-async group [:networks network :ledgers ledger-id :block] block)))
 
 
 ;; storage commands

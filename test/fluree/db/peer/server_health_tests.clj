@@ -9,21 +9,21 @@
 (def ^:const instant-now (System/currentTimeMillis))
 (def ^:const instant-oldest-txn (- instant-now 5000))
 (def ^:const state-leases {:servers {:server-id {:id :DEF :expire (+ instant-now 300000)}}})
-(def ^:const state-cmd-queue {"test"   {"txid" {:data    {:cmd "" :sig ""}
-                                                :size    400
-                                                :txid    "txid"
-                                                :network "network"
-                                                :dbid    "dbid"
-                                                :instant instant-oldest-txn}}
-                              "fluree" {"txid" {:data    {:cmd "" :sig ""}
-                                                :size    2400
-                                                :txid    "txid"
-                                                :network "network"
-                                                :dbid    "dbid"
-                                                :instant instant-now}}})
-(def ^:const state-new-db-queue {"test" {"id" {:network "test"
-                                               :dbid    "new-ledger"
-                                               :command {:cmd "command-json" :sig "sig"}}}})
+(def ^:const state-cmd-queue {"test"   {"txid" {:data      {:cmd "" :sig ""}
+                                                :size      400
+                                                :txid      "txid"
+                                                :network   "network"
+                                                :ledger-id "ledger-id"
+                                                :instant   instant-oldest-txn}}
+                              "fluree" {"txid" {:data      {:cmd "" :sig ""}
+                                                :size      2400
+                                                :txid      "txid"
+                                                :network   "network"
+                                                :ledger-id "ledger-id"
+                                                :instant   instant-now}}})
+(def ^:const state-new-ledger-queue {"test" {"id" {:network   "test"
+                                                   :ledger-id "new-ledger"
+                                                   :command   {:cmd "command-json" :sig "sig"}}}})
 
 (deftest server-health-tests
   (testing "remove-deep"
@@ -43,7 +43,7 @@
               first
               (test/contains-every? :txn-count :txn-oldest-instant)))))
   (testing "parse-new-db-queue"
-    (let [res (srv-health/parse-new-db-queue state-new-db-queue)]
+    (let [res (srv-health/parse-new-ledger-queue state-new-ledger-queue)]
       (is (vector? res))
       (is (= 1 (count res)))))
   (testing "get-consensus-state"
@@ -53,7 +53,7 @@
                       deref
                       (assoc :leases state-leases)
                       (assoc :cmd-queue state-cmd-queue)
-                      (assoc :new-db-queue state-new-db-queue)
+                      (assoc :new-db-queue state-new-ledger-queue)
                       atom)
           system* (assoc-in test/system [:group :state-atom] state)
           res     (srv-health/get-consensus-state system*)]
@@ -101,7 +101,7 @@
                         deref
                         (assoc :leases state-leases)
                         (assoc :cmd-queue state-cmd-queue)
-                        (assoc :new-db-queue state-new-db-queue)
+                        (assoc :new-db-queue state-new-ledger-queue)
                         atom)
             system* (assoc-in test/system [:group :state-atom] state)
             res     (srv-health/nw-state-handler system* nil)

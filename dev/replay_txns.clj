@@ -11,8 +11,8 @@
 
 (defn- block-flakes
   "Returns block flakes for specified block"
-  [conn network dbid block]
-  (-> (storage/read-block conn network dbid block)
+  [conn network ledger-id block]
+  (-> (storage/read-block conn network ledger-id block)
       (async/<!!)
       :flakes))
 
@@ -38,10 +38,10 @@
      (replay-blocks conn db-ident to-block closest-point)))
   ([conn db-ident to-block index-point]
    (let [session (session/session conn db-ident)
-         {:keys [network dbid blank-db]} session
-         db      (async/<!! (storage/reify-db conn network dbid blank-db index-point))]
+         {:keys [network ledger-id blank-db]} session
+         db      (async/<!! (storage/reify-db conn network ledger-id blank-db index-point))]
      (reduce (fn [db block]
-               (let [flakes (block-flakes conn network dbid block)
+               (let [flakes (block-flakes conn network ledger-id block)
                      db*    (async/<!! (dbproto/-with db block flakes))]
                  (log/info "Applying block:" block)
                  db*))
@@ -59,10 +59,10 @@
      (replay-blocks conn db-ident to-block closest-point)))
   ([conn db-ident to-block index-point]
    (let [session (session/session conn db-ident)
-         {:keys [network dbid blank-db]} session
-         db      (async/<!! (storage/reify-db conn network dbid blank-db index-point))]
+         {:keys [network ledger-id blank-db]} session
+         db      (async/<!! (storage/reify-db conn network ledger-id blank-db index-point))]
      (reduce (fn [db block]
-               (let [flakes (block-flakes conn network dbid block)
+               (let [flakes (block-flakes conn network ledger-id block)
                      db*    (async/<!! (dbproto/-with db block flakes))]
                  (log/info "Applying block:" block)
                  db*))

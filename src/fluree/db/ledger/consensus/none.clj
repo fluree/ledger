@@ -63,11 +63,11 @@
     (let [entry  (:entry command)
           op     (first entry)
           result (case op
-                   :new-block (let [[_ network dbid block-map _] entry
+                   :new-block (let [[_ network ledger-id block-map _] entry
                                     {:keys [block txns cmd-types]} block-map
                                     txids          (keys txns)
-                                    file-key       (storage/ledger-block-key network dbid block)
-                                    current-block  (get-in @state-atom [:networks network :dbs dbid :block])
+                                    file-key       (storage/ledger-block-key network ledger-id block)
+                                    current-block  (get-in @state-atom [:networks network :ledgers ledger-id :block])
                                     is-next-block? (if current-block
                                                      (= block (inc current-block))
                                                      (= 1 block))]
@@ -82,10 +82,10 @@
 
                                     ;; update current block, and remove txids from queue
                                     (swap! state-atom
-                                           (fn [state] (update-state/update-ledger-block network dbid txids state block)))
+                                           (fn [state] (update-state/update-ledger-block network ledger-id txids state block)))
 
                                     ;; publish new-block event
-                                    (event-bus/publish :block [network dbid] block-map)
+                                    (event-bus/publish :block [network ledger-id] block-map)
                                     ;; return success!
                                     true)
                                   (do
@@ -93,10 +93,10 @@
                                               {:is-next-block? is-next-block?
                                                :state-dump     @state-atom}) false)))
 
-                   ;; stages a new db to be created
-                   :new-ledger (update-state/stage-new-db entry state-atom)
+                   ;; stages a new ledger to be created
+                   :new-ledger (update-state/stage-new-ledger entry state-atom)
 
-                   :initialized-ledger (update-state/initialized-db entry state-atom)
+                   :initialized-ledger (update-state/initialized-ledger entry state-atom)
 
                    :new-index (update-state/new-index entry state-atom)
 
@@ -200,7 +200,7 @@
         close-fn           (fn []
                              (async/close! event-chan)
                              (async/close! command-chan)
-                             (group-monitor/close-db-queue)
+                             (group-monitor/close-ledger-queue)
                              (unregister-all-state-change-fn)
                              (memorystore/close)
                              (event-bus/reset-sub))
