@@ -16,10 +16,6 @@
         end-time   (System/nanoTime)]
     (float (/ (- end-time start-time) 1000000))))
 
-(defn abs
-  [n]
-  (if (<= 0 n) n (* -1 n)))
-
 (defn average
   [numbers]
   (if (empty? numbers)
