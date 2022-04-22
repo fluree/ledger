@@ -798,8 +798,8 @@
                         _                (when-not (and network ledger type)
                                            (throw
                                              (ex-info
-                                               (str "Incomplete request. At least a network, db and type are required. Provided network: "
-                                                    network " db: " ledger " type: " type " key: " key)
+                                               (str "Incomplete request. At least a network, ledger, and type are required. Provided network: "
+                                                    network " ledger,: " ledger " type: " type " key: " key)
                                                {:status 400 :error :db/invalid-request})))
                         auth-id          (cond
                                            signature
