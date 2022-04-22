@@ -16,10 +16,6 @@
         end-time   (System/nanoTime)]
     (float (/ (- end-time start-time) 1000000))))
 
-(defn abs
-  [n]
-  (if (<= 0 n) n (* -1 n)))
-
 (defn average
   [numbers]
   (if (empty? numbers)
@@ -45,23 +41,23 @@
 ;; TODO - not working with 0.11.0
 
 (defn add-and-delete-data
-  [conn dbid]
+  [conn ledger-id]
   (let [txn       [{:_id "person" :favNums [1]}]
-        res       (async/<!! (fdb/transact-async conn dbid txn))
+        res       (async/<!! (fdb/transact-async conn ledger-id txn))
         _id       (-> res :tempids (get "person$1"))
         deleteTxn [{:_id _id :_action "delete"}]
-        deleteRes (async/<!! (fdb/transact-async conn dbid deleteTxn))]
+        deleteRes (async/<!! (fdb/transact-async conn ledger-id deleteTxn))]
     deleteRes))
 
 
 
 (defn add-and-update-data
-  [conn dbid]
+  [conn ledger-id]
   (let [txn       [{:_id "person" :favNums [1]}]
-        res       (async/<!! (fdb/transact-async conn dbid txn))
+        res       (async/<!! (fdb/transact-async conn ledger-id txn))
         _id       (-> res :tempids (get "person$1"))
         updateTxn [{:_id _id :favNums [2]}]
-        updateRes (async/<!! (fdb/transact-async conn dbid updateTxn))]
+        updateRes (async/<!! (fdb/transact-async conn ledger-id updateTxn))]
     updateRes))
 
 
@@ -100,17 +96,17 @@
                  (catch Exception e {:issued q :error true}))) {} query-map))
 
 (defn add-schema-performance-check
-  [conn dbid]
+  [conn ledger-id]
   (let [collections (-> "schemas/chat.edn" io/resource slurp edn/read-string)
-        coll-txn    (time-return-data (fn [conn dbid collections]
-                                        (async/<!! (fdb/transact-async conn dbid collections)))
-                                      conn dbid collections)
+        coll-txn    (time-return-data (fn [conn ledger-id collections]
+                                        (async/<!! (fdb/transact-async conn ledger-id collections)))
+                                      conn ledger-id collections)
         predicates  (-> "schema/chat-preds.edn" io/resource slurp edn/read-string)
-        pred-txn    (time-return-data (fn [conn dbid collections]
-                                        (async/<!! (fdb/transact-async conn dbid collections))) conn dbid predicates)
+        pred-txn    (time-return-data (fn [conn ledger-id collections]
+                                        (async/<!! (fdb/transact-async conn ledger-id collections))) conn ledger-id predicates)
         data        (-> "data/chat.edn" io/resource slurp edn/read-string)
-        data-txn    (time-return-data (fn [conn dbid collections]
-                                        (async/<!! (fdb/transact-async conn dbid collections))) conn dbid data)
+        data-txn    (time-return-data (fn [conn ledger-id collections]
+                                        (async/<!! (fdb/transact-async conn ledger-id collections))) conn ledger-id data)
         ;; For now, these are hard-coded
         keyCollTxn  1
         keyPredTxn  2
@@ -120,19 +116,19 @@
      keyDataTxn {:mean (str data-txn " ms") :mean-time (/ data-txn 1000)}}))
 
 
-;(add-schema-performance-check conn dbid)
+;(add-schema-performance-check conn ledger-id)
 
 ;; TODO - recommend turning off transact and block-range logging beforehand
 ;; I didn't turn off either. IDK if results affected.
 (defn performance-check
   "NOTE: This performance check will take more than an hour."
-  ([conn dbid]
-    (performance-check conn dbid "../test/fluree/db/ledger/Performance/QueryTxnList.edn" 0 true))
-  ([conn dbid queryTxnFile offset schema?]
-    (let [add-schema-res         (when schema? (add-schema-performance-check conn dbid))
+  ([conn ledger-id]
+    (performance-check conn ledger-id "../test/fluree/db/ledger/Performance/QueryTxnList.edn" 0 true))
+  ([conn ledger-id queryTxnFile offset schema?]
+    (let [add-schema-res         (when schema? (add-schema-performance-check conn ledger-id))
           _                      (log/info "Schema timing results: " add-schema-res)
           queries                (-> queryTxnFile io/resource slurp read-string)
-          myDb                   (fdb/db conn dbid)
+          myDb                   (fdb/db conn ledger-id)
           basic-query-coll       (get-query-type queries :basic-query offset)
           query-bench            (test-queries myDb (fn [db q]
                                                       (async/<!! (fdb/query-async db q))) basic-query-coll)
@@ -144,7 +140,7 @@
           ;block-query-coll       (get-query-type queries :block-query offset)
           ;block-query-bench      (test-queries myDb (fn [db q]
           ;                                            (async/<!!
-          ;                                              (fdb/block-query-async conn dbid q))) block-query-coll)
+          ;                                              (fdb/block-query-async conn ledger-id q))) block-query-coll)
           ;_                      (log/info "Block query bench results: " block-query-bench)
           ;history-query-bench  (test-queries myDb (fn [db q]
           ;                                          (async/<!!
@@ -156,20 +152,20 @@
           ;                                           (fdb/sparql-async db q))) sparql-query-coll :sparql-query)
           ;_ (log/info "SPARQL query bench results: " sparql-query-bench)
           ;graphql-query-bench  (test-queries myDb (fn [db q]
-          ;                                          (async/<!! (fdb/graphql-async conn dbid q nil))) :graphql-query graphql-query-coll)
+          ;                                          (async/<!! (fdb/graphql-async conn ledger-id q nil))) :graphql-query graphql-query-coll)
           ;_ (log/info "GraphQL query bench results:" graphql-query-bench)
           ;multi-query-bench  (test-queries myDb (fn [db q]
           ;                                        (async/<!!
           ;                                          (fdb/multi-query-async db q))) multi-query-coll :multi-query)
           ;_ (log/info "Multi-query bench results: " multi-query-bench)
           ;add-data-bench     (->> (criterium/benchmark
-          ;                          (async/<!! (fdb/transact-async conn dbid [{:_id "person" :favNums [1]}])) nil)
+          ;                          (async/<!! (fdb/transact-async conn ledger-id [{:_id "person" :favNums [1]}])) nil)
           ;                        (format-res :addData :txn))
           ;_ (log/info "Add data bench: " add-data-bench)
-          ;add-update-bench (->> (criterium/benchmark (add-and-update-data conn dbid) nil)
+          ;add-update-bench (->> (criterium/benchmark (add-and-update-data conn ledger-id) nil)
           ;                      (format-res :addUpdateData :txn))
           ;_ (log/info "Add and update data bench: " add-update-bench)
-          ;add-delete-bench (->> (criterium/benchmark (add-and-delete-data conn dbid) nil)
+          ;add-delete-bench (->> (criterium/benchmark (add-and-delete-data conn ledger-id) nil)
           ;                      (format-res :addDeleteData :txn))
           ;_ (log/info "Add and delete data bench: " add-delete-bench)
 

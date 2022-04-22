@@ -179,15 +179,15 @@
 
 (defn queued-tx
   "If state change is a new tx that was queued
-   returns three-tuple of [network dbid txid], else nil."
+   returns three-tuple of [network ledger-id txid], else nil."
   [state-change]
   (let [{:keys [command result]} state-change
         [op arg1 arg2] command]
     (when (and (= :assoc-in op)
                (= :cmd-queue (first arg1))
                (true? result))
-      (let [{:keys [dbid network id]} arg2]
-        [network dbid id]))))
+      (let [{:keys [ledger-id network id]} arg2]
+        [network ledger-id id]))))
 
 
 (defn work-changed?
@@ -220,7 +220,7 @@
   - size
   - id
   - network
-  - dbid
+  - ledger-id
   - instant
 
  Commands can optionally contain multiTx, which allows for multiple transactions to be handle together in the
@@ -253,20 +253,20 @@
           queued*)))))
 
 
-;; holds db-queues. Creates them on the fly if needed.
-(def db-queues-atom (atom {}))
+;; holds ledger-queues. Creates them on the fly if needed.
+(def ledger-queues-atom (atom {}))
 
 
-(defn close-db-queue
-  "Closes queue for db by closing channel and removing from queue atom"
+(defn close-ledger-queue
+  "Closes queue for ledger by closing channel and removing from queue atom"
   ([]
-   (reset! db-queues-atom {})
+   (reset! ledger-queues-atom {})
    true)
-  ([network dbid]
-   (swap! db-queues-atom (fn [x]
-                           (when-let [chan (get-in x [network dbid])]
-                             (async/close! chan)
-                             (update x network dissoc dbid)))) true))
+  ([network ledger-id]
+   (swap! ledger-queues-atom (fn [x]
+                               (when-let [chan (get-in x [network ledger-id])]
+                                 (async/close! chan)
+                                 (update x network dissoc ledger-id)))) true))
 
 
 (defn update-recent-cmds
@@ -296,14 +296,14 @@
 ;; TODO - need to detect and propagate errors
 ;; TODO - need way for leader to reject new block if we changed who is
 ;;        responsible for a network in-between, and detect + close here
-(defn db-queue-loop
+(defn ledger-queue-loop
   "Runs a continuous loop for a db to process new blocks"
-  [conn kick-chan network dbid queue-id]
+  [conn kick-chan network ledger-id queue-id]
   (async/go
     (let [group       (:group conn)
           this-server (txproto/this-server group)
-          session     (session/session conn [network dbid])
-          _           (session/reload-db! session)          ;; always reload the session DB to ensure latest when starting loop
+          session     (session/session conn [network ledger-id])
+          _           (session/reload-db! session) ; always reload the session DB to ensure latest when starting loop
           db          (<? (session/current-db session))
           tx-max      (get-tx-max db)]
       ;; launch loop
@@ -314,9 +314,9 @@
           (if-not (network-assigned-to? group this-server network)
             (do
               (log/info (str "Network " network " is no longer assigned to this server. Stopping to process transactions."))
-              (close-db-queue network dbid)
+              (close-ledger-queue network ledger-id)
               (session/close session))
-            (let [queue        (->> (txproto/command-queue group network dbid)
+            (let [queue        (->> (txproto/command-queue group network ledger-id)
                                     (remove #(contains? recent-cmds (:id %)))) ;; remove any commands already processed but not yet removed by consensus
                   cmds         (when (seq queue)
                                  (select-block-commands queue tx-max))
@@ -334,18 +334,18 @@
               (recur block-map* recent-cmds*))))))))
 
 
-(defn db-queue
-  [conn network dbid]
-  (or (get-in @db-queues-atom [network dbid])
-      (let [queue-id (str network "/" dbid ":" (rand-int 100000))]
-        (swap! db-queues-atom (fn [queues]
-                                (if (get-in queues [network dbid])
-                                  queues                    ;; race condition - queue was just created so don't create new one
-                                  (let [chan (async/chan (async/dropping-buffer 1))]
-                                    ;; kick off loop
-                                    (db-queue-loop conn chan network dbid queue-id)
-                                    (assoc-in queues [network dbid] chan)))))
-        (get-in @db-queues-atom [network dbid]))))
+(defn ledger-queue
+  [conn network ledger-id]
+  (or (get-in @ledger-queues-atom [network ledger-id])
+      (let [queue-id (str network "/" ledger-id ":" (rand-int 100000))]
+        (swap! ledger-queues-atom (fn [queues]
+                                    (if (get-in queues [network ledger-id])
+                                      queues                    ;; race condition - queue was just created so don't create new one
+                                      (let [chan (async/chan (async/dropping-buffer 1))]
+                                        ;; kick off loop
+                                        (ledger-queue-loop conn chan network ledger-id queue-id)
+                                        (assoc-in queues [network ledger-id] chan)))))
+        (get-in @ledger-queues-atom [network ledger-id]))))
 
 
 (defn kick-all-assigned-networks-with-queue
@@ -363,25 +363,13 @@
                             (assigned-networks-for-server group))]
     (doseq [network assigned-networks]
       (when-let [network-queue (not-empty (txproto/command-queue group network))]
-        (let [queued-dbids (->> network-queue
-                                (map :dbid)
-                                (into #{}))]
-          (doseq [dbid queued-dbids]
-            (async/put! (db-queue conn network dbid) ::kick))
+        (let [queued-ledger-ids (->> network-queue
+                                     (map :ledger-id)
+                                     (into #{}))]
+          (doseq [ledger-id queued-ledger-ids]
+            (async/put! (ledger-queue conn network ledger-id) ::kick))
           true)))))
 
-(defn new-db?
-  "Returns [network dbid] if state update involves a new db.
-
-  Monitors for :new-block commands, which look like this:
-  [op network dbid block-map submission-server]"
-  [state-change]
-  (let [{:keys [command result]} state-change]
-    (when (and (contains? (:cmd-types (nth command 3)) :new-db)
-               (true? result))
-      ;; we have a new DB!
-      ;; return network db is within
-      (second command))))
 
 (defn state-updates-monitor
   "Function to be called with every state change, to possibly kick of an action.
@@ -394,22 +382,22 @@
   (let [op   (get-in state-change [:command 0])
         conn (:conn system)]
     (case op
-      :new-db
+      :new-ledger
       (future
         (when (txproto/-is-leader? (:group conn))
-          (let [initialize-dbs (txproto/find-all-dbs-to-initialize (:group conn))]
-            (doseq [[network dbid command] initialize-dbs]
-              (log/info "Initializing new ledger:" (str network "/" dbid) "-" command)
+          (let [initialize-ledgers (txproto/find-all-ledgers-to-initialize (:group conn))]
+            (doseq [[network ledger-id command] initialize-ledgers]
+              (log/info "Initializing new ledger:" (str network "/" ledger-id) "-" command)
               (let [db      (try
                               (<?? (bootstrap/bootstrap-db system command))
                               (catch Exception e
-                                (log/error e "Failed to bootstrap new ledger:" (str network "/" dbid))))
+                                (log/error e "Failed to bootstrap new ledger:" (str network "/" ledger-id))))
                     _       (log/trace "bootstrap-db returned:" db)
-                    session (session/session conn [network dbid])]
+                    session (session/session conn [network ledger-id])]
                 ;; force session close, so next request will cause session to keep in sync
                 (session/close session))))))
 
-      :initialized-db
+      :initialized-ledger
       (future
         (when-not (txproto/-is-leader? (:group conn))
           (let [command (:command state-change)
@@ -417,9 +405,9 @@
             (session/close session))))
 
       :assoc-in
-      (when-let [[network dbid _] (queued-tx state-change)]
+      (when-let [[network ledger-id _] (queued-tx state-change)]
         (when (network-assigned-to? (:group conn) network)
-          (let [queue-chan (db-queue conn network dbid)]
+          (let [queue-chan (ledger-queue conn network ledger-id)]
             (async/put! queue-chan ::kick))))
 
       :worker-assign
@@ -431,8 +419,8 @@
       ;; Currently only used for fullText search indexing
       :new-block
       (go-try
-        (let [[_ network dbid block-data] (:command state-change)
-              db      (<? (fdb/db (:conn system) [network dbid]))
+        (let [[_ network ledger-id block-data] (:command state-change)
+              db      (<? (fdb/db (:conn system) [network ledger-id]))
               indexer (-> conn :full-text/indexer :process)]
           ;; TODO: Support full-text indexes on s3 too
           (<? (indexer {:action :block, :db db, :block block-data}))))

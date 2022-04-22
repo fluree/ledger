@@ -158,8 +158,8 @@
        (purge-subjects idx wrtr init-stats)))
 
 (defn reset-index
-  [idx wrtr {:keys [network dbid] :as db}]
-  (log/info "Resetting full text index for ledger " network "/" dbid)
+  [idx wrtr {:keys [network ledger-id] :as db}]
+  (log/info "Resetting full text index for ledger " network "/" ledger-id)
   (let [cur-idx-preds (current-index-predicates db)
         idx-queue     (predicate-flakes db cur-idx-preds)
         initial-stats {:indexed 0, :errors 0}]
@@ -183,9 +183,9 @@
 
 
 (defn write-block
-  [idx wrtr {:keys [network dbid] :as db} {:keys [flakes] :as block}]
+  [idx wrtr {:keys [network ledger-id] :as db} {:keys [flakes] :as block}]
   (let [start-time  (Instant/now)
-        coordinates {:network network, :dbid dbid, :block (:block block)}]
+        coordinates {:network network, :ledger-id ledger-id, :block (:block block)}]
     (log/info (str "Full-Text Search Index began processing new block at: "
                    start-time)
               coordinates)
@@ -219,7 +219,7 @@
 
 
 (defn sync-index
-  [idx wrtr {:keys [network dbid block] :as db}]
+  [idx wrtr {:keys [network ledger-id block] :as db}]
   (let [last-indexed (-> idx
                          full-text/read-block-registry
                          :block
@@ -229,7 +229,7 @@
     (if (<= first-block last-block)
       (do (log/info (str "Syncing full text index from block: " first-block
                          " to block " last-block " for ledger " network "/"
-                         dbid))
+                         ledger-id))
           (write-range idx wrtr db first-block last-block))
       (do (log/info "Full text index up to date")
           (async/to-chan! [])))))
@@ -266,9 +266,9 @@
       (go-loop []
         (if-let [[msg resp-ch] (<! write-q)]
           (let [{:keys [action db]} msg
-                {:keys [network dbid]} db
+                {:keys [network ledger-id]} db
                 lang (-> db :settings :language (or :default))]
-            (with-open [^Closeable idx (full-text/open-storage conn network dbid lang)
+            (with-open [^Closeable idx (full-text/open-storage conn network ledger-id lang)
                         ^Closeable wrtr (full-text/writer idx)]
               (let [result  (case action
                               :block (let [{:keys [block]} msg]

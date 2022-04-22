@@ -26,8 +26,8 @@
 
 (defn block-storage-path
   "For a ledger server, will return the relative storage path it is using for blocks for a given ledger."
-  [network dbid]
-  (io/file network dbid "block"))
+  [network ledger-id]
+  (io/file network ledger-id "block"))
 
 
 (defn block-file?
@@ -44,9 +44,9 @@
 
 (defn block-files
   "Returns async chan containing single list of block files on disk for a given ledger"
-  [{:keys [storage-list] :as conn} network dbid]
+  [{:keys [storage-list] :as conn} network ledger-id]
   (go-try
-    (->> (block-storage-path network dbid)
+    (->> (block-storage-path network ledger-id)
          storage-list
          <?
          (filter block-file?))))
@@ -66,9 +66,9 @@
 (defn blocks
   "Returns a list of blocks on disk as long integers whose file sizes are > 0
   and match the prescribed block file path format."
-  [{:keys [storage-list] :as conn} network dbid]
+  [{:keys [storage-list] :as conn} network ledger-id]
   (go-try
-    (->> (block-storage-path network dbid)
+    (->> (block-storage-path network ledger-id)
          storage-list
          <?
          (keep block-file->block-long)
@@ -77,14 +77,14 @@
 
 (defn block-exists?
   "Returns core async channel with true if block for given ledger exists on disk."
-  [{:keys [storage-exists] :as conn} network dbid block]
-  (-> (storage/ledger-block-key network dbid block)
+  [{:keys [storage-exists] :as conn} network ledger-id block]
+  (-> (storage/ledger-block-key network ledger-id block)
       storage-exists))
 
 (defn index-root-exists?
   "Returns core async channel with true if index root exist for given ledger on disk."
-  [{:keys [storage-exists] :as conn} network dbid index-point]
-  (-> (storage/ledger-root-key network dbid index-point)
+  [{:keys [storage-exists] :as conn} network ledger-id index-point]
+  (-> (storage/ledger-root-key network ledger-id index-point)
       storage-exists))
 
 

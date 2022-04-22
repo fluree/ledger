@@ -268,43 +268,42 @@
                      :sig sig}}})))
 
 
-(defn bootstrap-db
-  "Bootstraps a new db from a signed new-db message."
+(defn bootstrap-db ; TODO: Rename bootstrap-ledger
+  "Bootstraps a new ledger from a signed new-ledger message."
   [{:keys [conn group]} {:keys [cmd sig] :as command}]
   (go-try
     (log/debug "Bootstrapping new ledger:" command)
     (let [txid          (crypto/sha3-256 cmd)
-          {new-db-name :db owners :owners} (json/parse cmd)
-          [network dbid] (if (sequential? new-db-name)
-                           new-db-name
-                           (str/split new-db-name #"/"))
-          _             (when (or (txproto/ledger-exists? group network dbid)
+          {new-ledger-name :ledger owners :owners} (json/parse cmd)
+          [network ledger-id] (if (sequential? new-ledger-name)
+                                new-ledger-name
+                                (str/split new-ledger-name #"/"))
+          _             (when (or (txproto/ledger-exists? group network ledger-id)
                                   ;; also check for block 1 on disk as a precaution
-                                  (<? (storage/read-block conn network dbid 1)))
-                          (throw (ex-info (str "Ledger " network "/$" dbid " already exists! Create unsuccessful.")
+                                  (<? (storage/read-block conn network ledger-id 1)))
+                          (throw (ex-info (str "Ledger " network "/$" ledger-id " already exists! Create unsuccessful.")
                                           {:status 500
                                            :error  :db/unexpected-error})))
           owners'       (or owners #{(crypto/account-id-from-message cmd sig)})
           _             (log/debug "New ledger owner(s):" owners')
-          block         (bootstrap-memory-db conn [network dbid]
+          block         (bootstrap-memory-db conn [network ledger-id]
                                              {:owners owners' :txid txid :cmd cmd
                                               :sig    sig})
           new-db        (:db block)
           block-data    (dissoc block :db)
-          _             (<? (storage/write-block conn network dbid block-data))
+          _             (<? (storage/write-block conn network ledger-id block-data))
           ;; todo - should create a new command to register new DB that first checks raft
-          _             (<? (txproto/register-genesis-block-async (:group conn) network dbid))
+          _             (<? (txproto/register-genesis-block-async (:group conn) network ledger-id))
 
-          {:keys [network dbid block fork] :as indexed-db}
+          {:keys [network ledger-id block fork] :as indexed-ledger}
           (<? (indexing/refresh new-db))
 
-          dbgroup       (-> indexed-db :conn :group)
-          indexed-block (get-in indexed-db [:stats :indexed])]
-
+          ledger-group  (-> indexed-ledger :conn :group)
+          indexed-block (get-in indexed-ledger [:stats :indexed])]
       ;; write out new index point
-      (<? (txproto/initialized-ledger-async dbgroup txid network dbid block
+      (<? (txproto/initialized-ledger-async ledger-group txid network ledger-id block
                                             fork indexed-block))
-      indexed-db)))
+      indexed-ledger)))
 
 (def bootstrap-txn
   [{:_id     ["_collection" const/$_predicate]
@@ -929,5 +928,5 @@
    {:_id  ["_predicate" const/$_ctx:doc]
     :name "_ctx/doc"
     :doc  "Optional docstring for context information."
-    :type "string"}
-   ])
+    :type "string"}])
+

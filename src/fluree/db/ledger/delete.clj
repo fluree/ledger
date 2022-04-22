@@ -30,11 +30,11 @@
 
 (defn delete-db-indexes
   "Deletes all keys for all four indexes for a db."
-  [conn network dbid idx-point]
+  [conn network ledger-id idx-point]
   (go-try
-    (let [session  (session/session conn (str network "/" dbid))
+    (let [session  (session/session conn (str network "/" ledger-id))
           blank-db (:blank-db session)
-          db       (<? (storage/reify-db conn network dbid blank-db idx-point))]
+          db       (<? (storage/reify-db conn network ledger-id blank-db idx-point))]
       (doseq [idx index/types]
         (<? (delete-all-index-children conn (get db idx)))))))
 
@@ -49,10 +49,10 @@
 
 (defn delete-all-blocks
   "Deletes blocks and versions of blocks."
-  [conn network dbid block]
+  [conn network ledger-id block]
   (go-try
     (doseq [block (range 1 (inc block))]
-      (let [block-key (storage/ledger-block-file-path network dbid block)
+      (let [block-key (storage/ledger-block-file-path network ledger-id block)
             versions  (<? (all-versions conn block-key))
             to-delete (conj versions block-key)]
         (doseq [file to-delete]
@@ -60,43 +60,43 @@
 
 (defn delete-lucene-indexes
   "Deletes the full-text (lucene) indexes for a ledger."
-  [conn network dbid]
+  [conn network ledger-id]
   (go-try
     (when-let [indexer (-> conn :full-text/indexer :process)]
-      (let [db (<? (session/db conn (str network "/" dbid) nil))]
+      (let [db (<? (session/db conn (str network "/" ledger-id) nil))]
         (<? (indexer {:action :forget, :db db}))))))
 
 (defn process
   "Deletes a current DB, deletes block files."
-  [conn network dbid]
+  [conn network ledger-id]
   (go-try
     ;; mark status as deleting, so nothing new will get a handle on this db
-    (txproto/update-ledger-status (:group conn) network dbid "deleting")
+    (txproto/update-ledger-status (:group conn) network ledger-id "deleting")
     (let [group     (:group conn)
-          dbinfo    (txproto/ledger-info group network dbid)
+          dbinfo    (txproto/ledger-info group network ledger-id)
           block     (:block dbinfo)
           idx-point (:index dbinfo)]
 
       ;; do a full garbage collection first. If nothing exists to gc, will throw
-      (gc/process conn network dbid)
+      (gc/process conn network ledger-id)
 
       ;; delete full-text indexes
-      (<? (delete-lucene-indexes conn network dbid))
+      (<? (delete-lucene-indexes conn network ledger-id))
 
       ;; need to delete all index segments for the current index.
-      (<? (delete-db-indexes conn network dbid idx-point))
+      (<? (delete-db-indexes conn network ledger-id idx-point))
 
       ;; need to explicitly do a garbage collection of the 'current' node
-      (<? (gc/process-index conn network dbid idx-point))
+      (<? (gc/process-index conn network ledger-id idx-point))
 
       ;; delete all blocks
-      (<? (delete-all-blocks conn network dbid block))
+      (<? (delete-all-blocks conn network ledger-id block))
 
       ;;; remove current index from raft db status
-      (txproto/remove-current-index group network dbid)
+      (txproto/remove-current-index group network ledger-id)
 
       ;; mark status as archived
-      (txproto/remove-ledger group network dbid)
+      (txproto/remove-ledger group network ledger-id)
 
       ;; all done!
       true)))

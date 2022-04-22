@@ -34,7 +34,7 @@
   (let [[collection id] (str/split tempid #"[^\._a-zA-Z0-9]" 2)
         key (if id
               (keyword collection id)
-              (keyword collection (str (util/random-uuid))))]
+              (keyword collection (str (random-uuid))))]
     (->TempId tempid collection key (boolean id))))
 
 
