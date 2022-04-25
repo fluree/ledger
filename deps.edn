@@ -46,11 +46,11 @@
   :mvn/version     "2.0.0-alpha2"
 
   :dev
-  {:extra-paths ["dev", "test"]
+  {:extra-paths ["dev" "test" "dev-resources"]
    :extra-deps  {org.clojure/tools.namespace {:mvn/version "1.2.0"}}}
 
   :test
-  {:extra-paths ["test" "test-resources"]
+  {:extra-paths ["test" "test-resources" "dev-resources"]
    :extra-deps  {com.cognitect/test-runner
                  {:git/url "https://github.com/cognitect-labs/test-runner.git"
                   :sha     "cc75980b43011773162b485f46f939dc5fba91e4"}}

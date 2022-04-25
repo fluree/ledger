@@ -117,17 +117,9 @@
 
 (defn load-chat-ledger
   []
-  (let [collection-txn  [{:_id  "_collection", :name "person"}
-                         {:_id  "_collection", :name "chat"}
-                         {:_id  "_collection", :name "comment"}
-                         {:_id  "_collection", :name "artist"}
-                         {:_id  "_collection", :name "movie"}]
-
-        pred-filename   "../test/fluree/db/ledger/Resources/ChatApp/chatPreds.edn"
-        predicate-txn   (edn/read-string (slurp (io/resource pred-filename)))
-
-        data-filename   "../test/fluree/db/ledger/Resources/ChatApp/chatAppData.edn"
-        data-txn        (edn/read-string (slurp (io/resource data-filename)))]
+  (let [collection-txn  (read-edn-resource "schemas/chat.edn")
+        predicate-txn   (read-edn-resource "schemas/chat-preds.edn")
+        data-txn        (read-edn-resource "data/chat.edn")]
 
     (create-ledger test-helpers/ledger-chat)
 
