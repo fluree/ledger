@@ -200,6 +200,18 @@
         true))))
 
 
+(defn- default-to-false
+  "Returns the value of key k in map m with default value `false`. Meaning that
+  if the value is anything but `true`, this will return `false`. Iff the value
+  is `true`, it will return `true`.
+
+  The difference between this and (get m k false) is that will return `true`
+  when the value is truthy (e.g. a string) whereas this treats anything other
+  than `true` as `false`."
+  [m k]
+  (-> m (get k) true?))
+
+
 (defmulti action-handler (fn [action _ _ _ _ _] action))
 
 
@@ -275,7 +287,8 @@
           result (cond
                    (and (:cmd param) (:sig param))
                    (let [persist-resp (<? (fdb/submit-command-async conn param))
-                         result       (if (and (string? persist-resp) (-> param :txid-only false?))
+                         result       (if (and (string? persist-resp)
+                                               (not (default-to-false param :txid-only)))
                                         (<? (fdb/monitor-tx-async conn ledger persist-resp timeout))
                                         persist-resp)]
                      result)
@@ -487,6 +500,7 @@
 (defn wrap-action-handler
   "Wraps a request to facilitate proper response format"
   [system {:keys [headers body params remote-addr] :as request}]
+  (log/debug "wrap-action-handler received request:" request)
   (let [{:keys [action network ledger]} params
         start           (System/nanoTime)
         ledger          (keyword network ledger)
