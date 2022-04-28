@@ -200,18 +200,6 @@
         true))))
 
 
-(defn- default-to-false
-  "Returns the value of key k in map m with default value `false`. Meaning that
-  if the value is anything but `true`, this will return `false`. Iff the value
-  is `true`, it will return `true`.
-
-  The difference between this and (get m k false) is that will return `true`
-  when the value is truthy (e.g. a string) whereas this treats anything other
-  than `true` as `false`."
-  [m k]
-  (-> m (get k) true?))
-
-
 (defmulti action-handler (fn [action _ _ _ _ _] action))
 
 
@@ -286,12 +274,15 @@
           conn   (:conn system)
           result (cond
                    (and (:cmd param) (:sig param))
-                   (let [persist-resp (<? (fdb/submit-command-async conn param))
-                         result       (if (and (string? persist-resp)
-                                               (not (default-to-false param :txid-only)))
-                                        (<? (fdb/monitor-tx-async conn ledger persist-resp timeout))
-                                        persist-resp)]
-                     result)
+                   (let [persist-resp (<? (fdb/submit-command-async conn param))]
+                     (cond
+                       (-> param :txid-only true?) persist-resp
+
+                       (string? persist-resp)
+                       (<? (fdb/monitor-tx-async conn ledger persist-resp
+                                                 timeout))
+
+                       :else persist-resp))
 
                    (not (open-api? system))
                    (throw (ex-info (str "Api endpoint for 'command' must contain a map/object with cmd and sig keys when using a closed Api.")
