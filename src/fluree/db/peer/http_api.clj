@@ -274,11 +274,15 @@
           conn   (:conn system)
           result (cond
                    (and (:cmd param) (:sig param))
-                   (let [persist-resp (<? (fdb/submit-command-async conn param))
-                         result       (if (and (string? persist-resp) (-> param :txid-only false?))
-                                        (<? (fdb/monitor-tx-async conn ledger persist-resp timeout))
-                                        persist-resp)]
-                     result)
+                   (let [persist-resp (<? (fdb/submit-command-async conn param))]
+                     (cond
+                       (-> param :txid-only true?) persist-resp
+
+                       (string? persist-resp)
+                       (<? (fdb/monitor-tx-async conn ledger persist-resp
+                                                 timeout))
+
+                       :else persist-resp))
 
                    (not (open-api? system))
                    (throw (ex-info (str "Api endpoint for 'command' must contain a map/object with cmd and sig keys when using a closed Api.")
@@ -487,6 +491,7 @@
 (defn wrap-action-handler
   "Wraps a request to facilitate proper response format"
   [system {:keys [headers body params remote-addr] :as request}]
+  (log/debug "wrap-action-handler received request:" request)
   (let [{:keys [action network ledger]} params
         start           (System/nanoTime)
         ledger          (keyword network ledger)
