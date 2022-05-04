@@ -674,9 +674,10 @@
           _        (test/transact-data ledger
                                        "chat-alt-people-comments-chats.edn")
           priv-key (slurp "default-private-key.txt")
-          cmd-map  (fdb/tx->command ledger
-                                    [{:_id "person" :stringNotUnique "JoAnne"}]
-                                    priv-key)
+          cmd-map  (assoc (fdb/tx->command ledger
+                                           [{:_id "person" :stringNotUnique "JoAnne"}]
+                                           priv-key)
+                     :txid-only true)
           {:keys [status body]} @(http/post
                                    (str endpoint-url-short ledger "/command")
                                    (test/standard-request cmd-map))
@@ -698,8 +699,7 @@
         priv-key (slurp "default-private-key.txt")
         cmd-map  (-> ledger
                      (fdb/tx->command [{:_id "person" :stringNotUnique "Sally"}]
-                                      priv-key)
-                     (assoc :txid-only false))
+                                      priv-key))
         {:keys [status body]} @(http/post (str endpoint-url-short ledger
                                                "/command")
                                           (test/standard-request cmd-map))

@@ -132,7 +132,7 @@
 
 (defn sign-cmd-fetch-tx-id
   [ledger private-key txn opts]
-  (let [cmd   (fdb/tx->command ledger txn private-key)
+  (let [cmd   (assoc (fdb/tx->command ledger txn private-key) :txid-only true)
         tx-id (send-parse-request ledger "command" cmd opts)
         _     (async/<!! (async/timeout 1000))]
     (async/<!! (fdb/query-async (basic/get-db ledger)
@@ -160,4 +160,6 @@
       (is (nil? (first errs)))
 
       (is (= "400 db/write-permission Insufficient permissions for predicate: chat/message within collection: chat."
-             (second errs) (nth errs 2))))))
+             (second errs) (nth errs 2))
+          (str "Responses:" (pr-str resps) "\n\n"
+               "Errors:" (pr-str errs))))))
