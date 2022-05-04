@@ -20,7 +20,7 @@ COPY . ./
 RUN make uberjar
 RUN make stage-release
 
-FROM openjdk:17-slim-bullseye AS runner
+FROM eclipse-temurin:17-jre-focal AS runner
 
 RUN mkdir -p /opt/fluree
 COPY --from=builder /usr/src/fluree-ledger/build/* /opt/fluree/
