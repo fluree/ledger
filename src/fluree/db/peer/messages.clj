@@ -43,7 +43,11 @@
                    (crypto/account-id-from-message cmd sig)
                    (catch Exception _ (throw-invalid-command "Invalid signature on command.")))]
     (case cmd-type
-      :tx (let [{:keys [ledger tx deps expire nonce]} cmd-data
+      :tx (let [{:keys [ledger db tx deps expire nonce]} cmd-data
+                ledger (or ledger
+                           (when db
+                             (log/warn "'db' param is deprecated in commands. Please use 'ledger' instead.")
+                             db))
                 _ (when-not ledger (throw-invalid-command "No ledger specified for transaction."))
                 [network dbid] (session/resolve-ledger conn ledger)]
 
@@ -61,45 +65,49 @@
             id)
 
       :signed-qry
-      (let [{:keys [db qry expire nonce meta]} cmd-data
-            _      (when-not db (throw-invalid-command "No db specified for signed query."))
+      (let [{:keys [ledger db qry expire nonce meta]} cmd-data
+            ledger (or ledger
+                       (when db
+                         (log/warn "'db' param is deprecated in commands. Please use 'ledger' instead.")
+                         db))
+            _      (when-not ledger (throw-invalid-command "No db specified for signed query."))
             _      (when-not qry (throw-invalid-command "No qry specified for signed query."))
             _      (when (and expire (or (not (pos-int? expire)) (< expire (System/currentTimeMillis))))
                      (throw-invalid-command (format "Signed query 'expire', when provided, must be epoch millis and be later than now. expire: %s current time: %s" expire (System/currentTimeMillis))))
             _      (when (and nonce (not (int? nonce)))
                      (throw-invalid-command (format "Nonce, if provided, must be an integer. Provided: %s" nonce)))
-            [network dbid] (session/resolve-ledger conn db)
-            _      (when-not (txproto/ledger-exists? (:group system) network dbid)
-                     (throw-invalid-command (str "The database does not exist within this ledger group: " db)))
+            [network ledger-id] (session/resolve-ledger conn ledger)
+            _      (when-not (txproto/ledger-exists? (:group system) network ledger-id)
+                     (throw-invalid-command (str "The ledger does not exist: " ledger)))
             action (keyword (:action cmd-data))
             meta   (if (nil? meta) false meta)
-            db*    (if (= action :block)
+            db     (if (= action :block)
                      nil
-                     (fdb/db conn db {:auth (when auth-id ["_auth/id" auth-id])}))]
+                     (fdb/db conn ledger {:auth (when auth-id ["_auth/id" auth-id])}))]
 
         ; 1) execute the query or 2) queue the execution of the signed query?
         (case action
           :query
-          (let [result (async/<!! (fdb/query-async db* (assoc-in qry [:opts :meta] meta)))
+          (let [result (async/<!! (fdb/query-async db (assoc-in qry [:opts :meta] meta)))
                 _      (when (instance? clojure.lang.ExceptionInfo result)
                          (throw result))]
             result)
 
           :multi-query
-          (let [result (async/<!! (fdb/multi-query-async db* (assoc-in qry [:opts :meta] meta)))
+          (let [result (async/<!! (fdb/multi-query-async db (assoc-in qry [:opts :meta] meta)))
                 _      (when (instance? clojure.lang.ExceptionInfo result)
                          (throw result))]
             result)
 
           :block
           (let [query  (assoc qry :opts (assoc (:opts qry) :meta meta :auth auth-id))
-                result (async/<!! (fdb/block-query-async conn db query))
+                result (async/<!! (fdb/block-query-async conn ledger query))
                 _      (when (instance? clojure.lang.ExceptionInfo result)
                          (throw result))]
             result)
 
           :history
-          (let [result (async/<!! (fdb/history-query-async db* (assoc-in qry [:opts meta] meta)))
+          (let [result (async/<!! (fdb/history-query-async db (assoc-in qry [:opts meta] meta)))
                 _      (when (instance? clojure.lang.ExceptionInfo result)
                          (throw result))]
             result)
@@ -109,19 +117,23 @@
                           {:status 400
                            :error  :db/invalid-action}))))
 
-      :new-ledger (let [{:keys [ledger snapshot auth expire nonce]} cmd-data
-                        [network dbid] (if (sequential? ledger) ledger (str/split ledger #"/"))]
+      :new-ledger (let [{:keys [ledger db snapshot auth expire nonce]} cmd-data
+                        ledger (or ledger
+                                   (when db
+                                     (log/warn "'db' param is deprecated in commands. Please use 'ledger' instead.")
+                                     db))
+                        [network ledger-id] (if (sequential? ledger) ledger (str/split ledger #"/"))]
                     (when (and auth auth-id (not= auth auth-id))
                       (throw-invalid-command (str "New-ledger command was signed by auth: " auth-id " but the command specifies auth: " auth ". They must be the same if auth is provided.")))
                     (when-not (re-matches #"^[a-z0-9-]+$" network)
                       (throw-invalid-command (str "Invalid network name: " network)))
-                    (when-not (re-matches #"^[a-z0-9-]+$" dbid)
-                      (throw-invalid-command (str "Invalid ledger name: " dbid)))
+                    (when-not (re-matches #"^[a-z0-9-]+$" ledger-id)
+                      (throw-invalid-command (str "Invalid ledger name: " ledger-id)))
                     (when (and expire (or (not (pos-int? expire)) (< expire (System/currentTimeMillis))))
                       (throw-invalid-command (format "Transaction 'expire', when provided, must be epoch millis and be later than now. expire: %s current time: %s" expire (System/currentTimeMillis))))
                     (when (and nonce (not (int? nonce)))
                       (throw-invalid-command (format "Nonce, if provided, must be an integer. Provided: %s" nonce)))
-                    (when ((set (txproto/all-ledger-list (:group system))) [network dbid])
+                    (when ((set (txproto/all-ledger-list (:group system))) [network ledger-id])
                       (throw-invalid-command (format "Cannot create a new ledger, it already exists or existed: %s" ledger)))
                     (when snapshot
                       (let [storage-exists? (-> system :conn :storage-exists)
@@ -136,18 +148,22 @@
 
                     ;; TODO - do more validation, reconcile with "unsigned-cmd" validation before this
 
-                    (async/<!! (txproto/new-ledger-async (:group system) network dbid id signed-cmd))
+                    (async/<!! (txproto/new-ledger-async (:group system) network ledger-id id signed-cmd))
 
                     id)
-      :delete-ledger (let [{:keys [ledger]} cmd-data
-                           [network dbid] (if (sequential? ledger) ledger (str/split ledger #"/"))
+      :delete-ledger (let [{:keys [ledger db]} cmd-data
+                           ledger (or ledger
+                                      (when db
+                                        (log/warn "'db' param is deprecated in commands. Please use 'ledger' instead.")
+                                        db))
+                           [network ledger-id] (if (sequential? ledger) ledger (str/split ledger #"/"))
                            old-session (session/session conn ledger)
                            db          (async/<!! (session/current-db old-session))
                            _           (when-not (or (-> system :group :open-api)
                                                      (async/<!! (auth/root-role? db ["_auth/id" auth-id])))
                                          (throw (ex-info (str "To delete a ledger, must be using an open API or an auth record with a root role.")
                                                          {:status 401 :error :db/invalid-auth})))]
-                       (async/<!! (ledger-delete/process conn network dbid))
+                       (async/<!! (ledger-delete/process conn network ledger-id))
                        (session/close old-session))
       :default-key (let [{:keys [expire nonce network dbid ledger-id private-key]} cmd-data
                          ledger-id (or ledger-id
