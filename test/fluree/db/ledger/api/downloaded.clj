@@ -635,14 +635,15 @@
 (deftest command-add-person
   (testing "Issue a signed command to add a person."
     (let [priv-key (slurp "default-private-key.txt")
-          cmd-map  (assoc (fdb/tx->command test/ledger-endpoints
-                                           [{:_id "person" :stringNotUnique "JoAnne"}]
-                                           priv-key)
+          cmd-map  (assoc (fdb/tx->command
+                            test/ledger-endpoints
+                            [{:_id "person" :stringNotUnique "JoAnne"}]
+                            priv-key)
                      :txid-only true)
           res      @(http/post (str endpoint-url "command")
                                (standard-request cmd-map))
           body     (-> res :body bs/to-string json/parse)]
-
+      
       (is (= 200 (:status res)))
 
       (is (string? body))
