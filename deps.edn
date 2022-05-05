@@ -14,7 +14,7 @@
 
         ;; AWS S3 API
         com.cognitect.aws/api             {:mvn/version "0.8.539"}
-        com.cognitect.aws/endpoints       {:mvn/version "1.1.12.192"}
+        com.cognitect.aws/endpoints       {:mvn/version "1.1.12.206"}
         com.cognitect.aws/s3              {:mvn/version "822.2.1109.0"}
 
         ;; web server
@@ -117,5 +117,5 @@
    :main-opts ["-m" "antq.core" "--skip=github-action"]}
 
   :clj-kondo
-  {:extra-deps {clj-kondo/clj-kondo {:mvn/version "2022.04.08"}}
+  {:extra-deps {clj-kondo/clj-kondo {:mvn/version "2022.04.25"}}
    :main-opts ["-m" "clj-kondo.main" "--lint" "src" "--config" ".clj-kondo/config.edn"]}}}
