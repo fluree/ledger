@@ -27,7 +27,7 @@
   "Does sanity checks for a new command and if valid, propagates it.
   Returns command-id/txid upon successful persistence to network, else
   throws."
-  [{:keys [conn] :as system}  {:keys [cmd sig signed] :as signed-cmd}]
+  [{:keys [conn] :as system} {:keys [cmd sig signed] :as signed-cmd}]
   (when-not (and (string? cmd) (string? sig))
     (throw-invalid-command (str "Command map requires keys of 'cmd' and 'sig', with a json string command map and signature of the command map respectively. Provided: "
                                 (pr-str signed-cmd))))
@@ -113,8 +113,19 @@
                           {:status 400
                            :error  :db/invalid-action}))))
 
-      :new-db (let [{:keys [db snapshot auth expire nonce owners]} cmd-data
-                    [network ledger-id] (if (sequential? db) db (str/split db #"/"))]
+      :new-db (let [{:keys [db snapshot auth expire nonce owners db-type method]} cmd-data
+                    [network ledger-id] (cond
+                                          (= :json-ld (keyword db-type))
+                                          [(util/keyword->str method) db]
+
+                                          (sequential? db)
+                                          db
+
+                                          (string? db)
+                                          (str/split db #"/")
+
+                                          :else
+                                          (throw-invalid-command (str "Invalid new-db: " db)))]
                 (when (and auth auth-id (not= auth auth-id))
                   (throw-invalid-command (str "New-db command was signed by auth: " auth-id " but the command specifies auth: " auth ". They must be the same if auth is provided.")))
                 (when-not (re-matches #"^[a-z0-9-]+$" network)
@@ -342,10 +353,18 @@
                              [network dbid] (cond
                                               (= :new-db cmd-type)
                                               (cond
-                                                (string? db) (str/split db #"/")
-                                                (sequential? db) db
-                                                :else (throw (ex-info (str "Invalid db provided for new-db: " (pr-str db))
-                                                                      {:status 400 :error :db/invalid-command})))
+                                                (= :json-ld (:db-type cmd-data))
+                                                [(util/keyword->str (:method cmd-data)) db]
+
+                                                (string? db)
+                                                (str/split db #"/")
+
+                                                (sequential? db)
+                                                db
+
+                                                :else
+                                                (throw (ex-info (str "Invalid db provided for new-db: " (pr-str db))
+                                                                {:status 400 :error :db/invalid-command})))
 
                                               (= :delete-db cmd-type)
                                               (session/resolve-ledger (:conn system) db)

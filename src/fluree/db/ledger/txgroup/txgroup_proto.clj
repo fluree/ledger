@@ -224,13 +224,15 @@ or this server is not responsible for this ledger, will return false. Else true 
 (defn initialized-ledger-async
   "Registers first block of initialized db. Rejects if db already initialized.
   Always removes command-id from qeued new dbs."
-  [group cmd-id network ledger-id block fork index]
+  [group {:keys [txid db-type network ledger method fork block index]}]
   (let [status  (util/without-nils {:status    :ready
                                     :block     block
+                                    :db-type   db-type
+                                    :method    method
                                     :fork      fork
                                     :forkBlock (when fork block)
                                     :index     index})
-        command [:initialized-db cmd-id network ledger-id status]]
+        command [:initialized-db txid network ledger status]]
     (-new-entry-async group command)))
 
 (defn lowercase-all-names
@@ -309,10 +311,10 @@ or this server is not responsible for this ledger, will return false. Else true 
   [group network ledger-id command-id command]
   (kv-assoc-in-async group [:cmd-queue network command-id]
                      {:command command
-                      :size (count (:cmd command))
-                      :id command-id
+                      :size    (count (:cmd command))
+                      :id      command-id
                       :network network
-                      :dbid ledger-id
+                      :dbid    ledger-id
                       :instant (System/currentTimeMillis)}))
 
 

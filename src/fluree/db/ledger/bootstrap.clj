@@ -10,7 +10,8 @@
             [fluree.db.ledger.txgroup.txgroup-proto :as txproto]
             [fluree.db.util.async :refer [go-try <?]]
             [fluree.db.util.core :as util]
-            [fluree.db.util.log :as log])
+            [fluree.db.util.log :as log]
+            [fluree.db.ledger.json-ld :as jld-ledger])
   (:import (fluree.db.flake Flake)))
 
 (set! *warn-on-reflection* true)
@@ -268,13 +269,11 @@
                      :sig sig}}})))
 
 
-(defn bootstrap-db
-  "Bootstraps a new db from a signed new-db message."
-  [{:keys [conn group]} {:keys [cmd sig] :as command}]
+
+(defn bootstrap-json-db
+  [{:keys [conn group]} txid cmd-data owners {:keys [cmd sig] :as _command}]
   (go-try
-    (log/debug "Bootstrapping new ledger:" command)
-    (let [txid          (crypto/sha3-256 cmd)
-          {new-db-name :db owners :owners} (json/parse cmd)
+    (let [{new-db-name :db} cmd-data
           [network dbid] (if (sequential? new-db-name)
                            new-db-name
                            (str/split new-db-name #"/"))
@@ -284,10 +283,9 @@
                           (throw (ex-info (str "Ledger " network "/$" dbid " already exists! Create unsuccessful.")
                                           {:status 500
                                            :error  :db/unexpected-error})))
-          owners'       (or owners #{(crypto/account-id-from-message cmd sig)})
-          _             (log/debug "New ledger owner(s):" owners')
+          _             (log/debug "New ledger owner(s):" owners)
           block         (bootstrap-memory-db conn [network dbid]
-                                             {:owners owners' :txid txid :cmd cmd
+                                             {:owners owners :txid txid :cmd cmd
                                               :sig    sig})
           new-db        (:db block)
           block-data    (dissoc block :db)
@@ -302,9 +300,49 @@
           indexed-block (get-in indexed-db [:stats :indexed])]
 
       ;; write out new index point
-      (<? (txproto/initialized-ledger-async dbgroup txid network dbid block
-                                            fork indexed-block))
+      (<? (txproto/initialized-ledger-async dbgroup {:txid    txid
+                                                     :network network
+                                                     :db-type :json
+                                                     :ledger  dbid
+                                                     :block   block
+                                                     :fork    fork
+                                                     :index   indexed-block}))
       indexed-db)))
+
+(defn bootstrap-json-ld-db
+  [{:keys [conn group]} txid cmd-data owners {:keys [cmd sig] :as _command}]
+  (go-try
+    (let [{new-db-name :db method :method
+           context     :context did :did} cmd-data
+          opts   {:context context :did did}
+          ledger (<? (jld-ledger/create conn name opts))]
+      (log/warn "LEDGER WRITTEN!!!: " ledger)
+
+      ;; write out new index point
+      #_(<? (txproto/initialized-ledger-async group {:txid    txid
+                                                     :network method
+                                                     :ledger  new-db-name
+                                                     :db-type :json-ld
+                                                     :block   block
+                                                     :fork    fork
+                                                     :index   indexed-block})))
+    (throw (ex-info "NOT YET IMPLEMENTED!!!" {}))
+
+    ))
+
+
+(defn bootstrap-db
+  "Bootstraps a new db from a signed new-db message."
+  [system {:keys [cmd sig] :as command}]
+  (log/debug "Bootstrapping new ledger:" command)
+  (let [txid     (crypto/sha3-256 cmd)
+        cmd-data (json/parse cmd)
+        owners'  (or (:owners cmd-data)
+                     #{(crypto/account-id-from-message cmd sig)})]
+    (if (= :json-ld (keyword (:db-type cmd-data)))
+      (bootstrap-json-ld-db system txid cmd-data owners' command)
+      (bootstrap-json-db system txid cmd-data owners' command))))
+
 
 (def bootstrap-txn
   [{:_id     ["_collection" const/$_predicate]
