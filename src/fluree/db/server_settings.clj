@@ -61,6 +61,8 @@
    :fdb-memory-reindex-max       "2mb"
    :fdb-stats-report-frequency   "1m"
 
+   :fdb-events-url               nil ;; URL to POST events to (optional)
+
    ;; api settings
    :fdb-api-port                 8090                       ;; integer
    :fdb-api-open                 true                       ;; true or false
@@ -689,7 +691,9 @@
      :consensus   {:type    consensus-type
                    :options (case consensus-type
                               :raft (raft-transactor-settings settings)
-                              :in-memory {})}}))
+                              :in-memory {})}
+
+     :events      {:url (:fdb-events-url settings)}}))
 
 
 (comment

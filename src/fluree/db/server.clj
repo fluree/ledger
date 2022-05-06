@@ -26,7 +26,10 @@
             [fluree.db.ledger.txgroup.txgroup-proto :as txproto]
             [fluree.db.constants :as const]
             [clojure.pprint :as pprint]
-            [fluree.db.conn-events :as conn-events]))
+            [fluree.db.conn-events :as conn-events]
+            [fluree.db.connection :as conn]
+            [org.httpkit.client :as http]
+            [fluree.db.util.json :as json]))
 
 (set! *warn-on-reflection* true)
 
@@ -44,9 +47,9 @@
   [system producer-chan]
   (fn [conn message]
     (async/thread
+      (log/debug "local-message-process:" message)
       (messages/message-handler (assoc system :conn conn) producer-chan message)
       true)))
-
 
 (defn local-message-response
   "Monitors producer channel, and will respond to requests that are waiting."
@@ -54,6 +57,7 @@
   (async/go-loop []
     (let [msg (async/<! producer-chan)]
       (when-not (nil? msg)
+        (log/debug "local-message-response:" msg)
         (conn-events/process-events conn msg)
         (recur)))))
 
@@ -63,10 +67,10 @@
   [system]
   (let [{:keys [conn webserver group stats]} system
         full-text-indexer (:full-text/indexer conn)
-        try-continue (fn [f]
-                       (try (f)
-                            (catch Exception e
-                              (log/error e "Exception executing close function: " f))))]
+        try-continue      (fn [f]
+                            (try (f)
+                                 (catch Exception e
+                                   (log/error e "Exception executing close function: " f))))]
     (when (fn? (:close webserver))
       (try-continue (:close webserver)))
     (try-continue (fn [] (async/close! stats)))
@@ -122,12 +126,12 @@
 (defn all-migrated?
   [{:keys [conn] :as system}]
   (go-try
-   (loop [[ledger & rst] (-> conn :group txproto/all-ledger-list)]
-     (if-not ledger
-       true
-       (if-not (<? (migrated? conn ledger))
-         false
-         (recur rst))))))
+    (loop [[ledger & rst] (-> conn :group txproto/all-ledger-list)]
+      (if-not ledger
+        true
+        (if-not (<? (migrated? conn ledger))
+          false
+          (recur rst))))))
 
 (defn reindex?
   [settings]
@@ -136,6 +140,28 @@
       (or "none")
       util/str->keyword
       (= :reindex)))
+
+
+(defn add-events-url-listener
+  [conn events-url]
+  (conn/add-listener
+    conn :events/url
+    #(when-let [body (try
+                       (json/stringify {:type %1, :data %2})
+                       (catch Exception e
+                         (log/error
+                           e
+                           "Error serializing event to JSON")))]
+       (log/debug "Posting event to" events-url ":" body)
+       (http/post events-url
+                  {:headers {"Content-Type"
+                             "application/json"}
+                   :body    body}
+                  (fn [{:keys [error]}]
+                    (if error
+                      (log/error "Error posting event to events URL"
+                                 events-url "-" error)))))))
+
 
 (defn startup
   ([] (startup (settings/build-env @environ/runtime-env)))
@@ -149,9 +175,9 @@
    (log/info "Memory Info:" (stats/memory-stats))
 
    (Thread/setDefaultUncaughtExceptionHandler
-    (reify Thread$UncaughtExceptionHandler
-      (uncaughtException [_ thread e]
-        (log/error e "Uncaught exception on" (.getName thread)))))
+     (reify Thread$UncaughtExceptionHandler
+       (uncaughtException [_ thread e]
+         (log/error e "Uncaught exception on" (.getName thread)))))
 
    (let [config         (settings/build-settings settings)
          {:keys [transactor? consensus conn join?]} config
@@ -201,7 +227,7 @@
          ;; we are not a transacting peer in query mode, don't bother with this
          stats          (stats/initiate-stats-reporting system (-> config :stats :interval))
          system*        (assoc system :webserver webserver
-                               :stats stats)]
+                                      :stats stats)]
 
      (when (and (or memory? (= consensus-type :in-memory))
                 (not (and memory? (= consensus-type :in-memory))))
@@ -214,6 +240,9 @@
        (log/error "Error starting system. Index format out of date. Please upgrade indexes using the :reindex command")
        (shutdown system*)
        (System/exit 1))
+
+     (when-let [events-url (some-> config :events :url not-empty)]
+       (add-events-url-listener conn events-url))
 
      ;; wait for initialization, and kick off some startup activities
      (when transactor?
