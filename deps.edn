@@ -16,6 +16,7 @@
             com.cognitect.aws/endpoints    {:mvn/version "1.1.12.192"}
             com.cognitect.aws/s3           {:mvn/version "822.2.1109.0"}
 
+
             ;; web server
             http-kit/http-kit              {:mvn/version "2.5.3"}
             ring/ring-core                 {:mvn/version "1.9.5"}
@@ -119,5 +120,5 @@
    :main-opts  ["-m" "antq.core" "--skip=github-action"]}
 
   :clj-kondo
-  {:extra-deps {clj-kondo/clj-kondo {:mvn/version "2022.04.08"}}
-   :main-opts  ["-m" "clj-kondo.main" "--lint" "src" "--config" ".clj-kondo/config.edn"]}}}
+  {:extra-deps {clj-kondo/clj-kondo {:mvn/version "2022.04.25"}}
+   :main-opts ["-m" "clj-kondo.main" "--lint" "src" "--config" ".clj-kondo/config.edn"]}}}
