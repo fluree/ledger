@@ -11,6 +11,9 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v2
+      - uses: docker/setup-buildx-action@v1
+        with:
+          install: true
       - name: Build project
         run: script/build-in-docker.sh make prep-release
       - id: get-tag
