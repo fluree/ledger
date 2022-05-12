@@ -22,15 +22,14 @@ RUN make stage-release
 
 FROM eclipse-temurin:17-jre-focal AS runner
 
+RUN apt-get update && apt-get upgrade -y
+
 RUN mkdir -p /opt/fluree
 COPY --from=builder /usr/src/fluree-ledger/build/* /opt/fluree/
 WORKDIR /opt/fluree
 
 # Create a user to own the fluree code
 RUN groupadd fluree && useradd --no-log-init -g fluree -m fluree
-# Copy deps from builder to fluree user's maven repo
-COPY --from=builder /root/.m2 /home/fluree/.m2
-RUN chown -R fluree.fluree /home/fluree/.m2
 
 # Create runtime data volume
 RUN mkdir -p /var/lib/fluree && chown fluree.fluree /var/lib/fluree
