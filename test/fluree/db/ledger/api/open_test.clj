@@ -134,6 +134,49 @@
       (is (< 30 (count predicates))))))
 
 
+(deftest query-recursive-unlimited-test
+  (testing "recursive query recurses"
+    (let [ledger  (test/rand-ledger test/ledger-endpoints)
+          _       (test/transact-schema ledger "category.edn")
+          _       (test/transact-data ledger "bike-categories.edn")
+          query   {:select ["?categoryName"]
+                   :where  [["?c" "category/name" "Fixie"]
+                            ["?c" "category/subCategoryOf+" "?s"]
+                            ["?s" "category/name" "?categoryName"]]}
+          {:keys [body status] :as query-res} @(http/post
+                                                 (str endpoint-url-short
+                                                      ledger "/query")
+                                                 (test/standard-request query))
+          results (json/parse body)]
+
+      (is (= 200 status)
+          (str "Query response was: " (pr-str query-res)))
+
+      (is (= #{"Bikes" "Safety" "Road" "Hipster"} (-> results flatten set))
+          (str "Query response was: " (pr-str query-res))))))
+
+
+(deftest query-recursive-limited-test
+  (testing "recursive query recurses"
+    (let [ledger  (test/rand-ledger test/ledger-endpoints)
+          _       (test/transact-schema ledger "category.edn")
+          _       (test/transact-data ledger "bike-categories.edn")
+          query   {:select ["?categoryName"]
+                   :where  [["?c" "category/name" "Fixie"]
+                            ["?c" "category/subCategoryOf+2" "?s"]
+                            ["?s" "category/name" "?categoryName"]]}
+          {:keys [body status] :as query-res} @(http/post
+                                                 (str endpoint-url-short
+                                                      ledger "/query")
+                                                 (test/standard-request query))
+          results (json/parse body)]
+
+      (is (= 200 status)
+          (str "Query response was: " (pr-str query-res)))
+
+      (is (= #{"Road" "Hipster"} (-> results flatten set))
+          (str "Query response was: " (pr-str query-res))))))
+
 ;; ENDPOINT TEST: /multi-query
 
 (deftest query-collections-predicates-multiquery-test
