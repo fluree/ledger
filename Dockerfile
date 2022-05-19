@@ -1,8 +1,8 @@
-FROM --platform=$BUILDPLATFORM clojure:openjdk-11-tools-deps-1.11.1.1105-slim-bullseye AS builder
+FROM --platform=$BUILDPLATFORM clojure:openjdk-11-tools-deps-1.11.1.1113-slim-bullseye AS builder
 
 RUN apt-get update && apt-get install --assume-yes --no-install-recommends curl
 
-RUN curl -sL https://deb.nodesource.com/setup_14.x | bash -
+RUN curl -sL https://deb.nodesource.com/setup_16.x | bash -
 RUN apt-get update && apt-get install --assume-yes --no-install-recommends nodejs zip git
 
 RUN mkdir -p /usr/src/fluree-ledger
@@ -28,9 +28,6 @@ WORKDIR /opt/fluree
 
 # Create a user to own the fluree code
 RUN groupadd fluree && useradd --no-log-init -g fluree -m fluree
-# Copy deps from builder to fluree user's maven repo
-COPY --from=builder /root/.m2 /home/fluree/.m2
-RUN chown -R fluree.fluree /home/fluree/.m2
 
 # Create runtime data volume
 RUN mkdir -p /var/lib/fluree && chown fluree.fluree /var/lib/fluree
