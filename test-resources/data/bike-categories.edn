@@ -1,0 +1,23 @@
+[{:_id "category$bikes"
+  :category/name "Bikes"}
+ {:_id "category"
+  :category/name "Tarmac"
+  :category/subCategoryOf "category$bikes"}
+ {:_id "category"
+  :category/name "Pennyfarthing"
+  :category/subCategoryOf "category$bikes"}
+ {:_id "category$safety"
+  :category/name "Safety"
+  :category/subCategoryOf "category$bikes"}
+ {:_id "category$road"
+  :category/name "Road"
+  :category/subCategoryOf "category$safety"}
+ {:_id "category$mountain"
+  :category/name "Mountain"
+  :category/subCategoryOf "category$safety"}
+ {:_id "category$hipster"
+  :category/name "Hipster"
+  :category/subCategoryOf "category$road"}
+ {:_id "category"
+  :category/name "Fixie"
+  :category/subCategoryOf "category$hipster"}]
