@@ -186,9 +186,12 @@
 
 (deftest query-todo-root-auth
   (testing "testing root auth sees all to-dos")
-  (let [res     (-> (basic/get-db test/ledger-todo {:auth ["_auth/id" (:auth sys-admin)]})
-                    (fdb/query-async {:select ["*", {:items ["*"]}] :from "todo"})
-                    async/<!!)
+  (let [exp-blk 5
+        res     (async/<!! (-> test/ledger-todo
+                               (basic/get-db {:auth ["_auth/id" (:auth sys-admin)]
+                                              :syncTo exp-blk})
+                               (fdb/query-async {:select ["*", {:items ["*"]}]
+                                                 :from "todo"})))
         id-list (reduce-kv
                   (fn [z _ v]
                     (into z [(-> v (get "todo/auth") (get "_id"))]))

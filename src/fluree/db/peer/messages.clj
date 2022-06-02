@@ -488,5 +488,3 @@
                      :message msg}
                    "Error caught in incoming message handler:")
          (error! e))))))
-
-
