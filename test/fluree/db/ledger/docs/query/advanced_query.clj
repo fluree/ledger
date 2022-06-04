@@ -121,6 +121,24 @@
            (-> (map #(get-in % ["person/follows" "person/follows" "person/follows" :_id]) res) set)))))
 
 
+(deftest aggregate-binding
+  (testing "Aggregate function using two-tuple in where clause"
+    (let [query      {:select ["?e" "?maxNum"]
+                      :where  [["?e" "person/favNums" "?favNums"]
+                               ["?maxNum" "#(max ?favNums)"]]}
+          db         (basic/get-db test/ledger-chat)
+          res        (async/<!! (fdb/query-async db query))
+          maxNumVals (->> res
+                          (map second)
+                          (into #{}))]
+
+      ;; all two-tuple results should have the identical ?maxNum
+      (is (= 1 (count maxNumVals)))
+
+      ;; sample data set has max favNum as 1950
+      (is (= 1950 (first maxNumVals))))))
+
+
 (deftest multi-query
   (testing "Multi query")
   (let [multi-query    { :chatQuery { :select ["*"] :from "chat" }
@@ -163,6 +181,7 @@
   (graphql-with-reverse-ref)
   (crawl-graph-two)
   ;(crawl-graph-two-with-recur)
+  (aggregate-binding)
   (multi-query)
   ;(multi-query-with-error)
   )
