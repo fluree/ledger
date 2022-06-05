@@ -46,7 +46,7 @@
   :mvn/version     "2.0.0-alpha2"
 
   :dev
-  {:extra-paths ["dev", "test"]
+  {:extra-paths ["dev", "test", "test-resources"]
    :extra-deps  {org.clojure/tools.namespace {:mvn/version "1.2.0"}}}
 
   :test
