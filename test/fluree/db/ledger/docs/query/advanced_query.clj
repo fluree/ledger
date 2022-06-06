@@ -121,6 +121,32 @@
            (-> (map #(get-in % ["person/follows" "person/follows" "person/follows" :_id]) res) set)))))
 
 
+(deftest group-by-with-limit-offset
+  (testing "Group By query with limit returns first two full results"
+    (let [query-all {:select "?favNums"
+                     :where  [["?e" "person/favNums" "?favNums"]]
+                     :groupBy "?e"}
+          query-limit {:select "?favNums"
+                       :where  [["?e" "person/favNums" "?favNums"]]
+                       :groupBy "?e"
+                       :limit 2}
+          query-offset {:select "?favNums"
+                        :where  [["?e" "person/favNums" "?favNums"]]
+                        :groupBy "?e"
+                        :offset 2
+                        :limit 2}
+          db  (basic/get-db test/ledger-chat)
+          res-all  (async/<!! (fdb/query-async db query-all))
+          res-limit (async/<!! (fdb/query-async db query-limit))
+          res-offset (async/<!! (fdb/query-async db query-offset))]
+
+      ;; limit 2 query should be same as first two of full results
+      (is (= res-limit (->> res-all (take 2) (into {}))))
+
+      ;; offset 2, limit 2 query should be same as drop 2 take 2
+      (is (= res-offset (->> res-all (drop 2) (take 2) (into {})))))))
+
+
 (deftest multi-query
   (testing "Multi query")
   (let [multi-query    { :chatQuery { :select ["*"] :from "chat" }
@@ -163,6 +189,7 @@
   (graphql-with-reverse-ref)
   (crawl-graph-two)
   ;(crawl-graph-two-with-recur)
+  (group-by-with-limit-offset)
   (multi-query)
   ;(multi-query-with-error)
   )
