@@ -157,11 +157,40 @@
           res-limit (async/<!! (fdb/query-async db query-limit))
           res-offset (async/<!! (fdb/query-async db query-offset))]
 
-      ;; limit 2 query should be same as first two of full results
-      (is (= res-limit (->> res-all (take 2) (into {}))))
+      (is (= res-limit (->> res-all (take 2) (into {})))
+          "limit 2 query should be same as first two of full results")
 
-      ;; offset 2, limit 2 query should be same as drop 2 take 2
-      (is (= res-offset (->> res-all (drop 2) (take 2) (into {})))))))
+      (is (= res-offset (->> res-all (drop 2) (take 2) (into {})))
+          "offset 2, limit 2 query should be same as drop 2 take 2"))))
+
+
+(deftest group-by-with-having
+  (testing "Group By query with 'having' statement defined for filter"
+    (let [q-all          {:select "(sum ?favNums)"
+                          :where   [["?e" "person/favNums" "?favNums"]]
+                          :groupBy "?e"}
+          q-having       {:select  "(sum ?favNums)"
+                          :where   [["?e" "person/favNums" "?favNums"]]
+                          :groupBy "?e"
+                          :having  (str '(< 200 (sum ?favNums)))}
+          q-having+and   {:select  "(sum ?favNums)"
+                          :where   [["?e" "person/favNums" "?favNums"]]
+                          :groupBy "?e"
+                          :having  (str '(and (< 200 (sum ?favNums)) (> 1900 (sum ?favNums))))}
+          db             (basic/get-db test/ledger-chat)
+          res-all        (async/<!! (fdb/query-async db q-all))
+          res-having     (async/<!! (fdb/query-async db q-having))
+          res-having+and (async/<!! (fdb/query-async db q-having+and))
+          ;; get a vector of all ?favNums sums
+          all-sums (vals res-all)]
+
+      (is (= (set (vals res-having))
+             (set (filter #(< 200 %) all-sums)))
+          "having results should be same as all results filtered for < 200")
+
+      (is (= (set (vals res-having+and))
+             (set (filter #(and (< 200 %) (> 1900 %)) all-sums)))
+          "having+and results should be same as all results filtered for < 200 'and' > 1900"))))
 
 
 (deftest multi-query
@@ -208,6 +237,7 @@
   ;(crawl-graph-two-with-recur)
   (aggregate-binding)
   (group-by-with-limit-offset)
+  (group-by-with-having)
   (multi-query)
   ;(multi-query-with-error)
   )
