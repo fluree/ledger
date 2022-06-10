@@ -362,9 +362,9 @@
                                              (log/warn
                                                (str "'" type "' command is deprecated. Please use '" new-cmd-type "' instead."))
                                              new-cmd-type)
-                                           type)
+                                           (keyword type))
                              _           (when-not (#{:tx :new-ledger :default-key :delete-ledger} cmd-type)
-                                           (throw-invalid-command (str "Invalid command type (:type) provided in unsigned command: " (:type cmd-data))))
+                                           (throw-invalid-command (str "Invalid command type (:type) provided in unsigned command: " (pr-str (:type cmd-data)))))
                              [network dbid] (cond
                                               (= :new-ledger cmd-type)
                                               (cond

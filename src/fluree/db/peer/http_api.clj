@@ -779,10 +779,10 @@
                                            (throw (ex-info (str "If using a closed api, a storage request must be returned as json.")
                                                            {:status 401
                                                             :error  :db/invalid-transaction})))
-                        {:keys [network ledger type key]} params
-                        ledger           (keyword network ledger)
-                        _                (when-not (and network ledger type)
-                                           (throw (ex-info (str "Incomplete request. At least a network, db and type are required. Provided network: " network " ledger: " ledger " type: " type " key: " key)
+                        {network :network ledger-id :ledger type :type key :key} params
+                        ledger        (keyword network ledger-id)
+                        _                (when-not (and network ledger-id type)
+                                           (throw (ex-info (str "Incomplete request. At least a network, db and type are required. Provided network: " network " ledger: " ledger-id " type: " type " key: " key)
                                                            {:status 400 :error :db/invalid-request})))
                         auth-id          (cond
 
@@ -794,7 +794,7 @@
 
                                                  {:keys [auth authority]} (http-signatures/verify-request*
                                                                             {:headers headers} :get
-                                                                            (str "/fdb/storage/" network "/" ledger
+                                                                            (str "/fdb/storage/" network "/" ledger-id
                                                                                  (when type (str "/" type))
                                                                                  (when key (str "/" key))) host)
                                                  db          (<? (fdb/db (:conn system) ledger))]
@@ -811,9 +811,12 @@
                                                             (throw (ex-info (str "Auth id for request does not exist in the database: " jwt-auth)
                                                                             {:status 403 :error :db/invalid-auth})))]
                                              jwt-auth))
-                        formatted-key    (cond-> (str network "_" ledger "_" type)
-                                                 key (str "_" key))
+                        ;; TODO: use storage-core/format-block-key once it's available
+                        formatted-key    (cond-> (str network "_" ledger-id "_" type)
+                                           key (str "_" key))
+
                         avro-data        (<? (storage-read-fn formatted-key))
+
                         status           (if avro-data 200 404)
                         headers          (if avro-data
                                            {"Content-Type" (if (= :json response-type)
