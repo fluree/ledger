@@ -4,7 +4,9 @@
             [fluree.db.server :as server]
             [fluree.db.api :as fdb]
             [fluree.db.server-settings :as setting]
-            [fluree.db.util.log :as log])
+            [fluree.db.util.log :as log]
+            [fluree.db.server-settings :as settings]
+            [environ.core :as environ])
   (:import (java.net ServerSocket)))
 
 (defn get-free-port []
@@ -105,3 +107,18 @@
 
 (defn contains-many? [m & ks]
   (every? #(contains? m %) ks))
+
+
+(defn start-server
+  "Start a single server with the specified settings, returning the server."
+  [settings]
+  (let [server-settings (-> (settings/build-env environ/env)
+                            (merge settings))]
+    (server/startup server-settings)))
+
+
+(defn stop-server
+  "Stop the supplied server (from `fluree.db.test-helpers/start`)."
+  [s]
+  (when s (server/shutdown s))
+  :stopped)

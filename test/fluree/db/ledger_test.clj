@@ -35,7 +35,8 @@
             [fluree.db.ledger.general.todo-permissions :as todo-perm]
             [fluree.db.ledger.general.invoice-tests :as invoice]
             [fluree.db.peer.server-health-tests :as sh-test]
-            [fluree.db.peer.http-api-tests :as http-api-test]))
+            [fluree.db.peer.http-api-tests :as http-api-test]
+            [fluree.db.peer.clojure-client-tests :as clj-api-test]))
 
 ;; TODO - tests fail - commented out for convenience:
 ;; API - (test-gen-flakes-query-transact-with)
@@ -64,6 +65,7 @@
              ;; 1- API
              (test/print-banner "API Tests")
              (api/api-test)
+             (clj-api-test/clj-api-test)
 
              ;; 2- Docs
              (test/print-banner "Docs Tests")

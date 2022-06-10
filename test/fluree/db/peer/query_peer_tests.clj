@@ -7,37 +7,26 @@
    [fluree.db.server-settings :as settings]
    [fluree.db.test-helpers :as test-helpers]
    [fluree.db.util.json :as json]
-   [org.httpkit.client :as http]))
-
-(defn start
-  ([] (start {}))
-  ([override-settings]
-   (let [settings (-> (settings/build-env environ/env)
-                      (merge override-settings))]
-     (server/startup settings))))
-
-
-(defn stop [s]
-  (when s (server/shutdown s))
-  :stopped)
+   [org.httpkit.client :as http]
+   [fluree.db.test-helpers :as test]))
 
 (deftest query-peer-tests
   (let [ledger-port (test-helpers/get-free-port)
         query-port  (test-helpers/get-free-port)
         _           (println "ledger-port:" ledger-port "query-port:" query-port)
-        ledger-peer (start {:fdb-api-port          ledger-port
-                            :fdb-mode              "ledger"
-                            :fdb-group-servers     "ledger-server@localhost:11001"
-                            :fdb-group-this-server "ledger-server"
-                            :fdb-storage-type      "memory"
-                            :fdb-consensus-type    "in-memory"})
-        query-peer  (start {:fdb-api-port           query-port
-                            :fdb-mode               "query"
-                            :fdb-query-peer-servers (str "localhost:" ledger-port)
-                            :fdb-group-servers      "query-server@localhost:11002"
-                            :fdb-group-this-server  "query-server"
-                            :fdb-storage-type       "memory"
-                            :fdb-consensus-type     "in-memory"})]
+        ledger-peer (test-helpers/start-server {:fdb-api-port ledger-port
+                                                :fdb-mode "ledger"
+                                                :fdb-group-servers "ledger-server@localhost:11001"
+                                                :fdb-group-this-server "ledger-server"
+                                                :fdb-storage-type "memory"
+                                                :fdb-consensus-type "in-memory"})
+        query-peer  (test-helpers/start-server {:fdb-api-port query-port
+                                                :fdb-mode "query"
+                                                :fdb-query-peer-servers (str "localhost:" ledger-port)
+                                                :fdb-group-servers "query-server@localhost:11002"
+                                                :fdb-group-this-server "query-server"
+                                                :fdb-storage-type "memory"
+                                                :fdb-consensus-type "in-memory"})]
     (testing "can create a ledger"
       (let [new-ledger1       @(http/post (str "http://localhost:" query-port "/fdb/new-ledger")
                                           {:headers {"content-type" "application/json"}
@@ -88,5 +77,5 @@
                     json/parse
                     (map #(dissoc % :_id)))))))
 
-    (stop query-peer)
-    (stop ledger-peer)))
+    (test-helpers/stop-server query-peer)
+    (test-helpers/stop-server ledger-peer)))
