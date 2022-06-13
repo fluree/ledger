@@ -1,7 +1,7 @@
 (ns fluree.db.ledger.txgroup.monitor
   (:require [fluree.db.util.log :as log]
             [clojure.set :as set]
-            [clojure.core.async :as async]
+            [clojure.core.async :as async :refer [<! go]]
             [fluree.db.session :as session]
             [fluree.db.ledger.transact :as transact]
             [fluree.db.ledger.bootstrap :as bootstrap]
@@ -223,16 +223,17 @@
   - ledger-id
   - instant
 
- Commands can optionally contain multiTx, which allows for multiple transactions to be handle together in the
- same block. In order for multiTx to be allowed, all transactions need to be in the queue.  The order of txns
- listed in the last txn submitted is the order in which the transactions are processed."
+  Commands can optionally contain multiTx, which allows for multiple
+  transactions to be handled together in the same block. In order for multiTx to
+  be allowed, all transactions need to be in the queue. The order of txns listed
+  in the last txn submitted is the order in which the transactions are
+  processed."
   [cmd-queue tx-max]
   ;; TODO - need to check each command id to ensure it hasn't yet been processed
-  (let [sorted-queue (->> cmd-queue
-                          (sort-by :instant))]
+  (let [sorted-queue (sort-by :instant cmd-queue)]
     (loop [[next-cmd & r] sorted-queue
-           total-size 0
-           queued     []]
+           total-size     0
+           queued         []]
       (let [size        (:size next-cmd)
             multiTxs    (-> next-cmd :command :multiTxs)
             [size next-cmds] (if multiTxs
@@ -298,29 +299,26 @@
 ;;        responsible for a network in-between, and detect + close here
 (defn ledger-queue-loop
   "Runs a continuous loop for a db to process new blocks"
-  [conn kick-chan network ledger-id queue-id]
-  (async/go
-    (let [group       (:group conn)
-          this-server (txproto/this-server group)
+  [{:keys [group] :as conn} kick-chan network ledger-id queue-id]
+  (go
+    (let [this-server (txproto/this-server group)
           session     (session/session conn [network ledger-id])
-          _           (session/reload-db! session) ; always reload the session DB to ensure latest when starting loop
-          db          (<? (session/current-db session))
+          db          (<? (session/reload-db! session)) ; always reload the session DB to ensure latest when starting loop
           tx-max      (get-tx-max db)]
-      ;; launch loop
       (loop [block-map   {:db-after db
                           :t        (:t db)}
              recent-cmds {}]
-        (when (some? (async/<! kick-chan))
+        (when (some? (<! kick-chan))
           (if-not (network-assigned-to? group this-server network)
             (do
-              (log/info (str "Network " network " is no longer assigned to this server. Stopping to process transactions."))
+              (log/info "Network" network "is no longer assigned to this server. Stopping transaction processing.")
               (close-ledger-queue network ledger-id)
               (session/close session))
-            (let [queue        (->> (txproto/command-queue group network ledger-id)
+            (let [db           (:db-after block-map)
+                  queue        (->> (txproto/command-queue group network ledger-id)
                                     (remove #(contains? recent-cmds (:id %)))) ;; remove any commands already processed but not yet removed by consensus
                   cmds         (when (seq queue)
                                  (select-block-commands queue tx-max))
-                  db           (:db-after block-map)
                   block-map*   (if (empty? cmds)
                                  block-map
                                  (try
@@ -337,15 +335,15 @@
 (defn ledger-queue
   [conn network ledger-id]
   (or (get-in @ledger-queues-atom [network ledger-id])
-      (let [queue-id (str network "/" ledger-id ":" (rand-int 100000))]
-        (swap! ledger-queues-atom (fn [queues]
-                                    (if (get-in queues [network ledger-id])
-                                      queues                    ;; race condition - queue was just created so don't create new one
-                                      (let [chan (async/chan (async/dropping-buffer 1))]
-                                        ;; kick off loop
-                                        (ledger-queue-loop conn chan network ledger-id queue-id)
-                                        (assoc-in queues [network ledger-id] chan)))))
-        (get-in @ledger-queues-atom [network ledger-id]))))
+      (-> ledger-queues-atom
+          (swap! (fn [queues]
+                   (if (get-in queues [network ledger-id])
+                     queues
+                     (let [queue-id (str network "/" ledger-id ":" (rand-int 100000))
+                           queue-ch (async/chan (async/dropping-buffer 1))]
+                       (ledger-queue-loop conn queue-ch network ledger-id queue-id)
+                       (assoc-in queues [network ledger-id] queue-ch)))))
+          (get-in [network ledger-id]))))
 
 
 (defn kick-all-assigned-networks-with-queue
@@ -379,13 +377,13 @@
   - result - the state-machines result response after applying this command"
   [system state-change]
   (log/trace "State change in tx-group:" state-change)
-  (let [op   (get-in state-change [:command 0])
-        conn (:conn system)]
+  (let [{:keys [group] :as conn} (:conn system)
+        op                       (get-in state-change [:command 0])]
     (case op
       :new-ledger
       (future
-        (when (txproto/-is-leader? (:group conn))
-          (let [initialize-ledgers (txproto/find-all-ledgers-to-initialize (:group conn))]
+        (when (txproto/-is-leader? group)
+          (let [initialize-ledgers (txproto/find-all-ledgers-to-initialize group)]
             (doseq [[network ledger-id command] initialize-ledgers]
               (log/info "Initializing new ledger:" (str network "/" ledger-id) "-" command)
               (let [db      (try
@@ -399,14 +397,14 @@
 
       :initialized-ledger
       (future
-        (when-not (txproto/-is-leader? (:group conn))
+        (when-not (txproto/-is-leader? group)
           (let [command (:command state-change)
                 session (session/session conn [(get command 2) (get command 3)])]
             (session/close session))))
 
       :assoc-in
       (when-let [[network ledger-id _] (queued-tx state-change)]
-        (when (network-assigned-to? (:group conn) network)
+        (when (network-assigned-to? group network)
           (let [queue-chan (ledger-queue conn network ledger-id)]
             (async/put! queue-chan ::kick))))
 

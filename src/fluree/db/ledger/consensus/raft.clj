@@ -217,8 +217,8 @@
 
 
 (defn register-state-change-fn
-  "Registers function to be called with every state monitor change. id provided is used to un-register function
-  and is otherwise opaque to the system."
+  "Registers function to be called with every state monitor change. `id` provided
+  is used to un-register function later and is otherwise opaque to the system."
   [id f]
   (swap! state-change-fn-atom assoc id f))
 
