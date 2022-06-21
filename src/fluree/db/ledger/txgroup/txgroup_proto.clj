@@ -1,4 +1,7 @@
 (ns fluree.db.ledger.txgroup.txgroup-proto
+  "To allow for pluggable consensus, we have a TxGroup protocol. In order to allow
+  for a new consensus type, we need to create a record with all of the following
+  methods. Currently, we support a RaftGroup and SoloGroup."
   (:require [clojure.string :as str]
             [fluree.db.util.core :as util]
             [clojure.core.async :as async]
@@ -7,19 +10,17 @@
 (set! *warn-on-reflection* true)
 
 
-;; To allow for pluggable consensus, we have a TxGroup protocol.
-;; In order to allow for a new consensus type, we need to create a record with all of the following methods.
-;; Currently, we support a RaftGroup and SoloGroup.
-
-
 (defprotocol TxGroup
   (-add-server-async [group server])
   (-remove-server-async [group server])
-  (-new-entry-async [group entry] "Sends a command to the leader. If no callback provided, returns a core async promise channel that will eventually contain a response.")
+  (-new-entry-async [group entry]
+    "Sends a command to the leader. If no callback provided, returns a core
+    async promise channel that will eventually contain a response.")
   (-local-state [group])
   (-state [group])
   (-is-leader? [group])
-  (-active-servers [group] "Returns list of active server-ids. If raft, servers with active leases.")
+  (-active-servers [group]
+    "Returns list of active server-ids. If raft, servers with active leases.")
   (-start-up-activities [group conn system shutdown join?]))
 
 
@@ -352,4 +353,3 @@ or this server is not responsible for this ledger, will return false. Else true 
   [raft k data]
   (let [command [:storage-write k data]]
     (-new-entry-async raft command)))
-
