@@ -93,7 +93,7 @@
                                             obj  (.-o f)]
                                         (update m subj assoc pred obj)))
                                     {} flake-chan)
-        out-chan      (chan 1 (mapcat seq))]
+        out-chan      (chan 1 cat)]
     (async/pipe subj-map-chan out-chan)))
 
 (defn process-subjects
