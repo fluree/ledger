@@ -39,7 +39,15 @@
        separate-by-op
        (map (comp (partial predicate-flakes db)
                   (fn [fs]
-                    (map flake/s fs))))))
+                    (map flake/s fs)))))) ; these flakes are setting existing
+                                          ; ledger predicates to be included or
+                                          ; excluded from the full text index,
+                                          ; so they have an existing *predicate*
+                                          ; as the subject and the built in
+                                          ; `$_predicate:fullText` as predicate,
+                                          ; so we use `flake/s` to extract the
+                                          ; predicate value from the subject
+;
 
 (defn current-index-predicates
   [db]
