@@ -711,10 +711,10 @@
                          (throw
                            (ex-info "ledger/id is required"
                                     {:status 401, :error :db/invalid-command})))
-        [nw ledger] (str/split ledger-ident #"/")
-        ledger       (keyword nw ledger)
+        [nw ledger-id] (str/split ledger-ident #"/")
+        ledger       (keyword nw ledger-id)
         auth-map     (auth-map system ledger request body-str)
-        session      (session/session conn [nw ledger])
+        session      (session/session conn [nw ledger-id])
         db           (<?? (session/current-db session))
         ;; TODO - root role just checks if the auth has a role with id 'root' this can
         ;; be manipulated, so we need a better way of handling this.
@@ -724,11 +724,11 @@
                          (ex-info
                            (str "To garbage-collect a ledger you must be using an open API or an auth record with a root role.")
                            {:status 401 :error, :db/invalid-auth})))
-        result       (<?? (garbage-collect/process conn nw ledger))
+        result       (<?? (garbage-collect/process conn nw ledger-id))
         resp         {:status  200
                       :headers {"Content-Type" "application/json; charset=utf-8"}
                       :body    (json/stringify-UTF8 {(if result "garbage-collected" "no-garbage")
-                                                     (str nw "/" ledger)})}]
+                                                     ledger-ident})}]
     (log/info (str ledger ":garbage-collected" " [" (or resp 400) "] " remote-addr))
     resp))
 
