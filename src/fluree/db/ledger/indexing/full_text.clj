@@ -37,7 +37,9 @@
   (->> flakes
        (filter full-text/predicate?)
        separate-by-op
-       (map (partial predicate-flakes db))))
+       (map (comp (partial predicate-flakes db)
+                  (fn [fs]
+                    (map flake/s fs))))))
 
 (defn current-index-predicates
   [db]
