@@ -349,7 +349,7 @@
                                                      (string? ledger) (str/split ledger #"/")
                                                      (sequential? ledger) ledger
                                                      :else (throw (ex-info (str "Invalid ledger provided for new-ledger: " (pr-str ledger))
-                                                                      {:status 400 :error :db/invalid-command})))
+                                                                           {:status 400 :error :db/invalid-command})))
 
                                                    (= :delete-ledger cmd-type)
                                                    (session/resolve-ledger (:conn system) ledger)
@@ -488,5 +488,3 @@
                      :message msg}
                    "Error caught in incoming message handler:")
          (error! e))))))
-
-
