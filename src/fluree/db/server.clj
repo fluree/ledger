@@ -119,6 +119,12 @@
                                                    (:fdb-encryption-secret settings) (assoc :fdb-encryption-secret "prying eyes want to know...")))))
    (log/info "JVM arguments: " (str (stats/jvm-arguments)))
    (log/info "Memory Info: " (stats/memory-stats))
+
+   (Thread/setDefaultUncaughtExceptionHandler
+    (reify Thread$UncaughtExceptionHandler
+      (uncaughtException [_ thread e]
+        (log/error e "Uncaught exception on" (.getName thread)))))
+
    (let [config         (settings/build-settings settings)
          {:keys [transactor? consensus conn join?]} config
          consensus-type (:type consensus)
