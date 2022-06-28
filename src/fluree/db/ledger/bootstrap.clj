@@ -314,9 +314,11 @@
   (go-try
     (let [{new-db-name :db method :method
            context     :context did :did} cmd-data
-          opts   {:context context :did did}
-          ledger (<? (jld-ledger/create conn name opts))]
-      (log/warn "LEDGER WRITTEN!!!: " ledger)
+          opts        {:context context :did did}
+          ledger      (<? (jld-ledger/create conn name opts))
+          db          (jld-ledger/db ledger nil)
+          commit-data (jld-ledger/commit! ledger db opts)
+          ]
 
       ;; write out new index point
       #_(<? (txproto/initialized-ledger-async group {:txid    txid

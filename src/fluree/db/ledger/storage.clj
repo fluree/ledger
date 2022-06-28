@@ -16,7 +16,8 @@
   ([key] (key->unix-path nil key))
   ([base-path key]
    (let [key       (if (or (str/ends-with? key ".avro")
-                           (str/ends-with? key ".snapshot"))
+                           (str/ends-with? key ".snapshot")
+                           (str/ends-with? key ".jsonld"))
                      key
                      (str key ".fdbd"))
          split-key (str/split key #"_")
