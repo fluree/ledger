@@ -234,6 +234,7 @@
 (defn resolve-object
   "Resolves object into its final state so can be used for consistent comparisons with existing data."
   [object _id pred-info tx-state]
+  (log/debug "Resolving object:" object "for pred:" pred-info)
   (let [multi? (pred-info :multi)]
     (if (nil? object)
       (async/go :delete)                                    ;; delete any existing object
@@ -255,6 +256,7 @@
   Performs some logic to determine if the new flake should get added at
   all (i.e. if retract-flake is identical to the new flake)."
   [flakes ^Flake new-flake ^Flake retract-flake pred-info tx-state]
+  (log/debug "add-singleton-flake new-flake:" new-flake "retract-flake:" retract-flake)
   (cond
     ;; no retraction flake, always add
     (nil? retract-flake)
@@ -366,8 +368,10 @@
                   ;; for a retraction flake, if present
                   :else
                   (let [new-flake     (flake/->Flake _id** pid obj* t true nil)
+                        _             (log/debug "new-flake:" (pr-str new-flake))
                         ;; need to see if an existing flake exists that needs to get retracted
                         retract-flake (first (<? (tx-retract/flake _id** pid nil tx-state)))
+                        _             (log/debug "retract-flake:" (pr-str retract-flake))
                         final-flakes  (add-singleton-flake (:_final-flakes acc) new-flake retract-flake pred-info tx-state)]
                     (recur (assoc acc :_final-flakes final-flakes) r)))))))
         (async/close! res-chan))
