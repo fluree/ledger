@@ -826,9 +826,13 @@
                                                             (throw (ex-info (str "Auth id for request does not exist in the database: " jwt-auth)
                                                                             {:status 403 :error :db/invalid-auth})))]
                                              jwt-auth))
+
+                        ;; TODO: use storage-core/format-block-key once it's available
                         formatted-key    (cond-> (str network "_" ledger "_" type)
                                                  key (str "_" key))
+
                         avro-data        (<? (storage-read-fn formatted-key))
+
                         status           (if avro-data 200 404)
                         headers          (if avro-data
                                            {"Content-Type" (if (= :json response-type)
