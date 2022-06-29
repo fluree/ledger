@@ -3,7 +3,7 @@
             [fluree.db.ledger.docs.getting-started.basic-schema :as basic]
             [fluree.db.test-helpers :as test]
             [fluree.db.api :as fdb]
-            [clojure.core.async :as async]
+            [clojure.core.async :as async :refer [<!!]]
             [clojure.string :as str])
   (:import (clojure.lang ExceptionInfo)))
 
@@ -85,6 +85,33 @@
    (is (and (-> collection-resp :tempids (get "person")) (-> collection-resp :tempids (get "_user"))))))
 
 
+(deftest update-user
+  (testing "should replace existing user"
+    (let [pred-txn   [{:_id "_user$wMorgan", :username "wMorgan"}
+                      {:_id "person$wmorgan"
+                       :handle "wmorgan"
+                       :fullName "Wes Morgan"
+                       :user "_user$wMorgan"}]
+          resp1      (<!! (fdb/transact-async (get-conn) test/ledger-query+transact
+                                              pred-txn))
+          _          (assert (= 200 (:status resp1)))
+          update-txn [{:_id "_user$other" :username "other"}
+                      {:_id ["person/handle" "wmorgan"]
+                       :user "_user$other"}]
+          resp2      (<!! (fdb/transact-async (get-conn) test/ledger-query+transact
+                                              update-txn))
+          _          (assert (= 200 (:status resp2)))
+          qry        {:select {:?user ["*"]}
+                      :where  [["?person" "person/handle" "wmorgan"]
+                               ["?person" "person/user" "?user"]]}
+          qry-resp   (<!! (fdb/query-async (basic/get-db
+                                             test/ledger-query+transact
+                                             {:syncTo (:block resp2)})
+                                           qry))]
+      (is (= 1 (count qry-resp)))
+      (is (= "other" (-> qry-resp first (get "_user/username")))))))
+
+
 (deftest upserting-data
   (testing "Issue a transaction to upsert data instead of creating a new entity")
   (let [failure-txn   [{:_id "person", :handle "ajohnson", :age 26}]
@@ -99,6 +126,7 @@
 (deftest deleting-data
   (testing "Issue a transaction to delete parts of data and to delete an entire subject")
   (let [delete-txn        [{:_id ["person/handle" "ajohnson"] :_action "delete"}
+                           {:_id ["person/handle" "wmorgan"] :_action "delete"}
                            {:_id ["person/handle" "lEliasz"] :fullName nil}
                            {:_id ["_user/username" "lEliasz"] :auth [["_auth/id" "tempAuthRecord"]] :_action "delete"}]
         delete-resp       (async/<!! (fdb/transact-async (get-conn) test/ledger-query+transact delete-txn))
@@ -134,6 +162,7 @@
   (add-predicates)
   (transact-with-temp-ids)
   (nested-transaction)
+  (update-user)
   (upserting-data)
   (deleting-data)
   (expired-transaction))
