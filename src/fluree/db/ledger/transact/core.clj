@@ -288,7 +288,8 @@
                    need to look up and retract any existing flakes with same subject+predicate
   - _temp-multi-flakes - multi-flakes that need permanent ids yet, but then act like _multi-flakes"
   [{:keys [db-before t tempids upserts] :as tx-state}
-   {:keys [_id _action _meta] :as txi} res-chan]
+   {:keys [_id _action _meta] :as txi}
+   res-chan]
   (async/go
     (try
       (let [_p-o-pairs (dissoc txi :_id :_action :_meta)
