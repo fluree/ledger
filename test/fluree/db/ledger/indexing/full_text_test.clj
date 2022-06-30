@@ -15,7 +15,7 @@
                                                         (io/file "group")
                                                         .getPath)}
                           t)
-                        (Thread/sleep 500)
+                        (Thread/sleep 100)
                         (FileUtils/deleteDirectory data-dir))))
 
 
@@ -26,7 +26,7 @@
         (test/transact-schema ledger "chat.edn")
         (test/transact-schema ledger "chat-preds.edn")
         (test/transact-data ledger "chat.edn")
-        (Thread/sleep 100) ; Allow the full text indexer to incorporate the
+        (Thread/sleep 500) ; Allow the full text indexer to incorporate the
                            ; block in a separate thread.
         (testing "query"
           (let [q {:select "?p"
