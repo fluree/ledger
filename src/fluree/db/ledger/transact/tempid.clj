@@ -110,7 +110,7 @@
              ecount*      ecount]
         (if (nil? tempid)                                   ;; finished
           (do (reset! tempids tempids-map*)
-              (when-not (empty? upserts*)
+              (when (seq upserts*)
                 (reset! upserts upserts*))
               ;; return tx-state, don't need to update ecount in db-after, as dbproto/-with will update it
               tx-state)
