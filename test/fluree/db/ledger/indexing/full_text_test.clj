@@ -35,5 +35,6 @@
                              :conn
                              (fdb/db ledger)
                              (fdb/query q))]
-            (is (seq subject)
-                "returns results")))))))
+            (is (= (count subject)
+                   1)
+                "returns a single result")))))))
