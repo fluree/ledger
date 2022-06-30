@@ -15,7 +15,7 @@
                                                         (io/file "group")
                                                         .getPath)}
                           t)
-                        (Thread/sleep 100)
+                        (Thread/sleep 500)
                         (FileUtils/deleteDirectory data-dir))))
 
 
