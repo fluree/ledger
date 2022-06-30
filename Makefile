@@ -26,7 +26,9 @@ RELEASE_TARGETS := build/release-staging build/fluree-ledger.standalone.jar \
                    build/CHANGELOG.md
 
 build/fluree-$(VERSION).zip: $(RELEASE_TARGETS)
-	cd build && zip -r fluree-$(VERSION).zip * -x 'data/' 'data/**' 'release-staging/' 'release-staging/**'
+	cd build && \
+	rm -f fluree-*.zip && \
+	zip -r fluree-$(VERSION).zip * -x 'data/' 'data/**' 'release-staging/' 'release-staging/**'
 
 build/fluree-$(VERSION).zip.sha256: build/fluree-$(VERSION).zip
 	cd $(@D) && $(SHACMD) $(<F) > $(@F)
