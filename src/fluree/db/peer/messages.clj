@@ -238,7 +238,7 @@
                       (when (>= status 500)
                         (log/error e "Unexpected error processing message:" msg))
                       (async/put! producer-chan [:response req-id nil error-resp])))]
-     (log/trace "Incoming message:" msg)
+     (log/debug "Incoming message:" msg)
      (try
        (case (keyword operation)
          :close (do ;; close will trigger the on-closed callback and clean up all session info.
@@ -338,7 +338,7 @@
 
          :unsigned-cmd (let [cmd-data    arg
                              {:keys [type ledger jwt]} cmd-data
-                             cmd-type    type
+                             cmd-type    (keyword type)
                              _           (when-not (#{:tx :new-ledger :default-key :delete-ledger} cmd-type)
                                            (throw-invalid-command
                                              (str "Invalid command type (:type) provided in unsigned command: "
@@ -409,6 +409,7 @@
 
          ;; TODO - unsigned-cmd should cover a 'tx', remove below
          :tx (let [tx-map      arg
+                   _           (log/debug "tx-map:" tx-map)
                    {:keys [ledger tx]} tx-map
                    [network ledger-id] (session/resolve-ledger (:conn system) ledger)
                    _           (when-not (txproto/ledger-exists? (:group system) network ledger-id)
