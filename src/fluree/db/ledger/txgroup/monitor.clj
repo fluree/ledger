@@ -389,10 +389,10 @@
             (doseq [[network ledger-id command] initialize-ledgers]
               (log/info "Initializing new ledger:" (str network "/" ledger-id) "-" command)
               (let [db      (try
-                              (<?? (bootstrap/bootstrap-db system command))
+                              (<?? (bootstrap/bootstrap-ledger system command))
                               (catch Exception e
                                 (log/error e "Failed to bootstrap new ledger:" (str network "/" ledger-id))))
-                    _       (log/trace "bootstrap-db returned:" db)
+                    _       (log/trace "bootstrap-ledger returned:" db)
                     session (session/session conn [network ledger-id])]
                 ;; force session close, so next request will cause session to keep in sync
                 (session/close session))))))

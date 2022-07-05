@@ -27,6 +27,17 @@
        (crypto/sha3-256)))
 
 
+(defn predicate->id-map
+  "Returns a map of predicate names to final predicate ids, i.e {\"_user/username\" 10}"
+  [bootstrap-txn]
+  (->> bootstrap-txn
+       (filter #(= "_predicate" (-> % :_id first)))
+       (reduce
+         (fn [acc txi]
+           (assoc acc (:name txi) (-> txi :_id (second))))
+         {})))
+
+
 (defn bootstrap-data->fparts
   [bootstrap-txn]
   (let [collection->id (->> bootstrap-txn
@@ -45,13 +56,7 @@
                                     (fn [acc2 k v] (assoc acc2 [(str (name collection) "/" (name k)) v] subject-id))
                                     acc (dissoc txi :_id))))
                               {}))
-        ;; predicate name to final predicate id.. i.e {"_user/username" 10}
-        predicate->id  (->> bootstrap-txn
-                            (filter #(= "_predicate" (-> % :_id first)))
-                            (reduce
-                              (fn [acc txi]
-                                (assoc acc (:name txi) (-> txi :_id (second))))
-                              {}))
+        predicate->id  (predicate->id-map bootstrap-txn)
         tag-pred?      (->> bootstrap-txn
                             (filter #(and (= "_predicate" (-> % :_id first))
                                           (= "tag" (:type %))))
@@ -85,7 +90,7 @@
                                                     (util/pred-ident? v) (get ident->id v)
                                                     (tag-pred? p-str) (get ident->id ["_tag/id" (str p-str ":" v)])
                                                     :else v)]
-                                        (if (vector? v)     ;; multi-cardinality values
+                                        (if (vector? v) ;; multi-cardinality values
                                           (reduce #(conj %1 [subject-id p %2]) acc2 v)
                                           (conj acc2 [subject-id p v]))))
                                     acc
@@ -191,6 +196,7 @@
   ([conn ledger {:keys [owners master-auth-private txid cmd sig] :as command}]
    (log/debug "Bootstrapping memory db:" command)
    (let [blank-db             (session/blank-db conn ledger)
+         timestamp            (System/currentTimeMillis)
          {:keys [novelty stats]} blank-db
          master-auth-private* (or master-auth-private
                                   (:private (crypto/generate-key-pair)))
@@ -209,19 +215,40 @@
 
          {:keys [fparts index-pred ref-pred pred->id ident->id]}
          (bootstrap-data->fparts bootstrap-txn)
+         _                    (log/debug "bootstrap fparts:" fparts)
 
          flakes               (reduce
                                 (fn [acc [s p o]]
                                   (conj acc (flake/new-flake s p o t true)))
                                 (flake/sorted-set-by flake/cmp-flakes-spot)
                                 fparts)
+         _                    (log/debug "bootstrap flakes:" flakes)
          owner-flakes         (master-auth-flakes t pred->id ident->id
                                                   auth-subids)
          _                    (log/debug "new ledger owner-flakes:" owner-flakes)
          flakes+owners        (into flakes owner-flakes)
          flakes*              (conj flakes+owners
                                     (flake/new-flake t (get pred->id "_tx/id")
-                                                     txid* t true))
+                                                     txid* t true)
+                                    (flake/new-flake t
+                                                     (get pred->id "_tx/nonce")
+                                                     timestamp t true)
+                                    (flake/new-flake block-t
+                                                      (get pred->id
+                                                           "_block/number")
+                                                      1 block-t true)
+                                    (flake/new-flake block-t
+                                                      (get pred->id
+                                                           "_block/instant")
+                                                      timestamp block-t true)
+                                    (flake/new-flake block-t
+                                                      (get pred->id
+                                                           "_block/transactions")
+                                                      -1 block-t true)
+                                    (flake/new-flake block-t
+                                                      (get pred->id
+                                                           "_block/transactions")
+                                                      -2 block-t true))
          hash                 (get-block-hash flakes*)
          block-flakes         (concat
                                 [(flake/new-flake block-t
@@ -268,7 +295,7 @@
                      :sig sig}}})))
 
 
-(defn bootstrap-db ; TODO: Rename bootstrap-ledger
+(defn bootstrap-ledger
   "Bootstraps a new ledger from a signed new-ledger message."
   [{:keys [conn group]} {:keys [cmd sig] :as command}]
   (go-try
