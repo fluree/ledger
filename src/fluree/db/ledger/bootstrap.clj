@@ -27,6 +27,17 @@
        (crypto/sha3-256)))
 
 
+(defn predicate->id-map
+  "Returns a map of predicate namex to final predicate ids, i.e {\"_user/username\" 10}"
+  [bootstrap-txn]
+  (->> bootstrap-txn
+       (filter #(= "_predicate" (-> % :_id first)))
+       (reduce
+         (fn [acc txi]
+           (assoc acc (:name txi) (-> txi :_id (second))))
+         {})))
+
+
 (defn bootstrap-data->fparts
   [bootstrap-txn]
   (let [collection->id (->> bootstrap-txn
@@ -45,13 +56,7 @@
                                     (fn [acc2 k v] (assoc acc2 [(str (name collection) "/" (name k)) v] subject-id))
                                     acc (dissoc txi :_id))))
                               {}))
-        ;; predicate name to final predicate id.. i.e {"_user/username" 10}
-        predicate->id  (->> bootstrap-txn
-                            (filter #(= "_predicate" (-> % :_id first)))
-                            (reduce
-                              (fn [acc txi]
-                                (assoc acc (:name txi) (-> txi :_id (second))))
-                              {}))
+        predicate->id  (predicate->id-map bootstrap-txn)
         tag-pred?      (->> bootstrap-txn
                             (filter #(and (= "_predicate" (-> % :_id first))
                                           (= "tag" (:type %))))
@@ -85,7 +90,7 @@
                                                     (util/pred-ident? v) (get ident->id v)
                                                     (tag-pred? p-str) (get ident->id ["_tag/id" (str p-str ":" v)])
                                                     :else v)]
-                                        (if (vector? v)     ;; multi-cardinality values
+                                        (if (vector? v) ;; multi-cardinality values
                                           (reduce #(conj %1 [subject-id p %2]) acc2 v)
                                           (conj acc2 [subject-id p v]))))
                                     acc
