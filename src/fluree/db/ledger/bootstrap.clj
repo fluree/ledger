@@ -196,6 +196,7 @@
   ([conn ledger {:keys [owners master-auth-private txid cmd sig] :as command}]
    (log/debug "Bootstrapping memory db:" command)
    (let [blank-db             (session/blank-db conn ledger)
+         timestamp            (System/currentTimeMillis)
          {:keys [novelty stats]} blank-db
          master-auth-private* (or master-auth-private
                                   (:private (crypto/generate-key-pair)))
@@ -214,19 +215,40 @@
 
          {:keys [fparts index-pred ref-pred pred->id ident->id]}
          (bootstrap-data->fparts bootstrap-txn)
+         _                    (log/debug "bootstrap fparts:" fparts)
 
          flakes               (reduce
                                 (fn [acc [s p o]]
                                   (conj acc (flake/new-flake s p o t true)))
                                 (flake/sorted-set-by flake/cmp-flakes-spot)
                                 fparts)
+         _                    (log/debug "bootstrap flakes:" flakes)
          owner-flakes         (master-auth-flakes t pred->id ident->id
                                                   auth-subids)
          _                    (log/debug "new ledger owner-flakes:" owner-flakes)
          flakes+owners        (into flakes owner-flakes)
          flakes*              (conj flakes+owners
                                     (flake/new-flake t (get pred->id "_tx/id")
-                                                     txid* t true))
+                                                     txid* t true)
+                                    (flake/new-flake t
+                                                     (get pred->id "_tx/nonce")
+                                                     timestamp t true)
+                                    (flake/new-flake block-t
+                                                      (get pred->id
+                                                           "_block/number")
+                                                      1 block-t true)
+                                    (flake/new-flake block-t
+                                                      (get pred->id
+                                                           "_block/instant")
+                                                      timestamp block-t true)
+                                    (flake/new-flake block-t
+                                                      (get pred->id
+                                                           "_block/transactions")
+                                                      -1 block-t true)
+                                    (flake/new-flake block-t
+                                                      (get pred->id
+                                                           "_block/transactions")
+                                                      -2 block-t true))
          hash                 (get-block-hash flakes*)
          block-flakes         (concat
                                 [(flake/new-flake block-t
