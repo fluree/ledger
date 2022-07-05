@@ -313,6 +313,24 @@
       (is (= res-q1 res-q2 res-q3) ":limit 1, {:opts {:limit 1}} and {:opts {'limit' 1}} are identical"))))
 
 
+(deftest limit+orderBy
+  (testing "orderBy query with limit should order first, then limit"
+    (let [q-all     {:select  ["*"]
+                     :from    "_tx"
+                     :orderBy ["DESC", "_block/instant"]}
+          q-limit   {:select  ["*"]
+                     :from    "_tx"
+                     :limit   1
+                     :orderBy ["DESC", "_block/instant"]}
+          db        (basic/get-db test/ledger-chat)
+          last-tx   @(fdb/query db {:select "(min ?s)"
+                                    :where  [["?s" "rdf:type" "_tx"]]})
+          res-all   @(fdb/query db q-all)
+          res-limit @(fdb/query db q-limit)]
+      (is (= last-tx (-> res-all first :_id)) "Latest _tx sid should be same as first result for all _tx query sorted descending")
+      (is (= res-limit [(-> res-all first)]) "Ordered query results with :limit 1 should be same as (first <no limit ordered results>)"))))
+
+
 ;; TODO: Make this work like typical test suites w/ only one later of deftests.
 (deftest basic-query-test
   (select-chats)
@@ -327,7 +345,8 @@
   (select-with-groupBy)
   (select-boolean-predicates)
   (block-and-tx-queries)
-  (stringified-opts))
+  (stringified-opts)
+  (limit+orderBy))
 
 (deftest tests-independent
   (basic/add-collections*)
