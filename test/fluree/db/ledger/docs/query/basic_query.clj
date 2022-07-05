@@ -281,6 +281,38 @@
       (is (= 1 (count res))))))
 
 
+(deftest block-and-tx-queries
+  (testing "_block and _tx query should return same result"
+    (let [q-tx      {:select ["*"] :from "_tx"}
+          q-block   {:select ["*"] :from "_block"}
+          db        (basic/get-db test/ledger-chat)
+          res-tx    @(fdb/query db q-tx)
+          res-block @(fdb/query db q-block)
+          _tx-sids  (map :_id res-tx)]
+      (is (= res-tx res-block) "_tx and _block query results should be identical")
+      (is (= _tx-sids
+             (range -1 (-> _tx-sids last dec) -1))
+             "All _tx sids are all negative, decrementing by 1, ending -1"))))
+
+
+(deftest stringified-opts
+  (testing "opts keys with keyword and string keys"
+    (let [q1     {:select ["*"]
+                  :from   "_tx"
+                  :limit  1}
+          q2     {:select ["*"]
+                  :from   "_tx"
+                  :opts   {:limit 1}}
+          q3     {:select ["*"]
+                  :from   "_tx"
+                  :opts   {"limit" 1}}
+          db     (basic/get-db test/ledger-chat)
+          res-q1 @(fdb/query db q1)
+          res-q2 @(fdb/query db q2)
+          res-q3 @(fdb/query db q3)]
+      (is (= res-q1 res-q2 res-q3) ":limit 1, {:opts {:limit 1}} and {:opts {'limit' 1}} are identical"))))
+
+
 ;; TODO: Make this work like typical test suites w/ only one later of deftests.
 (deftest basic-query-test
   (select-chats)
@@ -293,7 +325,9 @@
   (select-as-of-block)
   (select-with-limit-and-offset)
   (select-with-groupBy)
-  (select-boolean-predicates))
+  (select-boolean-predicates)
+  (block-and-tx-queries)
+  (stringified-opts))
 
 (deftest tests-independent
   (basic/add-collections*)
