@@ -28,7 +28,7 @@
 
 
 (defn predicate->id-map
-  "Returns a map of predicate namex to final predicate ids, i.e {\"_user/username\" 10}"
+  "Returns a map of predicate names to final predicate ids, i.e {\"_user/username\" 10}"
   [bootstrap-txn]
   (->> bootstrap-txn
        (filter #(= "_predicate" (-> % :_id first)))
