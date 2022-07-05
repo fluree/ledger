@@ -268,7 +268,7 @@
                      :sig sig}}})))
 
 
-(defn bootstrap-db ; TODO: Rename bootstrap-ledger
+(defn bootstrap-ledger
   "Bootstraps a new ledger from a signed new-ledger message."
   [{:keys [conn group]} {:keys [cmd sig] :as command}]
   (go-try
