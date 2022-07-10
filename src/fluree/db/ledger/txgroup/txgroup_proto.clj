@@ -35,7 +35,8 @@
   (get-in (-local-state group) ks))
 
 (defn kv-assoc-in-async
-  "Writes value to specified key. Returns core async channel that will eventually have a response."
+  "Writes value `v` to specified key sequence `ks`. Returns core async channel
+  that will eventually have a response."
   [group ks v]
   (let [command [:assoc-in ks v]]
     (-new-entry-async group command)))

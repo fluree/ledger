@@ -603,8 +603,8 @@
 
 ;; TODO configurable timeout
 (defn new-entry-async
-  "Sends a command to the leader. If no callback provided, returns a core async promise channel
-  that will eventually contain a response."
+  "Sends a command to the leader. If no callback provided, returns a core async
+  promise channel that will eventually contain a response."
   ([group entry] (new-entry-async group entry 5000))
   ([group entry timeout-ms]
    (let [resp-chan (async/promise-chan)
