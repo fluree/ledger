@@ -334,18 +334,22 @@
               (recur block-map* recent-cmds*))))))))
 
 
+(defn random-queue-id
+  [network ledger-id]
+  (str network "/" ledger-id ":" (rand-int 100000)))
+
 (defn ledger-queue
   [conn network ledger-id]
   (or (get-in @ledger-queues-atom [network ledger-id])
-      (let [queue-id (str network "/" ledger-id ":" (rand-int 100000))]
-        (swap! ledger-queues-atom (fn [queues]
-                                    (if (get-in queues [network ledger-id])
-                                      queues                    ;; race condition - queue was just created so don't create new one
-                                      (let [chan (async/chan (async/dropping-buffer 1))]
-                                        ;; kick off loop
-                                        (ledger-queue-loop conn chan network ledger-id queue-id)
-                                        (assoc-in queues [network ledger-id] chan)))))
-        (get-in @ledger-queues-atom [network ledger-id]))))
+      (-> ledger-queues-atom
+          (swap! (fn [queues]
+                   (if-not (get-in queues [network ledger-id])
+                     (let [queue-id (random-queue-id network ledger-id)
+                           queue-ch (async/chan (async/dropping-buffer 1))]
+                       (ledger-queue-loop conn queue-ch network ledger-id queue-id)
+                       (assoc-in queues [network ledger-id] queue-ch))
+                     queues))) ; race condition - queue was just created so don't create new one
+          (get-in [network ledger-id]))))
 
 
 (defn kick-all-assigned-networks-with-queue
