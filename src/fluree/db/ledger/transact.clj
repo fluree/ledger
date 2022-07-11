@@ -26,25 +26,27 @@
                       {:status 403 :error :db/invalid-auth})) true)))
 
 
-(defn ->block-map
+(defn new-block-map
   "Creates initial block map that ultimately gets returned after block completed."
-  [db prev-hash]
-  {:db-orig      db                                         ;; original DB before block starts
-   :db-before    db                                         ;; db before each transaction
-   :db-after     db                                         ;; db after each transaction
-   :cmd-types    #{}
-   :block        (inc (:block db))                          ;; block number
-   :t            (:t db)                                    ;; updated with every tx within block
-   :before-t     (:t db)                                    ;; never updated, t before block
-   :hash         nil                                        ;; final block hash
-   :sigs         nil                                        ;; signature(s) of ledgers that seal the block
-   :instant      (util/current-time-millis)
-   :flakes       (flake/sorted-set-by flake/cmp-flakes-block)
-   :block-bytes  0
-   :fuel         0
-   :txns         {}
-   :prev-hash    prev-hash
-   :remove-preds #{}})
+  ([db]
+   (new-block-map db nil))
+  ([db prev-hash]
+   {:db-orig      db                                         ; original DB before block starts
+    :db-before    db                                         ; db before each transaction
+    :db-after     db                                         ; db after each transaction
+    :cmd-types    #{}
+    :block        (inc (:block db))                          ; block number
+    :t            (:t db)                                    ; updated with every tx within block
+    :before-t     (:t db)                                    ; never updated, t before block
+    :hash         nil                                        ; final block hash
+    :sigs         nil                                        ; signature(s) of ledgers that seal the block
+    :instant      (util/current-time-millis)
+    :flakes       (flake/sorted-set-by flake/cmp-flakes-block)
+    :block-bytes  0
+    :fuel         0
+    :txns         {}
+    :prev-hash    prev-hash
+    :remove-preds #{}}))
 
 
 (defn merge-tx-into-block
@@ -207,7 +209,7 @@
     (let [prev-hash (<? (retrieve-prev-hash db-before))]
       ;; perform each transaction in order
       (loop [[cmd-data & r] transactions
-             block-map (->block-map db-before prev-hash)]
+             block-map      (new-block-map db-before prev-hash)]
         (let [block-map* (try
                            (->> cmd-data
                                 tx-util/validate-command
