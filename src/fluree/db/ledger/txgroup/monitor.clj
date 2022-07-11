@@ -1,7 +1,7 @@
 (ns fluree.db.ledger.txgroup.monitor
   (:require [fluree.db.util.log :as log]
             [clojure.set :as set]
-            [clojure.core.async :as async]
+            [clojure.core.async :as async :refer [<! go]]
             [fluree.db.session :as session]
             [fluree.db.ledger.transact :as transact]
             [fluree.db.ledger.bootstrap :as bootstrap]
@@ -298,26 +298,25 @@
 ;;        responsible for a network in-between, and detect + close here
 (defn ledger-queue-loop
   "Runs a continuous loop for a db to process new blocks"
-  [conn kick-chan network ledger-id queue-id]
-  (async/go
-    (let [group       (:group conn)
-          this-server (txproto/this-server group)
+  [{:keys [group] :as conn} kick-chan network ledger-id queue-id]
+  (go
+    (let [this-server (txproto/this-server group)
           session     (session/session conn [network ledger-id])
           _           (session/reload-db! session) ; always reload the session DB to ensure latest when starting loop
           db          (<? (session/current-db session))
           tx-max      (get-tx-max db)]
-      ;; launch loop
       (loop [block-map   {:db-after db
                           :t        (:t db)}
              recent-cmds {}]
-        (when (some? (async/<! kick-chan))
+        (when (some? (<! kick-chan))
           (if-not (network-assigned-to? group this-server network)
             (do
               (log/info (str "Network " network " is no longer assigned to this server. Stopping to process transactions."))
               (close-ledger-queue network ledger-id)
               (session/close session))
-            (let [queue        (->> (txproto/command-queue group network ledger-id)
-                                    (remove #(contains? recent-cmds (:id %)))) ;; remove any commands already processed but not yet removed by consensus
+            (let [queue        (remove (fn [{:keys [id]}]
+                                         (contains? recent-cmds id))
+                                       (txproto/command-queue group network ledger-id))
                   cmds         (when (seq queue)
                                  (select-block-commands queue tx-max))
                   db           (:db-after block-map)
