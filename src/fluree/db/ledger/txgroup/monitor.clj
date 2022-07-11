@@ -286,6 +286,18 @@
         (assoc acc (:id cmd) time))
       recent-cmds* new-cmds)))
 
+(defn clear-stale-commands
+  [recent-cmds threshold]
+  (->> recent-cmds
+       (remove (fn [[cmd-id time]]
+                 (< time threshold)))
+       (into {})))
+
+(defn add-new-commands
+  [recent-cmds new-cmds time]
+  (reduce (fn [m {:keys [id]}]
+            (assoc m id time))
+          recent-cmds new-cmds))
 
 (defn get-tx-max
   "Returns max transaction size from db, or utilizes default"
