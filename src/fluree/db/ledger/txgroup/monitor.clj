@@ -273,8 +273,8 @@
   "Periodically clears out recent command that should have been cleared out by consensus."
   [recent-cmds new-cmds]
   (let [time            (System/currentTimeMillis)
-        clear-threshold (- time 100000)                     ;; 100 seconds ago
-        recent-cmds*    (reduce-kv                          ;; remove old commands from map
+        clear-threshold (- time 100000)                     ; 100 seconds ago
+        recent-cmds*    (reduce-kv                          ; remove old commands from map
                           (fn [recent-cmds* cmd-id time]
                             (if (< time clear-threshold)
                               (dissoc recent-cmds* cmd-id)
@@ -305,13 +305,13 @@
           _           (session/reload-db! session) ; always reload the session DB to ensure latest when starting loop
           db          (<? (session/current-db session))
           tx-max      (get-tx-max db)]
-      (loop [block-map   {:db-after db
-                          :t        (:t db)}
+      (loop [prev-block  (transact/new-block-map db)
              recent-cmds {}]
         (when (some? (<! kick-chan))
           (if-not (network-assigned-to? group this-server network)
             (do
-              (log/info (str "Network " network " is no longer assigned to this server. Stopping to process transactions."))
+              (log/info "Network" network
+                        "is no longer assigned to this server. Stopping transaction processing.")
               (close-ledger-queue network ledger-id)
               (session/close session))
             (let [queue        (remove (fn [{:keys [id]}]
@@ -319,18 +319,18 @@
                                        (txproto/command-queue group network ledger-id))
                   cmds         (when (seq queue)
                                  (select-block-commands queue tx-max))
-                  db           (:db-after block-map)
-                  block-map*   (if (empty? cmds)
-                                 block-map
+                  db           (:db-after prev-block)
+                  next-block   (if (empty? cmds)
+                                 prev-block
                                  (try
                                    (<? (transact/build-block session db cmds))
                                    (catch Exception e
                                      (log/error e (str "Error processing new block. Ignoring last block and transaction(s):" (map :id cmds)))
-                                     block-map)))
+                                     prev-block)))
                   recent-cmds* (update-recent-cmds recent-cmds cmds)]
               (when (seq queue)                             ;; in case we still have a queue to process, kick again until finished
                 (async/put! kick-chan ::kick))
-              (recur block-map* recent-cmds*))))))))
+              (recur next-block recent-cmds*))))))))
 
 
 (defn random-queue-id
