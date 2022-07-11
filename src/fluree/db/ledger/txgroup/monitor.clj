@@ -301,8 +301,9 @@
   [{:keys [group] :as conn} kick-chan network ledger-id queue-id]
   (go
     (let [this-server (txproto/this-server group)
-          session     (session/session conn [network ledger-id])
-          _           (session/reload-db! session) ; always reload the session DB to ensure latest when starting loop
+          session     (doto (session/session conn [network ledger-id])
+                        session/reload-db!) ; always reload the session DB to
+                                            ; ensure latest when starting loop
           db          (<? (session/current-db session))
           tx-max      (get-tx-max db)]
       (loop [prev-block  (transact/new-block-map db)
