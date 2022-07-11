@@ -269,23 +269,6 @@
                                  (update x network dissoc ledger-id)))) true))
 
 
-(defn update-recent-cmds
-  "Periodically clears out recent command that should have been cleared out by consensus."
-  [recent-cmds new-cmds]
-  (let [time            (System/currentTimeMillis)
-        clear-threshold (- time 100000)                     ; 100 seconds ago
-        recent-cmds*    (reduce-kv                          ; remove old commands from map
-                          (fn [recent-cmds* cmd-id time]
-                            (if (< time clear-threshold)
-                              (dissoc recent-cmds* cmd-id)
-                              recent-cmds*))
-                          recent-cmds recent-cmds)]
-    ;; add new commands into map
-    (reduce
-      (fn [acc cmd]
-        (assoc acc (:id cmd) time))
-      recent-cmds* new-cmds)))
-
 (defn clear-stale-commands
   [recent-cmds threshold]
   (->> recent-cmds
@@ -327,23 +310,26 @@
                         "is no longer assigned to this server. Stopping transaction processing.")
               (close-ledger-queue network ledger-id)
               (session/close session))
-            (let [queue        (remove (fn [{:keys [id]}]
-                                         (contains? recent-cmds id))
-                                       (txproto/command-queue group network ledger-id))
-                  cmds         (when (seq queue)
-                                 (select-block-commands queue tx-max))
-                  db           (:db-after prev-block)
-                  next-block   (if (empty? cmds)
-                                 prev-block
-                                 (try
-                                   (<? (transact/build-block session db cmds))
-                                   (catch Exception e
-                                     (log/error e (str "Error processing new block. Ignoring last block and transaction(s):" (map :id cmds)))
-                                     prev-block)))
-                  recent-cmds* (update-recent-cmds recent-cmds cmds)]
-              (when (seq queue)                             ;; in case we still have a queue to process, kick again until finished
-                (async/put! kick-chan ::kick))
-              (recur next-block recent-cmds*))))))))
+            (let [db              (:db-after prev-block)
+                  time            (System/currentTimeMillis)
+                  clear-threshold (- time 100000) ; 100 seconds ago
+                  recent-cmds*    (clear-stale-commands recent-cmds clear-threshold)
+                  queue           (remove (fn [{:keys [id]}]
+                                            (contains? recent-cmds id))
+                                          (txproto/command-queue group network ledger-id))]
+              (if (seq queue)
+                (let [new-cmds      (select-block-commands queue tx-max)
+                      next-block    (try
+                                      (<? (transact/build-block session db new-cmds))
+                                      (catch Exception e
+                                        (log/error e
+                                                   "Error processing new block. Ignoring last block and transaction(s):"
+                                                   (map :id new-cmds))
+                                        prev-block))
+                      recent-cmds** (add-new-commands recent-cmds* new-cmds time)]
+                  (async/put! kick-chan ::kick)
+                  (recur next-block recent-cmds**))
+                (recur prev-block recent-cmds*)))))))))
 
 
 (defn random-queue-id
