@@ -223,16 +223,17 @@
   - ledger-id
   - instant
 
- Commands can optionally contain multiTx, which allows for multiple transactions to be handle together in the
- same block. In order for multiTx to be allowed, all transactions need to be in the queue.  The order of txns
- listed in the last txn submitted is the order in which the transactions are processed."
+  Commands can optionally contain multiTx, which allows for multiple
+  transactions to be handle together in the same block. In order for multiTx to
+  be allowed, all transactions need to be in the queue. The order of txns listed
+  in the last txn submitted is the order in which the transactions are
+  processed."
   [cmd-queue tx-max]
   ;; TODO - need to check each command id to ensure it hasn't yet been processed
-  (let [sorted-queue (->> cmd-queue
-                          (sort-by :instant))]
+  (let [sorted-queue (sort-by :instant cmd-queue)]
     (loop [[next-cmd & r] sorted-queue
-           total-size 0
-           queued     []]
+           total-size     0
+           queued         []]
       (let [size        (:size next-cmd)
             multiTxs    (-> next-cmd :command :multiTxs)
             [size next-cmds] (if multiTxs
