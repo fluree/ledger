@@ -825,7 +825,7 @@
         (log/debug "All database files synchronized.")))))
 
 (defn raft-start-up
-  [group conn system* shutdown _]
+  [group conn system shutdown _]
   (go
     (try (<? (index-fully-committed? group true))
 
@@ -856,7 +856,7 @@
 
          ;; monitor state changes to kick of transactions for any queues
          (register-state-change-fn (str (UUID/randomUUID))
-                                   (partial group-monitor/state-updates-monitor system*))
+                                   (partial group-monitor/state-updates-monitor system))
 
          ;; in case we are responsible for networks but some exist in current queue, kick them off
          (group-monitor/kick-all-assigned-networks-with-queue conn)
@@ -878,7 +878,7 @@
          (catch Exception e
            (log/warn "Error during raft initialization. Shutting down system")
            (log/error e)
-           (shutdown system*)
+           (shutdown system)
            (System/exit 1)))))
 
 
