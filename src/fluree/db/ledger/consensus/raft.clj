@@ -808,72 +808,67 @@
 (defn raft-start-up
   [group conn system* shutdown _]
   (async/go
-    (try (let [fully-committed? (async/<! (index-fully-committed? group true))]
-           (when (instance? Throwable fully-committed?)
-             (log/error fully-committed? "Exception when initializing raft. Shutting down.")
-             (shutdown system*)
-             (System/exit 1))
+    (try (<? (index-fully-committed? group true))
 
-           ;; do an initial file sync... the committed raft may contain blocks that end up leaving gaps
-           (let [file-storage? (some? (-> conn :meta :file-storage-path))]
-             (when file-storage?                            ; TODO: Support full-text indexes on s3 storage too
-               (let [ledgers-info (txproto/ledgers-info-map conn)
-                     others       (-> group :raft :other-servers)]
-                 (when-let [exception (<! (filter-exception
-                                           (dbsync2/consistency-full-check conn ledgers-info others)))]
-                   (dbsync2/terminate! conn (str "Terminating due to file syncing error, "
-                                                 "unable to sync required files with other servers.")
-                                       exception))
-                 (when-let [exception (<! (filter-exception
-                                           (dbsync2/check-full-text-synced conn ledgers-info)))]
-                   (dbsync2/terminate! conn (str "Terminating due to full text index syncing error, "
-                                                 "unable to sync index with the current ledgers.")
-                                       exception))
-                 (log/debug "All database files synchronized."))))
+         ;; do an initial file sync... the committed raft may contain blocks that end up leaving gaps
+         (when (some? (-> conn :meta :file-storage-path)) ; TODO: Support full-text indexes on s3 storage too
+           (let [ledgers-info (txproto/ledgers-info-map conn)
+                 others       (-> group :raft :other-servers)]
+             (when-let [exception (<! (filter-exception
+                                       (dbsync2/consistency-full-check conn ledgers-info others)))]
+               (dbsync2/terminate! conn (str "Terminating due to file syncing error, "
+                                             "unable to sync required files with other servers.")
+                                   exception))
+             (when-let [exception (<! (filter-exception
+                                       (dbsync2/check-full-text-synced conn ledgers-info)))]
+               (dbsync2/terminate! conn (str "Terminating due to full text index syncing error, "
+                                             "unable to sync index with the current ledgers.")
+                                   exception))
+             (log/debug "All database files synchronized.")))
 
-           ;; register on the network
-           (async/<! (register-server-lease-async group 5000))
+         ;; register on the network
+         (async/<! (register-server-lease-async group 5000))
 
-           (when (async/<! (is-leader?-async group))
-             (let [new-instance? (empty? (txproto/get-shared-private-key group))]
-               (if new-instance?
-                 (let [config-private-key (:tx-private-key conn)
-                       generated-key      (when-not config-private-key
-                                            (crypto/generate-key-pair))
-                       private-key        (or config-private-key
-                                              (:private generated-key))]
-                   (log/info "Brand new Fluree instance.")
-                   (if config-private-key
-                     (log/info "Using default private key obtained from configuration settings.")
-                     (log/info (str "Generating brand new default key pair, public key is: " (:public generated-key))))
-                   (txproto/set-shared-private-key (:group conn) private-key)
-                   (<? (check-existing-ledgers-on-disk conn)))
-                 ;; not a new instance, but just started as leader - could have old
-                 ;; raft files that don't have latest blocks. Check, and potentially add latest block
-                 ;; files to network.
-                 (<? (check-if-newer-blocks-on-disk conn)))))
+         (when (async/<! (is-leader?-async group))
+           (let [new-instance? (empty? (txproto/get-shared-private-key group))]
+             (if new-instance?
+               (let [config-private-key (:tx-private-key conn)
+                     generated-key      (when-not config-private-key
+                                          (crypto/generate-key-pair))
+                     private-key        (or config-private-key
+                                            (:private generated-key))]
+                 (log/info "Brand new Fluree instance.")
+                 (if config-private-key
+                   (log/info "Using default private key obtained from configuration settings.")
+                   (log/info (str "Generating brand new default key pair, public key is: " (:public generated-key))))
+                 (txproto/set-shared-private-key (:group conn) private-key)
+                 (<? (check-existing-ledgers-on-disk conn)))
+               ;; not a new instance, but just started as leader - could have old
+               ;; raft files that don't have latest blocks. Check, and potentially add latest block
+               ;; files to network.
+               (<? (check-if-newer-blocks-on-disk conn)))))
 
 
-           ;; monitor state changes to kick of transactions for any queues
-           (register-state-change-fn (str (UUID/randomUUID))
-                                     (partial group-monitor/state-updates-monitor system*))
+         ;; monitor state changes to kick of transactions for any queues
+         (register-state-change-fn (str (UUID/randomUUID))
+                                   (partial group-monitor/state-updates-monitor system*))
 
-           ;; in case we are responsible for networks but some exist in current queue, kick them off
-           (group-monitor/kick-all-assigned-networks-with-queue conn)
+         ;; in case we are responsible for networks but some exist in current queue, kick them off
+         (group-monitor/kick-all-assigned-networks-with-queue conn)
 
-           ;; create a loop to keep this server registered
-           (loop []
-             (let [;; pause 3 seconds
-                   _           (async/<! (async/timeout 3000))
-                   ;; TODO need to stop loop if server stopped
-                   registered? (async/<! (register-server-lease-async group 5000))
-                   leader?     (async/<! (is-leader?-async group))]
+         ;; create a loop to keep this server registered
+         (loop []
+           (let [;; pause 3 seconds
+                 _           (async/<! (async/timeout 3000))
+                 ;; TODO need to stop loop if server stopped
+                 registered? (async/<! (register-server-lease-async group 5000))
+                 leader?     (async/<! (is-leader?-async group))]
 
-               ;; if leader, re-check worker distribute to ensure nothing is stuck
-               (when (and leader? (true? registered?))
-                 (group-monitor/redistribute-workers group)))
+             ;; if leader, re-check worker distribute to ensure nothing is stuck
+             (when (and leader? (true? registered?))
+               (group-monitor/redistribute-workers group)))
 
-             (recur)))
+           (recur))
 
          (catch Exception e
            (log/warn "Error during raft initialization. Shutting down system")
