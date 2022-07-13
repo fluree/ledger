@@ -1,7 +1,7 @@
 (ns fluree.db.ledger.consensus.raft
   (:require [fluree.raft :as raft]
             [taoensso.nippy :as nippy]
-            [clojure.core.async :as async :refer [<! <!! go-loop]]
+            [clojure.core.async :as async :refer [<! <!! go go-loop]]
             [clojure.pprint :as cprint]
             [fluree.db.util.log :as log]
             [clojure.string :as str]
@@ -805,26 +805,31 @@
         x
         (recur)))))
 
+(defn initial-file-sync
+  "Synchronize files to eliminate possible gaps in the committed raft state. "
+  [group conn]
+  (go
+    (when (some? (-> conn :meta :file-storage-path)) ; TODO: Support full-text indexes on s3 storage too
+      (let [ledgers-info (txproto/ledgers-info-map conn)
+            others       (-> group :raft :other-servers)]
+        (when-let [exception (<! (filter-exception
+                                  (dbsync2/consistency-full-check conn ledgers-info others)))]
+          (dbsync2/terminate! conn (str "Terminating due to file syncing error, "
+                                        "unable to sync required files with other servers.")
+                              exception))
+        (when-let [exception (<! (filter-exception
+                                  (dbsync2/check-full-text-synced conn ledgers-info)))]
+          (dbsync2/terminate! conn (str "Terminating due to full text index syncing error, "
+                                        "unable to sync index with the current ledgers.")
+                              exception))
+        (log/debug "All database files synchronized.")))))
+
 (defn raft-start-up
   [group conn system* shutdown _]
-  (async/go
+  (go
     (try (<? (index-fully-committed? group true))
 
-         ;; do an initial file sync... the committed raft may contain blocks that end up leaving gaps
-         (when (some? (-> conn :meta :file-storage-path)) ; TODO: Support full-text indexes on s3 storage too
-           (let [ledgers-info (txproto/ledgers-info-map conn)
-                 others       (-> group :raft :other-servers)]
-             (when-let [exception (<! (filter-exception
-                                       (dbsync2/consistency-full-check conn ledgers-info others)))]
-               (dbsync2/terminate! conn (str "Terminating due to file syncing error, "
-                                             "unable to sync required files with other servers.")
-                                   exception))
-             (when-let [exception (<! (filter-exception
-                                       (dbsync2/check-full-text-synced conn ledgers-info)))]
-               (dbsync2/terminate! conn (str "Terminating due to full text index syncing error, "
-                                             "unable to sync index with the current ledgers.")
-                                   exception))
-             (log/debug "All database files synchronized.")))
+         (<? (initial-file-sync group conn))
 
          ;; register on the network
          (async/<! (register-server-lease-async group 5000))
