@@ -863,10 +863,10 @@
 
          ;; create a loop to keep this server registered
          (loop []
-           (let [;; pause 3 seconds
-                 _           (async/<! (async/timeout 3000))
-                 ;; TODO need to stop loop if server stopped
-                 registered? (async/<! (register-server-lease-async group 5000))
+           (async/<! (async/timeout 3000)) ; pause 3 seconds
+
+           ;; TODO need to stop loop if server stopped
+           (let [registered? (async/<! (register-server-lease-async group 5000))
                  leader?     (async/<! (is-leader?-async group))]
 
              ;; if leader, re-check worker distribute to ensure nothing is stuck
