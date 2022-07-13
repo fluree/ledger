@@ -824,6 +824,27 @@
                               exception))
         (log/debug "All database files synchronized.")))))
 
+(defn initialize-leader
+  [group conn]
+  (go-try
+   (let [new-instance? (empty? (txproto/get-shared-private-key group))]
+     (if new-instance?
+       (let [config-private-key (:tx-private-key conn)
+             generated-key      (when-not config-private-key
+                                  (crypto/generate-key-pair))
+             private-key        (or config-private-key
+                                    (:private generated-key))]
+         (log/info "Brand new Fluree instance.")
+         (if config-private-key
+           (log/info "Using default private key obtained from configuration settings.")
+           (log/info (str "Generating brand new default key pair, public key is: " (:public generated-key))))
+         (txproto/set-shared-private-key (:group conn) private-key)
+         (<? (check-existing-ledgers-on-disk conn)))
+       ;; not a new instance, but just started as leader - could have old
+       ;; raft files that don't have latest blocks. Check, and potentially add latest block
+       ;; files to network.
+       (<? (check-if-newer-blocks-on-disk conn))))))
+
 (defn raft-start-up
   [group conn system shutdown _]
   (go
@@ -832,27 +853,10 @@
          (<? (initial-file-sync group conn))
 
          ;; register on the network
-         (async/<! (register-server-lease-async group 5000))
+         (<! (register-server-lease-async group 5000))
 
          (when (async/<! (is-leader?-async group))
-           (let [new-instance? (empty? (txproto/get-shared-private-key group))]
-             (if new-instance?
-               (let [config-private-key (:tx-private-key conn)
-                     generated-key      (when-not config-private-key
-                                          (crypto/generate-key-pair))
-                     private-key        (or config-private-key
-                                            (:private generated-key))]
-                 (log/info "Brand new Fluree instance.")
-                 (if config-private-key
-                   (log/info "Using default private key obtained from configuration settings.")
-                   (log/info (str "Generating brand new default key pair, public key is: " (:public generated-key))))
-                 (txproto/set-shared-private-key (:group conn) private-key)
-                 (<? (check-existing-ledgers-on-disk conn)))
-               ;; not a new instance, but just started as leader - could have old
-               ;; raft files that don't have latest blocks. Check, and potentially add latest block
-               ;; files to network.
-               (<? (check-if-newer-blocks-on-disk conn)))))
-
+           (<? (initialize-leader group conn)))
 
          ;; monitor state changes to kick of transactions for any queues
          (register-state-change-fn (str (UUID/randomUUID))
