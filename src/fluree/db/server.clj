@@ -94,7 +94,9 @@
 
             ;; Current version > data-version, shutdown
             (< current-version data-version)
-            (do (log/warn (str "Current data version: " current-version " is greater than the data version of Fluree currently running: " data-version ". Please retry this data with a more recent FlureeDB."))
+            (do (log/warn "Current data version:" current-version
+                          "is greater than the data version of Fluree currently running:" data-version
+                          ". Please retry this data with a more recent FlureeDB.")
                 (shutdown system)
                 (System/exit 1))
 
