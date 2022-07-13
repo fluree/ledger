@@ -1,0 +1,10 @@
+[{:_id "_collection"
+  :name "category"}
+ {:_id "_predicate"
+  :name "category/subCategoryOf"
+  :type "ref"
+  :restrictCollection "category"}
+ {:_id "_predicate"
+  :name "category/name"
+  :type "string"
+  :unique true}]

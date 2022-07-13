@@ -120,6 +120,78 @@
     (is (=  #{nil 351843720888321 351843720888322}
            (-> (map #(get-in % ["person/follows" "person/follows" "person/follows" :_id]) res) set)))))
 
+(deftest aggregate-binding
+  (testing "Aggregate function using two-tuple in where clause"
+    (let [query      {:select ["?e" "?maxNum"]
+                      :where  [["?e" "person/favNums" "?favNums"]
+                               ["?maxNum" "#(max ?favNums)"]]}
+          db         (basic/get-db test/ledger-chat)
+          res        (async/<!! (fdb/query-async db query))
+          maxNumVals (->> res
+                          (map second)
+                          (into #{}))]
+
+      ;; all two-tuple results should have the identical ?maxNum
+      (is (= 1 (count maxNumVals)))
+
+      ;; sample data set has max favNum as 1950
+      (is (= 1950 (first maxNumVals))))))
+
+
+(deftest group-by-with-limit-offset
+  (testing "Group By query with limit returns first two full results"
+    (let [query-all {:select "?favNums"
+                     :where  [["?e" "person/favNums" "?favNums"]]
+                     :groupBy "?e"}
+          query-limit {:select "?favNums"
+                       :where  [["?e" "person/favNums" "?favNums"]]
+                       :groupBy "?e"
+                       :limit 2}
+          query-offset {:select "?favNums"
+                        :where  [["?e" "person/favNums" "?favNums"]]
+                        :groupBy "?e"
+                        :offset 2
+                        :limit 2}
+          db  (basic/get-db test/ledger-chat)
+          res-all  (async/<!! (fdb/query-async db query-all))
+          res-limit (async/<!! (fdb/query-async db query-limit))
+          res-offset (async/<!! (fdb/query-async db query-offset))]
+
+      (is (= res-limit (->> res-all (take 2) (into {})))
+          "limit 2 query should be same as first two of full results")
+
+      (is (= res-offset (->> res-all (drop 2) (take 2) (into {})))
+          "offset 2, limit 2 query should be same as drop 2 take 2"))))
+
+
+(deftest group-by-with-having
+  (testing "Group By query with 'having' statement defined for filter"
+    (let [q-all          {:select "(sum ?favNums)"
+                          :where   [["?e" "person/favNums" "?favNums"]]
+                          :groupBy "?e"}
+          q-having       {:select  "(sum ?favNums)"
+                          :where   [["?e" "person/favNums" "?favNums"]]
+                          :groupBy "?e"
+                          :having  (str '(< 200 (sum ?favNums)))}
+          q-having+and   {:select  "(sum ?favNums)"
+                          :where   [["?e" "person/favNums" "?favNums"]]
+                          :groupBy "?e"
+                          :having  (str '(and (< 200 (sum ?favNums)) (> 1900 (sum ?favNums))))}
+          db             (basic/get-db test/ledger-chat)
+          res-all        (async/<!! (fdb/query-async db q-all))
+          res-having     (async/<!! (fdb/query-async db q-having))
+          res-having+and (async/<!! (fdb/query-async db q-having+and))
+          ;; get a vector of all ?favNums sums
+          all-sums (vals res-all)]
+
+      (is (= (set (vals res-having))
+             (set (filter #(< 200 %) all-sums)))
+          "having results should be same as all results filtered for < 200")
+
+      (is (= (set (vals res-having+and))
+             (set (filter #(and (< 200 %) (> 1900 %)) all-sums)))
+          "having+and results should be same as all results filtered for < 200 'and' > 1900"))))
+
 
 (deftest multi-query
   (testing "Multi query")
@@ -163,6 +235,9 @@
   (graphql-with-reverse-ref)
   (crawl-graph-two)
   ;(crawl-graph-two-with-recur)
+  (aggregate-binding)
+  (group-by-with-limit-offset)
+  (group-by-with-having)
   (multi-query)
   ;(multi-query-with-error)
   )

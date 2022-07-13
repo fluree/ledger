@@ -26,7 +26,9 @@ RELEASE_TARGETS := build/release-staging build/fluree-ledger.standalone.jar \
                    build/CHANGELOG.md
 
 build/fluree-$(VERSION).zip: $(RELEASE_TARGETS)
-	cd build && zip -r fluree-$(VERSION).zip * -x 'data/' 'data/**' 'release-staging/' 'release-staging/**'
+	cd build && \
+	rm -f fluree-*.zip && \
+	zip -r fluree-$(VERSION).zip * -x 'data/' 'data/**' 'release-staging/' 'release-staging/**'
 
 build/fluree-$(VERSION).zip.sha256: build/fluree-$(VERSION).zip
 	cd $(@D) && $(SHACMD) $(<F) > $(@F)
@@ -48,8 +50,8 @@ prep-release: check-release-jdk-version clean build/fluree-$(VERSION).zip build/
 release: prep-release
 	aws s3 sync build/release-staging/ s3://$(RELEASE_BUCKET)/ --size-only --cache-control max-age=300 --acl public-read --profile fluree
 
-release-stable: prep-release
-	cp build/release-staging/fluree-$(VERSION).zip build/release-staging/fluree-stable.zip
+release-prerelease: prep-release
+	cp build/release-staging/fluree-$(VERSION).zip build/release-staging/fluree-prerelease.zip
 	cp build/release-staging/fluree-$(VERSION).zip build/release-staging/fluree-$(MAJOR_VERSION).$(MINOR_VERSION)-latest.zip
 	aws s3 sync build/release-staging/ s3://$(RELEASE_BUCKET)/ --size-only --cache-control max-age=300 --acl public-read --profile fluree
 
@@ -159,6 +161,7 @@ clean:
 	@# only delete contents of build dir if full delete fails (e.g. b/c we're mounting it as a Docker volume)
 	rm -rf build 2>/dev/null || rm -rf build/*
 	rm -rf target
+	rm -rf classes
 	rm -f resources/adminUI
 	rm -rf node_modules
 	rm -f pom.xml

@@ -1,19 +1,19 @@
 (ns fluree.db.ledger.indexing.full-text
   (:require [fluree.db.api :as fdb]
+            [fluree.db.flake :as flake]
             [fluree.db.full-text :as full-text]
             [fluree.db.query.range :as query-range]
             [fluree.db.util.schema :as schema]
             [clojure.core.async :as async :refer [<! chan go go-loop]]
             [fluree.db.util.log :as log])
-  (:import (fluree.db.flake Flake)
-           (java.time Instant)
+  (:import (java.time Instant)
            (java.io Closeable)))
 
 (set! *warn-on-reflection* true)
 
 (defn separate-by-op
   [flakes]
-  (let [{add true, rem false} (group-by #(.-op ^Flake %) flakes)]
+  (let [{add true, rem false} (group-by flake/op flakes)]
     [add rem]))
 
 (defn predicate-flakes
@@ -37,7 +37,17 @@
   (->> flakes
        (filter full-text/predicate?)
        separate-by-op
-       (map (partial predicate-flakes db))))
+       (map (comp (partial predicate-flakes db)
+                  (fn [fs]
+                    (map flake/s fs)))))) ; these flakes are setting existing
+                                          ; ledger predicates to be included or
+                                          ; excluded from the full text index,
+                                          ; so they have an existing *predicate*
+                                          ; as the subject and the built in
+                                          ; `$_predicate:fullText` as predicate,
+                                          ; so we use `flake/s` to extract the
+                                          ; predicate value from the subject
+;
 
 (defn current-index-predicates
   [db]
@@ -54,22 +64,22 @@
 
         [cur-updates cur-removals]
         (->> flakes
-             (filter (fn [^Flake f]
-                       (contains? cur-idx-preds (.-p f))))
+             (filter (fn [f]
+                       (contains? cur-idx-preds (flake/p f))))
              separate-by-op)
 
         cur-update-ch  (async/to-chan! cur-updates)
 
         ;; We only want to add flakes to "remove" if that s-p is being
         ;; removed, not if it's being updated
+        extract-s-p    (juxt flake/s flake/p)
         update-set     (->> cur-updates
-                            (map (fn [^Flake f]
-                                   [(.-s f) (.-p f)]))
+                            (map extract-s-p)
                             (into #{}))
         cur-rem-ch     (->> cur-removals
-                            (filter (fn [^Flake f]
+                            (filter (fn [f]
                                       (not (contains? update-set
-                                                      [(.-s f) (.-p f)]))))
+                                                      (extract-s-p f)))))
                             async/to-chan!)]
     [cur-update-ch cur-rem-ch]))
 
@@ -87,13 +97,13 @@
   the predicate and object from a flake appearing in the input stream for that
   subject."
   [flake-chan]
-  (let [subj-map-chan (async/reduce (fn [m ^Flake f]
-                                      (let [subj (.-s f)
-                                            pred (.-p f)
-                                            obj  (.-o f)]
+  (let [subj-map-chan (async/reduce (fn [m f]
+                                      (let [subj (flake/s f)
+                                            pred (flake/p f)
+                                            obj  (flake/o f)]
                                         (update m subj assoc pred obj)))
                                     {} flake-chan)
-        out-chan      (chan 1 (mapcat seq))]
+        out-chan      (chan 1 cat)]
     (async/pipe subj-map-chan out-chan)))
 
 (defn process-subjects
@@ -158,8 +168,8 @@
        (purge-subjects idx wrtr init-stats)))
 
 (defn reset-index
-  [idx wrtr {:keys [network dbid] :as db}]
-  (log/info "Resetting full text index for ledger " network "/" dbid)
+  [idx wrtr {:keys [network ledger-id] :as db}]
+  (log/info "Resetting full text index for ledger " network "/" ledger-id)
   (let [cur-idx-preds (current-index-predicates db)
         idx-queue     (predicate-flakes db cur-idx-preds)
         initial-stats {:indexed 0, :errors 0}]
@@ -183,9 +193,9 @@
 
 
 (defn write-block
-  [idx wrtr {:keys [network dbid] :as db} {:keys [flakes] :as block}]
+  [idx wrtr {:keys [network ledger-id] :as db} {:keys [flakes] :as block}]
   (let [start-time  (Instant/now)
-        coordinates {:network network, :dbid dbid, :block (:block block)}]
+        coordinates {:network network, :ledger-id ledger-id, :block (:block block)}]
     (log/info (str "Full-Text Search Index began processing new block at: "
                    start-time)
               coordinates)
@@ -219,7 +229,7 @@
 
 
 (defn sync-index
-  [idx wrtr {:keys [network dbid block] :as db}]
+  [idx wrtr {:keys [network ledger-id block] :as db}]
   (let [last-indexed (-> idx
                          full-text/read-block-registry
                          :block
@@ -229,7 +239,7 @@
     (if (<= first-block last-block)
       (do (log/info (str "Syncing full text index from block: " first-block
                          " to block " last-block " for ledger " network "/"
-                         dbid))
+                         ledger-id))
           (write-range idx wrtr db first-block last-block))
       (do (log/info "Full text index up to date")
           (async/to-chan! [])))))
@@ -266,9 +276,9 @@
       (go-loop []
         (if-let [[msg resp-ch] (<! write-q)]
           (let [{:keys [action db]} msg
-                {:keys [network dbid]} db
+                {:keys [network ledger-id]} db
                 lang (-> db :settings :language (or :default))]
-            (with-open [^Closeable idx (full-text/open-storage conn network dbid lang)
+            (with-open [^Closeable idx (full-text/open-storage conn network ledger-id lang)
                         ^Closeable wrtr (full-text/writer idx)]
               (let [result  (case action
                               :block (let [{:keys [block]} msg]

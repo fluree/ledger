@@ -45,12 +45,12 @@
       pred-type (xml/element tag {} o))))
 
 (defn fdb-prefix
-  [network dbid block]
-  (str "http://www.flur.ee/fdb/" network "/" dbid "/" block "#"))
+  [network ledger-id block]
+  (str "http://www.flur.ee/fdb/" network "/" ledger-id "/" block "#"))
 
 (defn get-prefixes-ttl
-  [network dbid block]
-  (str "@prefix fdb: <" (fdb-prefix network dbid block) ">."
+  [network ledger-id block]
+  (str "@prefix fdb: <" (fdb-prefix network ledger-id block) ">."
        "\n@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>.\n"))
 
 (defn wrap-xml-fn
@@ -59,10 +59,10 @@
     (apply xml/element tag content args)))
 
 (defn get-prefixes-xml-fn
-  [network dbid block]
+  [network ledger-id block]
   (wrap-xml-fn :rdf:RDF
                {:xmlns:rdf "http://www.w3.org/1999/02/22-rdf-syntax-ns#"
-                :xmlns:fdb (fdb-prefix network dbid block)}))
+                :xmlns:fdb (fdb-prefix network ledger-id block)}))
 
 ;; I/O
 
@@ -104,8 +104,8 @@
 
 ;; TODO - Size limit? Can/should we do multiple xml files?
 (defn xml->export
-  [db network dbid block file-path spot]
-  (let [fdb-pfx          (fdb-prefix network dbid block)
+  [db network ledger-id block file-path spot]
+  (let [fdb-pfx          (fdb-prefix network ledger-id block)
         subject-xmls     (loop [[^Flake flake & r] spot
                                 subject        nil
                                 subject-flakes []
@@ -129,7 +129,7 @@
                                      :else
                                      (let [subject-xml (subject->xml db (conj subject-flakes flake) fdb-pfx)]
                                        (recur r s [] (conj acc subject-xml)))))))
-        wrap-prefixes-fn (get-prefixes-xml-fn network dbid block)]
+        wrap-prefixes-fn (get-prefixes-xml-fn network ledger-id block)]
     (-> (wrap-prefixes-fn subject-xmls)
         (write-xml-to-file file-path))
     file-path))
@@ -137,8 +137,8 @@
 ;; TTL
 
 (defn ttl->export
-  [db network dbid block file-path spot]
-  (let [prefixes (get-prefixes-ttl network dbid block)
+  [db network ledger-id block file-path spot]
+  (let [prefixes (get-prefixes-ttl network ledger-id block)
         _        (write-to-file file-path prefixes)]
     (loop [[^Flake flake & r] spot
            current-subject   nil
@@ -187,16 +187,16 @@
   ([db type block]
    (go-try (let [db-at-block (if block (<? (time-travel/as-of-block db block)) db)
                  spot        (<? (query-range/index-range db-at-block :spot))
-                 {:keys [network dbid block]} db-at-block
+                 {:keys [network ledger-id block]} db-at-block
                  type        (or type :ttl)
-                 file-path   (str "data/exports/" network "/" dbid "/network-dbid-" block "." (util/keyword->str type))
+                 file-path   (str "data/exports/" network "/" ledger-id "/network-ledger-id-" block "." (util/keyword->str type))
                  _           (io/make-parents file-path)
                  _           (when (.exists (io/as-file file-path))
                                (io/delete-file file-path))]
              (condp = (keyword type)
-               :xml (xml->export db network dbid block file-path spot)
+               :xml (xml->export db network ledger-id block file-path spot)
 
-               :ttl (ttl->export db network dbid block file-path spot))))))
+               :ttl (ttl->export db network ledger-id block file-path spot))))))
 
 
 (comment

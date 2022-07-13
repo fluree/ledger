@@ -16,9 +16,9 @@
 
 (defn- new-children-for-branch [left-flake {:keys [children] :as _branch}]
   (loop [[child & r] children
-         i           0
-         last-rhs    nil
-         acc         []]
+         i        0
+         last-rhs nil
+         acc      []]
     (if-not child
       acc
       (let [new-child
@@ -45,21 +45,21 @@
   "Modifies index segments where the 'rhs' does not match the next segment's first-flake"
   [conn]
   (go-try
-    (let [dbs        (txproto/ledger-list (:group conn))    ;; two-tuples of [network dbid]
+    (let [ledgers    (txproto/ledger-list (:group conn)) ;; two-tuples of [network ledger-id]
           left-flake (flake/->Flake (Long/MAX_VALUE) 0 (Long/MAX_VALUE) 0 true nil)]
-      (when (not-empty dbs)
+      (when (not-empty ledgers)
         (log/info "Migrating data version from v1 to v2")
         ;; check every db
-        (doseq [[network dbid] dbs]
-          (let [db-ident   (str network "/" dbid)
-                idx-points (-> @(fdb/ledger-info conn db-ident)
-                               :indexes
-                               keys
-                               sort)]
-            (log/info (str "Updating indexes " idx-points " for db: " db-ident))
+        (doseq [[network ledger-id] ledgers]
+          (let [ledger-ident (str network "/" ledger-id)
+                idx-points   (-> @(fdb/ledger-info conn ledger-ident)
+                                 :indexes
+                                 keys
+                                 sort)]
+            (log/info (str "Updating indexes " idx-points " for ledger: " ledger-ident))
             (doseq [idx-point idx-points]
-              (log/info (str " - Updating index " idx-point " for db: " db-ident))
-              (let [db-root (<? (storage/read-db-root conn network dbid idx-point))]
+              (log/info (str " - Updating index " idx-point " for ledger: " ledger-ident))
+              (let [db-root (<? (storage/read-db-root conn network ledger-id idx-point))]
                 (doseq [idx-type index/types]
                   (let [root-idx-key (-> db-root (get idx-type) :id)
                         branch-data  (<? (storage/read-branch conn root-idx-key))
@@ -78,15 +78,15 @@
       (str/replace #"[^a-z0-9-]" "")))
 
 
-(defn update-dbid-state-atom-networks
-  [state-atom old-network old-db new-network new-db]
-  (let [old-value (get-in @state-atom [:networks old-network :dbs old-db])
+(defn update-ledger-id-state-atom-networks
+  [state-atom old-network old-ledger new-network new-ledger]
+  (let [old-value (get-in @state-atom [:networks old-network :ledgers old-ledger])
         ;; dissoc old value
-        _         (swap! state-atom update-in [:networks old-network :dbs] dissoc old-db)
+        _         (swap! state-atom update-in [:networks old-network :ledgers] dissoc old-ledger)
         ;; assoc new value
-        _         (swap! state-atom assoc-in [:networks new-network :dbs new-db] old-value)
-        ;; if old network has no dbs left, delete
-        _         (when (= {:dbs {}} (get-in @state-atom [:networks old-network]))
+        _         (swap! state-atom assoc-in [:networks new-network :ledgers new-ledger] old-value)
+        ;; if old network has no ledgers left, delete
+        _         (when (= {:ledgers {}} (get-in @state-atom [:networks old-network]))
                     (swap! state-atom update-in [:networks] dissoc old-network))]
     true))
 
@@ -139,8 +139,8 @@
         (log/info "Migrating data version from v2 to v3")
         (loop [[ledger & r] ledger-list]
           (when ledger
-            (let [[network dbid] ledger
-                  db-ident    (str network "/" dbid)
+            (let [[network ledger-id] ledger
+                  db-ident    (str network "/" ledger-id)
                   db-1        (-> (fdb/db conn db-ident)
                                   <?
                                   (time-travel/as-of-block 1)
@@ -171,10 +171,10 @@
   "Synchronous"
   [conn from-v to-v]
   (let [from-v (or from-v 1)
-        to-v   (or to-v const/data_version)]                ;; v0-9-5-PREVIEW2 was first version marker we used - default
+        to-v   (or to-v const/data_version)] ;; v0-9-5-PREVIEW2 was first version marker we used - default
     (cond
       (= from-v to-v)
-      true                                                  ;; no upgrade
+      true ;; no upgrade
 
       (= [1 2] [from-v to-v])
       (<?? (v1->v2 conn))

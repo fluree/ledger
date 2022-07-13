@@ -20,7 +20,7 @@
 (defn- rand-str
   []
   (apply str
-         (take (+ 5 (rand-int 20))                          ;; at least 5 characters
+         (take (+ 5 (rand-int 20)) ;; at least 5 characters
                (repeatedly #(char (+ (rand 26) 65))))))
 
 (defn- get-unique-count
@@ -133,6 +133,49 @@
 
       (is (< 30 (count predicates))))))
 
+
+(deftest query-recursive-unlimited-test
+  (testing "recursive query recurses"
+    (let [ledger  (test/rand-ledger test/ledger-endpoints)
+          _       (test/transact-schema ledger "category.edn")
+          _       (test/transact-data ledger "bike-categories.edn")
+          query   {:select ["?categoryName"]
+                   :where  [["?c" "category/name" "Fixie"]
+                            ["?c" "category/subCategoryOf+" "?s"]
+                            ["?s" "category/name" "?categoryName"]]}
+          {:keys [body status] :as query-res} @(http/post
+                                                 (str endpoint-url-short
+                                                      ledger "/query")
+                                                 (test/standard-request query))
+          results (json/parse body)]
+
+      (is (= 200 status)
+          (str "Query response was: " (pr-str query-res)))
+
+      (is (= #{"Bikes" "Safety" "Road" "Hipster"} (-> results flatten set))
+          (str "Query response was: " (pr-str query-res))))))
+
+
+(deftest query-recursive-limited-test
+  (testing "recursive query recurses"
+    (let [ledger  (test/rand-ledger test/ledger-endpoints)
+          _       (test/transact-schema ledger "category.edn")
+          _       (test/transact-data ledger "bike-categories.edn")
+          query   {:select ["?categoryName"]
+                   :where  [["?c" "category/name" "Fixie"]
+                            ["?c" "category/subCategoryOf+2" "?s"]
+                            ["?s" "category/name" "?categoryName"]]}
+          {:keys [body status] :as query-res} @(http/post
+                                                 (str endpoint-url-short
+                                                      ledger "/query")
+                                                 (test/standard-request query))
+          results (json/parse body)]
+
+      (is (= 200 status)
+          (str "Query response was: " (pr-str query-res)))
+
+      (is (= #{"Road" "Hipster"} (-> results flatten set))
+          (str "Query response was: " (pr-str query-res))))))
 
 ;; ENDPOINT TEST: /multi-query
 
@@ -485,12 +528,12 @@
       (is (:ready result)))))
 
 
-;; ENDPOINT TEST: /dbs
+;; ENDPOINT TEST: /ledgers
 
-(deftest get-all-dbs-test
-  (testing "Get all dbs"
+(deftest get-all-ledgers-test
+  (testing "Get all ledgers"
     (test/init-ledgers! (conj test/all-ledgers "test/three"))
-    (let [{:keys [status body]} @(http/post (str endpoint-url-short "dbs"))
+    (let [{:keys [status body]} @(http/post (str endpoint-url-short "ledgers"))
           result (-> body json/parse set)]
 
       (is (= 200 status))
@@ -576,7 +619,7 @@
       (is (test/contains-every? tx-keys :auth :block :hash :fuel :status :bytes
                                 :flakes :instant :type :duration :id :t))
 
-      #_(is (< 100 (count flakes)))                         ; TODO: why?
+      #_(is (< 100 (count flakes))) ; TODO: why?
 
       (is (nil? tempids))
 
@@ -639,9 +682,9 @@
 
 (deftest create-ledger-test
   (testing "Creating a new ledger"
-    (let [new-ledger-body {:db/id (str "test/three-" (UUID/randomUUID))}
+    (let [new-ledger-body {:ledger/id (str "test/three-" (UUID/randomUUID))}
           {:keys [status body]} @(http/post
-                                   (str endpoint-url-short "new-db")
+                                   (str endpoint-url-short "new-ledger")
                                    (test/standard-request new-ledger-body))
           result          (json/parse body)]
 
@@ -674,9 +717,10 @@
           _        (test/transact-data ledger
                                        "chat-alt-people-comments-chats.edn")
           priv-key (slurp "default-private-key.txt")
-          cmd-map  (fdb/tx->command ledger
-                                    [{:_id "person" :stringNotUnique "JoAnne"}]
-                                    priv-key)
+          cmd-map  (assoc (fdb/tx->command ledger
+                                           [{:_id "person" :stringNotUnique "JoAnne"}]
+                                           priv-key)
+                     :txid-only true)
           {:keys [status body]} @(http/post
                                    (str endpoint-url-short ledger "/command")
                                    (test/standard-request cmd-map))
@@ -698,8 +742,7 @@
         priv-key (slurp "default-private-key.txt")
         cmd-map  (-> ledger
                      (fdb/tx->command [{:_id "person" :stringNotUnique "Sally"}]
-                                      priv-key)
-                     (assoc :txid-only false))
+                                      priv-key))
         {:keys [status body]} @(http/post (str endpoint-url-short ledger
                                                "/command")
                                           (test/standard-request cmd-map))
@@ -720,8 +763,8 @@
   (testing "delete ledger - open api"
     (let [ledger (test/rand-ledger test/ledger-endpoints)
           {:keys [status body]} @(http/post
-                                   (str endpoint-url-short "delete-db")
-                                   (test/standard-request {:db/id ledger}))
+                                   (str endpoint-url-short "delete-ledger")
+                                   (test/standard-request {:ledger/id ledger}))
           result (json/parse body)]
       (is (= 200 status))
       (is (= ledger (:deleted result))))))

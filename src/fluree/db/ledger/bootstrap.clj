@@ -28,6 +28,17 @@
        (crypto/sha3-256)))
 
 
+(defn predicate->id-map
+  "Returns a map of predicate names to final predicate ids, i.e {\"_user/username\" 10}"
+  [bootstrap-txn]
+  (->> bootstrap-txn
+       (filter #(= "_predicate" (-> % :_id first)))
+       (reduce
+         (fn [acc txi]
+           (assoc acc (:name txi) (-> txi :_id (second))))
+         {})))
+
+
 (defn bootstrap-data->fparts
   [bootstrap-txn]
   (let [collection->id (->> bootstrap-txn
@@ -46,13 +57,7 @@
                                     (fn [acc2 k v] (assoc acc2 [(str (name collection) "/" (name k)) v] subject-id))
                                     acc (dissoc txi :_id))))
                               {}))
-        ;; predicate name to final predicate id.. i.e {"_user/username" 10}
-        predicate->id  (->> bootstrap-txn
-                            (filter #(= "_predicate" (-> % :_id first)))
-                            (reduce
-                              (fn [acc txi]
-                                (assoc acc (:name txi) (-> txi :_id (second))))
-                              {}))
+        predicate->id  (predicate->id-map bootstrap-txn)
         tag-pred?      (->> bootstrap-txn
                             (filter #(and (= "_predicate" (-> % :_id first))
                                           (= "tag" (:type %))))
@@ -192,6 +197,7 @@
   ([conn ledger {:keys [owners master-auth-private txid cmd sig] :as command}]
    (log/debug "Bootstrapping memory db:" command)
    (let [blank-db             (session/blank-db conn ledger)
+         timestamp            (System/currentTimeMillis)
          {:keys [novelty stats]} blank-db
          master-auth-private* (or master-auth-private
                                   (:private (crypto/generate-key-pair)))
@@ -210,19 +216,40 @@
 
          {:keys [fparts index-pred ref-pred pred->id ident->id]}
          (bootstrap-data->fparts bootstrap-txn)
+         _                    (log/debug "bootstrap fparts:" fparts)
 
          flakes               (reduce
                                 (fn [acc [s p o]]
                                   (conj acc (flake/new-flake s p o t true)))
                                 (flake/sorted-set-by flake/cmp-flakes-spot)
                                 fparts)
+         _                    (log/debug "bootstrap flakes:" flakes)
          owner-flakes         (master-auth-flakes t pred->id ident->id
                                                   auth-subids)
          _                    (log/debug "new ledger owner-flakes:" owner-flakes)
          flakes+owners        (into flakes owner-flakes)
          flakes*              (conj flakes+owners
                                     (flake/new-flake t (get pred->id "_tx/id")
-                                                     txid* t true))
+                                                     txid* t true)
+                                    (flake/new-flake t
+                                                     (get pred->id "_tx/nonce")
+                                                     timestamp t true)
+                                    (flake/new-flake block-t
+                                                     (get pred->id
+                                                          "_block/number")
+                                                     1 block-t true)
+                                    (flake/new-flake block-t
+                                                     (get pred->id
+                                                          "_block/instant")
+                                                     timestamp block-t true)
+                                    (flake/new-flake block-t
+                                                     (get pred->id
+                                                          "_block/transactions")
+                                                     -1 block-t true)
+                                    (flake/new-flake block-t
+                                                     (get pred->id
+                                                          "_block/transactions")
+                                                     -2 block-t true))
          hash                 (get-block-hash flakes*)
          block-flakes         (concat
                                 [(flake/new-flake block-t
@@ -268,46 +295,43 @@
                      :cmd cmd
                      :sig sig}}})))
 
-
-
-(defn bootstrap-json-db
+(defn bootstrap-json-ledger
   [{:keys [conn group]} txid cmd-data owners {:keys [cmd sig] :as _command}]
   (go-try
-    (let [{new-db-name :db} cmd-data
-          [network dbid] (if (sequential? new-db-name)
-                           new-db-name
-                           (str/split new-db-name #"/"))
-          _             (when (or (txproto/ledger-exists? group network dbid)
+    (let [{new-ledger-name :ledger} cmd-data
+          [network ledger-id] (if (sequential? new-ledger-name)
+                                new-ledger-name
+                                (str/split new-ledger-name #"/"))
+          _             (when (or (txproto/ledger-exists? group network ledger-id)
                                   ;; also check for block 1 on disk as a precaution
-                                  (<? (storage/read-block conn network dbid 1)))
-                          (throw (ex-info (str "Ledger " network "/$" dbid " already exists! Create unsuccessful.")
+                                  (<? (storage/read-block conn network ledger-id 1)))
+                          (throw (ex-info (str "Ledger " network "/$" ledger-id " already exists! Create unsuccessful.")
                                           {:status 500
                                            :error  :db/unexpected-error})))
           _             (log/debug "New ledger owner(s):" owners)
-          block         (bootstrap-memory-db conn [network dbid]
+          block         (bootstrap-memory-db conn [network ledger-id]
                                              {:owners owners :txid txid :cmd cmd
                                               :sig    sig})
           new-db        (:db block)
           block-data    (dissoc block :db)
-          _             (<? (storage/write-block conn network dbid block-data))
+          _             (<? (storage/write-block conn network ledger-id block-data))
           ;; todo - should create a new command to register new DB that first checks raft
-          _             (<? (txproto/register-genesis-block-async (:group conn) network dbid))
+          _             (<? (txproto/register-genesis-block-async (:group conn) network ledger-id))
 
-          {:keys [network dbid block fork] :as indexed-db}
+          {:keys [network ledger-id block fork] :as indexed-ledger}
           (<? (indexing/refresh new-db))
 
-          dbgroup       (-> indexed-db :conn :group)
-          indexed-block (get-in indexed-db [:stats :indexed])]
-
+          ledger-group  (-> indexed-ledger :conn :group)
+          indexed-block (get-in indexed-ledger [:stats :indexed])]
       ;; write out new index point
-      (<? (txproto/initialized-ledger-async dbgroup {:txid    txid
-                                                     :network network
-                                                     :db-type :json
-                                                     :ledger  dbid
-                                                     :block   block
-                                                     :fork    fork
-                                                     :index   indexed-block}))
-      indexed-db)))
+      (<? (txproto/initialized-ledger-async ledger-group {:txid      txid
+                                                          :network   network
+                                                          :db-type   :json
+                                                          :ledger-id ledger-id
+                                                          :block     block
+                                                          :fork      fork
+                                                          :index     indexed-block}))
+      indexed-ledger)))
 
 (defn bootstrap-json-ld-db
   [{:keys [conn group]} txid cmd-data owners {:keys [cmd sig] :as _command}]
@@ -333,7 +357,7 @@
     ))
 
 
-(defn bootstrap-db
+(defn bootstrap-ledger
   "Bootstraps a new db from a signed new-db message."
   [system {:keys [cmd sig] :as command}]
   (log/debug "Bootstrapping new ledger:" command)
@@ -343,7 +367,7 @@
                      #{(crypto/account-id-from-message cmd sig)})]
     (if (= :json-ld (keyword (:db-type cmd-data)))
       (bootstrap-json-ld-db system txid cmd-data owners' command)
-      (bootstrap-json-db system txid cmd-data owners' command))))
+      (bootstrap-json-ledger system txid cmd-data owners' command))))
 
 
 (def bootstrap-txn
@@ -969,5 +993,5 @@
    {:_id  ["_predicate" const/$_ctx:doc]
     :name "_ctx/doc"
     :doc  "Optional docstring for context information."
-    :type "string"}
-   ])
+    :type "string"}])
+

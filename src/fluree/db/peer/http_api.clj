@@ -139,8 +139,8 @@
       auth
       (let [auth_id      (<? (dbproto/-subid db ["_auth/id" auth] true))
             _            (when (util/exception? auth_id)
-                           (throw (ex-info (str "Auth id for transaction does not exist
-                                                    in the database: " auth)
+                           (throw (ex-info (str "Auth id for transaction does not exist"
+                                                "in the database: " auth)
                                            {:status 403 :error :db/invalid-auth})))
             authority_id (<? (dbproto/-subid db ["_auth/id" authority] true))
             _            (when (util/exception? authority_id)
@@ -286,11 +286,15 @@
           conn   (:conn system)
           result (cond
                    (and (:cmd param) (:sig param))
-                   (let [persist-resp (<? (fdb/submit-command-async conn param))
-                         result       (if (and (string? persist-resp) (-> param :txid-only false?))
-                                        (<? (fdb/monitor-tx-async conn ledger persist-resp timeout))
-                                        persist-resp)]
-                     result)
+                   (let [persist-resp (<? (fdb/submit-command-async conn param))]
+                     (cond
+                       (-> param :txid-only true?) persist-resp
+
+                       (string? persist-resp)
+                       (<? (fdb/monitor-tx-async conn ledger persist-resp
+                                                 timeout))
+
+                       :else persist-resp))
 
                    (not (open-api? system))
                    (throw (ex-info (str "Api endpoint for 'command' must contain a map/object with cmd and sig keys when using a closed Api.")
@@ -300,8 +304,12 @@
                    (let [cmd  (-> param :cmd json/parse)
                          opts (-> (dissoc cmd :tx)
                                   (assoc :txid-only false))
-                         {:keys [tx db]} cmd]
-                     (<? (fdb/transact-async conn db tx opts))))]
+                         {:keys [tx db ledger]} cmd
+                         ledger (or ledger
+                                    (when db
+                                      (log/warn "'db' parameter in commands is deprecated. Please use 'ledger' instead.")
+                                      db))]
+                     (<? (fdb/transact-async conn ledger tx opts))))]
       [{:status (or (:status result) 200)
         :fuel   (or (:fuel result) 0)}
        result])))
@@ -407,8 +415,8 @@
   ;; For now, does not require authentication
   (go-try
     (let [conn      (:conn system)
-          [network dbid] (graphdb/validate-ledger-ident ledger)
-          reindexed (<? (reindex/reindex conn network dbid))]
+          [network ledger-id] (graphdb/validate-ledger-ident ledger)
+          reindexed (<? (reindex/reindex conn network ledger-id))]
       [{:status 200} {:block (:block reindexed)
                       :t     (:t reindexed)
                       :stats (:stats reindexed)}])))
@@ -508,12 +516,12 @@
 
 
 (defn wrap-action-handler
-  "Wraps a db request to facilitate proper response format"
+  "Wraps a request to facilitate proper response format"
   [system {:keys [headers body params remote-addr] :as request}]
-  (log/debug "wrap-action-handler received:" request)
-  (let [{:keys [action network db]} params
+  (log/debug "wrap-action-handler received request:" request)
+  (let [{:keys [action network ledger]} params
         start           (System/nanoTime)
-        ledger          (keyword network db)
+        ledger          (keyword network ledger)
         action*         (keyword action)
         body'           (when body (decode-body body :string))
         action-param    (some-> body' json/parse)
@@ -626,8 +634,8 @@
     (throw (ex-info "Password authentication is not enabled."
                     {:status 401
                      :error  :db/no-password-auth})))
-  (let [{:keys [action network db]} params
-        ledger (str network "/" db)]
+  (let [{:keys [action network ledger]} params
+        ledger (str network "/" ledger)]
     (case (keyword action)
       :renew (password-renew system ledger request)
       :login (password-login system ledger request)
@@ -681,8 +689,8 @@
   [{:keys [conn] :as system} {:keys [body] :as request}]
   (let [body         (decode-body body :json)
         transactor?  (-> system :config :transactor?)
-        ledger-ident (:db/id body)
-        opts         (dissoc body :db/id :auth) ; dissoc auth so it can't be spoofed
+        ledger-ident (:ledger/id body)
+        opts         (dissoc body :ledger/id :auth) ; dissoc auth so it can't be spoofed
         {sig-auth :auth} (http-signatures/verify-signature-header request)
         opts'        (if sig-auth
                        (update opts :owners (comp set conj) sig-auth)
@@ -702,21 +710,22 @@
   [{:keys [conn] :as system} {:keys [body remote-addr] :as request}]
   (let [body-str     (when body (decode-body body :string))
         body'        (some-> body-str json/parse)
-        ledger-ident (:db/id body')
-        [nw db] (str/split ledger-ident #"/")
-        ledger       (keyword nw db)
+        ledger-ident (:ledger/id body')
+        [nw ledger-id] (str/split ledger-ident #"/")
+        ledger       (keyword nw ledger-id)
         auth-map     (auth-map system ledger request body-str)
-        session      (session/session conn [nw db])
-        db*          (<?? (session/current-db session))
+        session      (session/session conn [nw ledger-id])
+        db           (<?? (session/current-db session))
         ;; TODO - root role just checks if the auth has a role with id 'root' this can
         ;; be manipulated, so we need a better way of handling this.
         _            (when-not (or (open-api? system)
-                                   (<?? (auth/root-role? db* (:auth auth-map))))
-                       (throw (ex-info (str "To delete a ledger, must be using an open API or an auth record with a root role.") {:status 401 :error :db/invalid-auth})))
-        _            (<?? (delete/process conn nw db))
+                                   (<?? (auth/root-role? db (:auth auth-map))))
+                       (throw (ex-info (str "To delete a ledger, must be using an open API or an auth record with a root role.")
+                                       {:status 401 :error :db/invalid-auth})))
+        _            (<?? (delete/process conn nw ledger-id))
         resp         {:status  200
                       :headers {"Content-Type" "application/json; charset=utf-8"}
-                      :body    (json/stringify-UTF8 {"deleted" (str nw "/" db)})}]
+                      :body    (json/stringify-UTF8 {"deleted" (str nw "/" ledger-id)})}]
     (log/info (str ledger ":deleted" " [" (or resp 400) "] " remote-addr))
     resp))
 
@@ -725,31 +734,25 @@
   [{:keys [conn] :as system} {:keys [body remote-addr] :as request}]
   (let [body-str     (when body (decode-body body :string))
         body'        (some-> body-str json/parse)
-        ledger-ident (or (:ledger/id body')
-                         (when-let [db-id (:db/id body')]
-                           (log/warn "db/id is deprecated in garbage-collect command. Please use ledger/id instead.")
-                           db-id)
-                         (throw
-                           (ex-info "ledger/id is required"
-                                    {:status 401, :error :db/invalid-command})))
-        [nw db] (str/split ledger-ident #"/")
-        ledger       (keyword nw db)
+        ledger-ident (:ledger/id body')
+        [nw ledger-id] (str/split ledger-ident #"/")
+        ledger       (keyword nw ledger-id)
         auth-map     (auth-map system ledger request body-str)
-        session      (session/session conn [nw db])
-        db*          (<?? (session/current-db session))
+        session      (session/session conn [nw ledger-id])
+        db          (<?? (session/current-db session))
         ;; TODO - root role just checks if the auth has a role with id 'root' this can
         ;; be manipulated, so we need a better way of handling this.
         _            (when-not (or (open-api? system)
-                                   (<?? (auth/root-role? db* (:auth auth-map))))
+                                   (<?? (auth/root-role? db (:auth auth-map))))
                        (throw
                          (ex-info
                            (str "To garbage-collect a ledger you must be using an open API or an auth record with a root role.")
                            {:status 401 :error, :db/invalid-auth})))
-        result       (<?? (garbage-collect/process conn nw db))
+        result       (<?? (garbage-collect/process conn nw ledger-id))
         resp         {:status  200
                       :headers {"Content-Type" "application/json; charset=utf-8"}
                       :body    (json/stringify-UTF8 {(if result "garbage-collected" "no-garbage")
-                                                     (str nw "/" db)})}]
+                                                     (str nw "/" ledger-id)})}]
     (log/info (str ledger ":garbage-collected" " [" (or resp 400) "] " remote-addr))
     resp))
 
@@ -784,7 +787,7 @@
                         accept-encodings (or (get headers "accept")
                                              "application/json")
                         signature        (return-signature request)
-                        jwt              (return-token request) ;may not be signed if client is using password auth
+                        jwt              (return-token request) ; may not be signed if client is using password auth
                         open-api?        (open-api? system)
                         _                (when (and (not open-api?) (not signature) (not jwt))
                                            (throw (ex-info (str "To request an item from storage, open-api must be true or your request must be signed.")
@@ -794,20 +797,22 @@
                                            :json
                                            :avro)
 
-                        {:keys [network db type key]} params
-                        db-name          (keyword network db)
-                        _                (when-not (and network db type)
-                                           (throw (ex-info (str "Incomplete request. At least a network, db and type are required. Provided network: " network " db: " db " type: " type " key: " key)
-                                                           {:status 400 :error :db/invalid-request})))
+                        {:keys [network ledger type key]} params
+                        ledger-name      (keyword network ledger)
+                        _                (when-not (and network ledger type)
+                                           (throw
+                                             (ex-info
+                                               (str "Incomplete request. At least a network, ledger, and type are required. Provided network: "
+                                                    network " ledger,: " ledger " type: " type " key: " key)
+                                               {:status 400 :error :db/invalid-request})))
                         auth-id          (cond
-
                                            signature
                                            (let [{:keys [auth authority]} (http-signatures/verify-request*
                                                                             {:headers headers} :get
-                                                                            (str "/fdb/storage/" network "/" db
+                                                                            (str "/fdb/storage/" network "/" ledger
                                                                                  (when type (str "/" type))
                                                                                  (when key (str "/" key))))
-                                                 db (<? (fdb/db (:conn system) db-name))]
+                                                 db (<? (fdb/db (:conn system) ledger-name))]
                                              (<? (verify-auth db auth authority)))
 
                                            jwt
@@ -815,15 +820,19 @@
                                                               :conn
                                                               (pw-auth/fluree-auth-map jwt)
                                                               :auth)
-                                                 db'      (<? (fdb/db (:conn system) db-name))
+                                                 db'      (<? (fdb/db (:conn system) ledger))
                                                  auth-id' (<? (dbproto/-subid db' ["_auth/id" jwt-auth] true))
                                                  _        (when (util/exception? auth-id')
                                                             (throw (ex-info (str "Auth id for request does not exist in the database: " jwt-auth)
                                                                             {:status 403 :error :db/invalid-auth})))]
                                              jwt-auth))
-                        formatted-key    (cond-> (str network "_" db "_" type)
+
+                        ;; TODO: use storage-core/format-block-key once it's available
+                        formatted-key    (cond-> (str network "_" ledger "_" type)
                                                  key (str "_" key))
+
                         avro-data        (<? (storage-read-fn formatted-key))
+
                         status           (if avro-data 200 404)
                         headers          (if avro-data
                                            {"Content-Type" (if (= :json response-type)
@@ -836,7 +845,7 @@
                                                  data       (deserialize serializer formatted-key avro-data)]
                                              (if auth-id
                                                (let [auth            (if (string? auth-id) ["_auth/id" auth-id] auth-id)
-                                                     permissioned-db (<? (fdb/db conn db-name {:auth auth}))
+                                                     permissioned-db (<? (fdb/db conn ledger {:auth auth}))
                                                      flakes          (when-let [flakes (:flakes data)]
                                                                        (<? (permissions-validate/allow-flakes? permissioned-db flakes)))
                                                      data'           (if flakes
@@ -910,28 +919,42 @@
      :body    (json/stringify-UTF8 body)}))
 
 
+(defn deprecated-redirect-handler
+  [{:keys [uri]} redirect-to]
+  {:status  308 ; like 301 but requires that the request method stay the same
+   :headers {"Location"     redirect-to
+             "Content-Type" "application/json"}
+   :body    (json/stringify-UTF8
+              {:error
+               (str "The " uri " endpoint has been deprecated. Please use " redirect-to " instead.")})})
+
+
+(defn deprecated-passthrough-handler
+  [{:keys [uri] :as request} passthrough-handler message]
+  (log/warn (str "The " uri " endpoint has been deprecated and will be removed in a future release."
+                 message))
+  (passthrough-handler request))
+
+
 (defn- api-routes
   [system]
   (compojure/routes
-    (compojure/GET "/fdb/storage/:network/:db/:type" request (storage-handler system request))
-    (compojure/GET "/fdb/storage/:network/:db/:type/:key" request (storage-handler system request))
+    (compojure/GET "/fdb/storage/:network/:ledger/:type" request (storage-handler system request))
+    (compojure/GET "/fdb/storage/:network/:ledger/:type/:key" request (storage-handler system request))
     (compojure/GET "/fdb/ws" request (websocket/handler system request))
     (compojure/ANY "/fdb/health" request (server-health/health-handler system request))
     (compojure/ANY "/fdb/nw-state" request (server-health/nw-state-handler system request))
     (compojure/GET "/fdb/version" request (version-handler system request))
-    (compojure/POST "/fdb/add-server" request (add-server system request))
-    (compojure/POST "/fdb/remove-server" request (remove-server system request))
     (compojure/GET "/fdb/new-keys" request (keys-handler system request))
     (compojure/POST "/fdb/new-keys" request (keys-handler system request))
-    (compojure/POST "/fdb/dbs" request (get-ledgers system request))
-    (compojure/GET "/fdb/dbs" request (get-ledgers system request))
-    (compojure/POST "/fdb/new-db" request (new-ledger system request))
-    (compojure/POST "/fdb/delete-db" request (delete-ledger system request))
+    (compojure/POST "/fdb/ledgers" request (get-ledgers system request))
+    (compojure/GET "/fdb/ledgers" request (get-ledgers system request))
+    (compojure/POST "/fdb/new-ledger" request (new-ledger system request))
+    (compojure/POST "/fdb/delete-ledger" request (delete-ledger system request))
     (compojure/POST "/fdb/garbage-collect-ledger" request (garbage-collect-ledger system request))
-    (compojure/POST "/fdb/:network/:db/pw/:action" request (password-handler system request))
-    (compojure/POST "/fdb/:network/:db/:action" request (wrap-action-handler system request))
-    (compojure/GET "/fdb/:network/:db/:action" request (wrap-action-handler system request))
-    (compojure/POST "/fdb/command" request (command-handler system request))
+    (compojure/POST "/fdb/:network/:ledger/pw/:action" request (password-handler system request))
+    (compojure/POST "/fdb/:network/:ledger/:action" request (wrap-action-handler system request))
+    (compojure/GET "/fdb/:network/:ledger/:action" request (wrap-action-handler system request))
 
     ;; fallback 404 for unknown API paths
     (compojure/ANY "/fdb/*" [] not-found)))

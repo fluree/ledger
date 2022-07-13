@@ -1,4 +1,4 @@
-(ns planeDemo
+(ns plane-demo
   (:require [fluree.db.util.core :as util]
             [clojure.string :as str]
             [fluree.db.util.async :refer [<? <?? go-try channel?]]
@@ -92,7 +92,7 @@
                  {:_id    "_fn"
                   :name   "randPart"
                   :params ["plane-id"]
-                  :code   "(query (str \"{\\n  \\\"selectOne\\\": \\\"(sample 1 ?part)\\\",\\n  \\\"where\\\": [\\n      [\\\"?plane\\\", \\\"plane/id\\\", \" plane-id \"],\\n      [\\\"?plane\\\", \\\"plane/sections\\\", \\\"?section\\\"],\\n      [\\\"?section\\\", \\\"section/parts\\\", \\\"?part\\\"]]\\n}\"))" }])
+                  :code   "(query (str \"{\\n  \\\"selectOne\\\": \\\"(sample 1 ?part)\\\",\\n  \\\"where\\\": [\\n      [\\\"?plane\\\", \\\"plane/id\\\", \" plane-id \"],\\n      [\\\"?plane\\\", \\\"plane/sections\\\", \\\"?section\\\"],\\n      [\\\"?section\\\", \\\"section/parts\\\", \\\"?part\\\"]]\\n}\"))"}])
 
 
 (def init-txn [{:_id  "manufacturer"
@@ -131,7 +131,7 @@
          acc []]
     (if (> n 0)
       (recur (dec n) (conj acc {:_id           "part"
-                                :serial-number (str (util/random-uuid))
+                                :serial-number (str (random-uuid))
                                 :type          (str section "-" n "-" (rand-int 5))
                                 :installDate   manufacture-date
                                 :original      true
@@ -181,7 +181,7 @@
         manufacture-date month-start
         ;(str "#(- (now) " (rand-int 10000) ")")
         manufacturer     (manufacturer-from-type plane-type)
-        plane-name       (str (util/random-uuid))
+        plane-name       (str (random-uuid))
         [people-tempids people-txis] (generate-people {:pilot 3 :flightAttendant 12})
         txn              [{:_id    ["airline/name" "flureeAirline"]
                            :planes ["plane$1"]}
@@ -193,7 +193,7 @@
                            :manufactureDate manufacture-date
                            :sections        (map (fn [section]
                                                    {:_id   "section"
-                                                    :id    (str (util/random-uuid))
+                                                    :id    (str (random-uuid))
                                                     :type  section
                                                     :parts (generate-plane-parts section manufacturer
                                                                                  manufacture-date 5)})
@@ -274,7 +274,7 @@
 (defn create-repair-txi
   [plane-id startDate endDate]
   {:_id         "repair"
-   :name        (str (util/random-uuid))
+   :name        (str (random-uuid))
    :description (nth repair-vec (rand-int (count repair-vec)))
    :location    (str "#(planeLocation " plane-id ")")
    :leadPerson  (str "#(headMechanic (planeLocation " plane-id "))")

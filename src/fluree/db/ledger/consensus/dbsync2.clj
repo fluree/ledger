@@ -203,15 +203,15 @@
 
   Returns core async channel with either ::done, or an exception if
   an error occurs during sync."
-  [{:keys [storage-exists] :as conn} network dbid index-point sync-chan]
+  [{:keys [storage-exists] :as conn} network ledger-id index-point sync-chan]
   (go-try
     (let [start-time       (System/currentTimeMillis)
-          db-root          (<? (storage/read-db-root conn network dbid index-point))
+          db-root          (<? (storage/read-db-root conn network ledger-id index-point))
           _                (when-not db-root
-                             (terminate! conn (str "Unable to read index root for ledger: " network "/" dbid
+                             (terminate! conn (str "Unable to read index root for ledger: " network "/" ledger-id
                                                    " at index point: " index-point ".")
                                          (ex-info "Unable to read index root file"
-                                                  {:network network :ledger dbid :index index-point})))
+                                                  {:network network :ledger ledger-id :index index-point})))
           stats-atom       (atom {:files   1
                                   :missing 0})
           {:keys [spot psot post opst tspo]} db-root
@@ -221,7 +221,7 @@
           sync-post-ch     (sync-index-branch conn sync-chan stats-atom (:id post))
           sync-opst-ch     (sync-index-branch conn sync-chan stats-atom (:id opst))
           sync-tspo-ch     (sync-index-branch conn sync-chan stats-atom (:id tspo))
-          garbage-file-key (storage/ledger-garbage-key network dbid index-point)
+          garbage-file-key (storage/ledger-garbage-key network ledger-id index-point)
           garbage-exists?  (<? (storage-exists garbage-file-key))]
       (when-not garbage-exists?
         (swap! stats-atom update :missing inc)
@@ -235,7 +235,7 @@
       (<? sync-tspo-ch)
       (let [total-missing (:missing @stats-atom)]
         (when (> total-missing 0)
-          (log/info (str "-- missing index files for ledger: " network "/" dbid ". "
+          (log/info (str "-- missing index files for ledger: " network "/" ledger-id ". "
                          "Retrieved " total-missing " missing files of "
                          (:files @stats-atom) " total in "
                          (- (System/currentTimeMillis) start-time) " milliseconds.")))
@@ -245,19 +245,19 @@
 (defn check-all-blocks-consistency
   "Checks actual file directory for any missing blocks through provided 'check through' block.
   Puts block file keys (filenames) onto provided port if they are missing."
-  [conn network dbid check-through port]
+  [conn network ledger-id check-through port]
   (go-try
-    (log/debug (str "check-all-blocks-consistency for: " network "/" dbid "."))
-    (let [blocks (into #{} (<? (ledger-storage/blocks conn network dbid)))]
+    (log/debug (str "check-all-blocks-consistency for: " network "/" ledger-id "."))
+    (let [blocks (into #{} (<? (ledger-storage/blocks conn network ledger-id)))]
       (loop [block-n check-through]
         (if (< block-n 1)
           ::finished
           (do
             (when-not (contains? blocks block-n)
-              (log/warn (str "Block " block-n " missing for ledger: " network "/" dbid
+              (log/warn (str "Block " block-n " missing for ledger: " network "/" ledger-id
                              ". Attempting to retrieve."))
               ;; block is missing, or file is empty... add to files we need to sync
-              (>! port (storage/ledger-block-key network dbid block-n)))
+              (>! port (storage/ledger-block-key network ledger-id block-n)))
             (recur (dec block-n))))))))
 
 

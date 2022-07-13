@@ -122,16 +122,16 @@
   ([db] (write-genesis-block db {}))
   ([db {:keys [status message from-ledger ecount]}]
    (go-try
-     (let [{:keys [network dbid conn]} db
+     (let [{:keys [network ledger-id conn]} db
            block-data (if from-ledger
                         (let [[from-network from-ledger-id] (session/resolve-ledger conn from-ledger)]
                           (<? (storage/read-block conn from-network from-ledger-id 1)))
-                        (<? (storage/read-block conn network dbid 1)))]
+                        (<? (storage/read-block conn network ledger-id 1)))]
        (when-not block-data
-         (throw (ex-info (str "No genesis block present for db: " network "/" dbid)
+         (throw (ex-info (str "No genesis block present for db: " network "/" ledger-id)
                          {:status 500
                           :error  :db/unexpected-error})))
-       (log/info (str "  -> Reindex ledger: " network "/" dbid " block: 1 containing " (count (:flakes block-data)) " flakes."))
+       (log/info (str "  -> Reindex ledger: " network "/" ledger-id " block: 1 containing " (count (:flakes block-data)) " flakes."))
        (let [flakes            (:flakes block-data)
              db*               (with-genesis db flakes)
              schema            (<? (schema/schema-map db*))
@@ -140,59 +140,59 @@
                                                            :ecount ecount}))
              group             (-> indexed-db :conn :group)
              network           (:network indexed-db)
-             dbid              (:dbid indexed-db)
+             ledger-id         (:ledger-id indexed-db)
              index-point       (get-in indexed-db [:stats :indexed])
              state-atom        (-> conn :group :state-atom)
              submission-server (get-in @state-atom [:_work :networks network])]
          ;; do a baseline index of first block
-         (txproto/write-index-point-async group network dbid index-point submission-server {})
+         (txproto/write-index-point-async group network ledger-id index-point submission-server {})
          indexed-db)))))
 
 (defn stale-index-ids
-  [{:keys [conn network dbid] :as db} idx]
+  [{:keys [conn network ledger-id] :as db} idx]
   (go-try
-   (log/debug "Finding stale node for index" idx)
-   (let [{:keys [storage-list]} conn
+    (log/debug "Finding stale node for index" idx)
+    (let [{:keys [storage-list]} conn
 
-         root        (get db idx)
-         always      (constantly true)
-         error-ch    (async/chan)
-         id-ch       (->> (index/tree-chan conn root always always
-                                           1 (map :id) error-ch)
-                          (async/into #{}))
-         current-ids (async/alt!
-                       error-ch
-                       ([e] (throw e))
+          root        (get db idx)
+          always      (constantly true)
+          error-ch    (async/chan)
+          id-ch       (->> (index/tree-chan conn root always always
+                                            1 (map :id) error-ch)
+                           (async/into #{}))
+          current-ids (async/alt!
+                        error-ch
+                        ([e] (throw e))
 
-                       id-ch
-                       ([ids] ids))
-         idx-name    (name idx)
-         files       (<? (->> [network dbid idx-name]
-                              (str/join "/")
-                              storage-list))]
-     (->> files
-          (map :name)
-          (remove #{idx-name})
-          (map (fn [f]
-                 (str/replace (str/join "_" [network dbid idx-name f])
-                              #"\.fdbd" "")))
-          (remove current-ids)))))
+                        id-ch
+                        ([ids] ids))
+          idx-name    (name idx)
+          files       (<? (->> [network ledger-id idx-name]
+                               (str/join "/")
+                               storage-list))]
+      (->> files
+           (map :name)
+           (remove #{idx-name})
+           (map (fn [f]
+                  (str/replace (str/join "_" [network ledger-id idx-name f])
+                               #"\.fdbd" "")))
+           (remove current-ids)))))
 
 (defn remove-stale-files
   [{:keys [conn] :as db} idx]
   (go-try
-   (log/info "Removing stale files for index" idx)
-   (let [stale-ids (<? (stale-index-ids db idx))]
-     (doseq [id stale-ids]
-       (log/trace "Deleting stale index node" id)
-       (<? (gc/delete-file-raft conn id))))))
+    (log/info "Removing stale files for index" idx)
+    (let [stale-ids (<? (stale-index-ids db idx))]
+      (doseq [id stale-ids]
+        (log/trace "Deleting stale index node" id)
+        (<? (gc/delete-file-raft conn id))))))
 
 (defn reindex
-  ([conn network dbid]
-   (reindex conn network dbid {:status "ready"}))
-  ([conn network dbid {:keys [status message ecount novelty-max]}]
+  ([conn network ledger-id]
+   (reindex conn network ledger-id {:status "ready"}))
+  ([conn network ledger-id {:keys [status message ecount novelty-max]}]
    (go-try
-     (let [sess        (session/session conn (str network "/" dbid))
+     (let [sess        (session/session conn (str network "/" ledger-id))
 
            blank-db    (:blank-db sess)
            max-novelty (or novelty-max (-> conn :meta :novelty-max)) ;; here we are a little extra aggressive and will go over max
@@ -203,24 +203,25 @@
            genesis-db  (<? (write-genesis-block blank-db {:status  status
                                                           :message message
                                                           :ecount  ecount}))]
-       (log/info (str "-->> Reindex starting dbid: " dbid ". Max novelty: " max-novelty))
+       (log/info (str "-->> Reindex starting ledger-id: " ledger-id ". Max novelty: " max-novelty))
        (loop [block 2
               db    genesis-db]
-         (let [block-data (<? (storage/read-block conn network dbid block))]
+         (let [block-data (<? (storage/read-block conn network ledger-id block))]
            (if (nil? block-data)
-             (do (log/info (str "-->> Reindex finished dbid: " dbid " block: " (dec block)))
+             (do (log/info (str "-->> Reindex finished ledger-id: " ledger-id " block: " (dec block)))
                  (let [final-db (if (> (get-in db [:novelty :size]) 0)
                                   (let [indexed-db        (<? (indexing/refresh db {:status  status
-                                                                                          :message message
-                                                                                          :ecount  ecount}))
+                                                                                    :message message
+                                                                                    :ecount  ecount}))
                                         group             (-> indexed-db :conn :group)
                                         network           (:network indexed-db)
-                                        dbid              (:dbid indexed-db)
+                                        ledger-id         (:ledger-id indexed-db)
                                         index-point       (get-in indexed-db [:stats :indexed])
                                         state-atom        (-> conn :group :state-atom)
                                         submission-server (get-in @state-atom [:_work :networks network])]
-                                    (<? (txproto/write-index-point-async group network dbid index-point submission-server {}))
-                                    indexed-db)                            ;; final index if any novelty
+                                    (<? (txproto/write-index-point-async group network ledger-id index-point
+                                                                         submission-server {}))
+                                    indexed-db) ; final index if any novelty
                                   db)]
                    (log/info "Removing stale index files")
                    (doseq [idx index/types]
@@ -229,7 +230,7 @@
              (let [{:keys [flakes]} block-data
                    db*          (<? (dbproto/-with db block flakes {:reindex? true}))
                    novelty-size (get-in db* [:novelty :size])]
-               (log/info (str "  -> Reindex dbid: " dbid
+               (log/info (str "  -> Reindex ledger-id: " ledger-id
                               " block: " block
                               " containing " (count flakes)
                               " flakes. Novelty size: " novelty-size "."))
@@ -243,10 +244,10 @@
 (defn reindex-all
   [conn]
   (go-try
-   (doseq [[network dbid] (->> conn
-                               txproto/ledgers-info-map
-                               (map (juxt :network :ledger)))]
-     (log/info "Rebuilding indexes for ledger [" network dbid "]")
-     (let [status (<? (reindex conn network dbid))]
-       (log/info "Ledger rebuilding complete for ledger [" network dbid "]"
-                 status)))))
+    (doseq [[network ledger-id] (->> conn
+                                     txproto/ledgers-info-map
+                                     (map (juxt :network :ledger)))]
+      (log/info "Rebuilding indexes for ledger [" network ledger-id "]")
+      (let [status (<? (reindex conn network ledger-id))]
+        (log/info "Ledger rebuilding complete for ledger [" network ledger-id "]"
+                  status)))))

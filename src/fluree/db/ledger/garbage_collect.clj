@@ -19,21 +19,21 @@
 
 (defn process-index
   "Garbage collections a specific index point."
-  [conn network dbid idx-point]
+  [conn network ledger-id idx-point]
   (go-try
     (let [group        (:group conn)
-          garbage-keys (:garbage (<? (storage/read-garbage conn network dbid idx-point)))]
-      (log/info "Garbage collecting index point " idx-point " for ledger " network "/" dbid ".")
+          garbage-keys (:garbage (<? (storage/read-garbage conn network ledger-id idx-point)))]
+      (log/info "Garbage collecting index point " idx-point " for ledger " network "/" ledger-id ".")
       ;; delete index point first so it won't show up in dbinfo
-      (txproto/remove-index-point group network dbid idx-point)
+      (txproto/remove-index-point group network ledger-id idx-point)
       ;; remove db-root
-      (<? (delete-file-raft conn (storage/ledger-root-key network dbid idx-point)))
+      (<? (delete-file-raft conn (storage/ledger-root-key network ledger-id idx-point)))
       ;; remove all index segments that were garbage collected
       (doseq [k garbage-keys]
         (<? (delete-file-raft conn k)))
       ;; remove garbage file
-      (<? (delete-file-raft conn (storage/ledger-garbage-key network dbid idx-point)))
-      (log/info "Finished garbage collecting index point " idx-point " for ledger " network "/" dbid "."))))
+      (<? (delete-file-raft conn (storage/ledger-garbage-key network ledger-id idx-point)))
+      (log/info "Finished garbage collecting index point " idx-point " for ledger " network "/" ledger-id "."))))
 
 
 (defn process

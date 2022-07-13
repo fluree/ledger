@@ -54,13 +54,13 @@
     []))
 
 (defn rebalance-leaf
-  "Splits leaf nodes if the combined size of it's flakes is greater than
+  "Splits leaf nodes if the combined size of its flakes is greater than
   `*overflow-bytes*`."
   [{:keys [flakes leftmost? rhs] :as leaf}]
   (if (overflow-leaf? leaf)
     (let [target-size (/ *overflow-bytes* 2)]
       (log/debug "Rebalancing index leaf:"
-                 (select-keys leaf [:id :network :dbid]))
+                 (select-keys leaf [:id :network :ledger-id]))
       (loop [[f & r] flakes
              cur-size  0
              cur-first f
@@ -88,7 +88,7 @@
     [leaf]))
 
 (defn update-leaf
-  [{:keys [network dbid] :as leaf} idx t novelty remove-preds]
+  [{:keys [network ledger-id] :as leaf} idx t novelty remove-preds]
   (let [new-flakes (index/novelty-subrange leaf t novelty)
         to-remove  (filter-predicates remove-preds (:flakes leaf) new-flakes)]
     (if (or (seq new-flakes) (seq to-remove))
@@ -99,8 +99,8 @@
                            rebalance-leaf)]
         (map (fn [l]
                (assoc l
-                      :id (storage/random-leaf-id network dbid idx)
-                      :t t))
+                 :id (storage/random-leaf-id network ledger-id idx)
+                 :t t))
              new-leaves))
       [leaf])))
 
@@ -113,7 +113,7 @@
        boolean))
 
 (defn update-branch
-  [{:keys [network dbid comparator], branch-t :t, :as branch} idx t child-nodes]
+  [{:keys [network ledger-id comparator], branch-t :t, :as branch} idx t child-nodes]
   (if (some-update-after? branch-t child-nodes)
     (let [children    (apply index/child-map comparator child-nodes)
           size        (->> child-nodes
@@ -121,14 +121,14 @@
                            (reduce +))
           first-flake (->> children first key)
           rhs         (->> children flake/last val :rhs)
-          new-id      (storage/random-branch-id network dbid idx)]
+          new-id      (storage/random-branch-id network ledger-id idx)]
       (assoc branch
-             :id new-id
-             :t t
-             :children children
-             :size size
-             :first first-flake
-             :rhs rhs))
+        :id new-id
+        :t t
+        :children children
+        :size size
+        :first first-flake
+        :rhs rhs))
     branch))
 
 (defn update-sibling-leftmost
@@ -136,7 +136,7 @@
   (into [maybe-leftmost]
         (map (fn [non-left-node]
                (assoc non-left-node
-                      :leftmost? false)))
+                 :leftmost? false)))
         not-leftmost))
 
 (defn rebalance-children
@@ -216,35 +216,35 @@
   collection purposes"
   [{:keys [id] :as node}]
   (cond-> node
-    (index/resolved? node) (assoc ::old-id id)))
+          (index/resolved? node) (assoc ::old-id id)))
 
 (defn write-node
   "Writes `node` to storage, and puts any errors onto the `error-ch`"
-  [conn idx {:keys [id network dbid] :as node} error-ch]
+  [conn idx {:keys [id network ledger-id] :as node} error-ch]
   (let [node         (dissoc node ::old-id)
-        display-node (select-keys node [:id :network :dbid])]
+        display-node (select-keys node [:id :network :ledger-id])]
     (go
       (try*
-       (if (index/leaf? node)
-         (do (log/debug "Writing index leaf:" display-node)
-             (<? (storage/write-leaf conn network dbid idx id node)))
-         (do (log/debug "Writing index branch:" display-node)
-             (<? (storage/write-branch conn network dbid idx id node))))
-       (catch* e
-               (log/error e
-                          "Error writing novel index node:" display-node)
-               (>! error-ch e))))))
+        (if (index/leaf? node)
+          (do (log/debug "Writing index leaf:" display-node)
+              (<? (storage/write-leaf conn network ledger-id idx id node)))
+          (do (log/debug "Writing index branch:" display-node)
+              (<? (storage/write-branch conn network ledger-id idx id node))))
+        (catch* e
+           (log/error e
+                 "Error writing novel index node:" display-node)
+           (>! error-ch e))))))
 
 (defn write-resolved-nodes
-  [conn network dbid idx error-ch index-ch]
-  (go-loop [stats     {:idx idx, :novel 0, :unchanged 0, :garbage #{}}
+  [conn network ledger-id idx error-ch index-ch]
+  (go-loop [stats {:idx idx, :novel 0, :unchanged 0, :garbage #{}}
             last-node nil]
     (if-let [{::keys [old-id] :as node} (<! index-ch)]
       (if (index/resolved? node)
         (let [written-node (<! (write-node conn idx node error-ch))
               stats*       (cond-> stats
-                             (not= old-id :empty) (update :garbage conj old-id)
-                             true                 (update :novel inc))]
+                                   (not= old-id :empty) (update :garbage conj old-id)
+                                   true (update :novel inc))]
           (recur stats*
                  written-node))
         (recur (update stats :unchanged inc)
@@ -252,14 +252,14 @@
       (assoc stats :root last-node))))
 
 (defn refresh-index
-  [conn network dbid error-ch {::keys [idx t novelty remove-preds root]}]
+  [conn network ledger-id error-ch {::keys [idx t novelty remove-preds root]}]
   (let [refresh-xf (comp (map preserve-id)
                          (integrate-novelty idx t novelty remove-preds))
         novel?     (fn [node]
                      (or (seq remove-preds)
                          (seq (index/novelty-subrange node t novelty))))]
     (->> (index/tree-chan conn root novel? (constantly true) 1 refresh-xf error-ch)
-         (write-resolved-nodes conn network dbid idx error-ch))))
+         (write-resolved-nodes conn network ledger-id idx error-ch))))
 
 (defn extract-root
   [{:keys [novelty t] :as db} remove-preds idx]
@@ -281,10 +281,10 @@
 (defn refresh-all
   ([db error-ch]
    (refresh-all db #{} error-ch))
-  ([{:keys [conn network dbid] :as db} remove-preds error-ch]
+  ([{:keys [conn network ledger-id] :as db} remove-preds error-ch]
    (->> index/types
         (map (partial extract-root db remove-preds))
-        (map (partial refresh-index conn network dbid error-ch))
+        (map (partial refresh-index conn network ledger-id error-ch))
         async/merge
         (async/reduce tally {:db db, :indexes [], :garbage #{}}))))
 
@@ -298,13 +298,13 @@
 (defn refresh
   ([db]
    (refresh db {:status "ready"}))
-  ([{:keys [novelty block t network dbid] :as db}
+  ([{:keys [novelty block t network ledger-id] :as db}
     {:keys [ecount remove-preds]}]
    (go-try
      (let [start-time   (Instant/now)
            novelty-size (:size novelty)
            init-stats   {:network      network
-                         :dbid         dbid
+                         :ledger-id    ledger-id
                          :t            t
                          :block        block
                          :novelty-size novelty-size
@@ -325,7 +325,7 @@
                                        empty-novelty
                                        (assoc-in [:stats :indexed] block))
 
-                        block-file (storage/ledger-block-key network dbid block)]
+                        block-file (storage/ledger-block-key network ledger-id block)]
 
                     ;; wait until confirmed writes before returning
                     (<? (storage/write-db-root indexed-db ecount))
@@ -385,7 +385,7 @@
           (<? (txproto/write-index-point-async (-> db :conn :group) indexed-db))
           ;; updated-db might have had additional block(s) written to it, so instead
           ;; of using it, reload from disk.
-          (session/clear-db! session)                       ;; clear db cache to force reload
+          (session/clear-db! session) ;; clear db cache to force reload
           (async/put! pc indexed-db))))
     pc))
 

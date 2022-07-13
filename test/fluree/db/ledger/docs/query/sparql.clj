@@ -45,11 +45,22 @@
     (is (empty? res))))
 
 
+(deftest sparql-groupBy-having
+  (testing "SPARQL query with GROUP BY and HAVING"
+    (let [sparql-query "SELECT (SUM(?favNums) AS ?sumNums)\n WHERE {\n ?e fdb:person/favNums ?favNums. \n } \n GROUP BY ?e \n HAVING(SUM(?favNums) > 1000)"
+          db           (basic/get-db test/ledger-chat)
+          res          (async/<!! (fdb/sparql-async db sparql-query))
+          summed-vals  (-> res vals flatten)]
+
+      (is (every? #(> % 1000) summed-vals)))))
+
+
 (deftest sparql-test
   (basic-sparql)
   (sparql-max-function-in-select)
   (sparql-multi-clause-with-semicolon)
-  (sparql-clause-with-comma))
+  (sparql-clause-with-comma)
+  (sparql-groupBy-having))
 
 (deftest tests-independent
   (basic/add-collections*)
