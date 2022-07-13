@@ -676,7 +676,7 @@
 
 
 
-(defn index-fully-committed?
+(defn ensure-fully-committed-index
   "Returns a core async channel that will eventually return the index/commit once they are both equal.
 
   This helps when building state machine at startup if there is no pre-existing leader.
@@ -689,14 +689,14 @@
   Note if massively high volume, could be that commit and index are never equal. Not likely but in
   this case we eventually return an exception if we retry 10000 times just to have an upper bounds.
   Exception doesn't throw, be sure to check for it."
-  ([raft] (index-fully-committed? raft false))
+  ([raft] (ensure-fully-committed-index raft false))
   ([raft leader-only?]
    (async/go-loop [retries 0
                    last-status nil]
      (let [rs (async/<! (get-raft-state-async raft))
            {:keys [commit index status latest-index]} rs]
        (when (not= last-status [commit index status latest-index])
-         (log/trace (str "index-fully-committed?: retry: " retries
+         (log/trace (str "ensure-fully-committed-index: retry: " retries
                          " [commit index status latest-index] is: " [commit index status latest-index])))
        (cond
 
@@ -708,7 +708,7 @@
 
 
          (> retries 10000)
-         (ex-info (str "Raft index-fully-committed? loop tried 10000 times without a change. Latest state: " (pr-str rs))
+         (ex-info (str "Raft ensure-fully-committed-index loop tried 10000 times without a change. Latest state: " (pr-str rs))
                   {:status 500 :error :db/unexpected-error})
 
          :else
@@ -848,7 +848,7 @@
 (defn raft-start-up
   [group conn system shutdown _]
   (go
-    (try (<? (index-fully-committed? group true))
+    (try (<? (ensure-fully-committed-index group true))
 
          (<? (initial-file-sync group conn))
 
