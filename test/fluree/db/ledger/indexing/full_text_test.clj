@@ -21,11 +21,11 @@
 
 (deftest ^:integration full-text-search-test
   (testing "Full Text Search"
-    (let [ledger (test/rand-ledger test/ledger-chat)]
+    (let [ledger (test/rand-ledger test/ledger-chat)
+          _ (test/transact-schema ledger "chat.edn")
+          _ (test/transact-schema ledger "chat-preds.edn")
+          chat-txn (test/transact-data ledger "chat.edn")]
       (testing "with full text predicates and data"
-        (test/transact-schema ledger "chat.edn")
-        (test/transact-schema ledger "chat-preds.edn")
-        (test/transact-data ledger "chat.edn")
         (Thread/sleep 500) ; Allow the full text indexer to incorporate the
                            ; block in a separate thread.
         (testing "query"
@@ -33,7 +33,7 @@
                    :where [["?p" "fullText:person/fullName" "Doe"]]}
                 subject @(-> test/system
                              :conn
-                             (fdb/db ledger)
+                             (fdb/db ledger {:syncTo (:block chat-txn)})
                              (fdb/query q))]
             (is (= (count subject)
                    1)
