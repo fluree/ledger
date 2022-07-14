@@ -139,9 +139,8 @@
   (testing "Query history of flakes with _collection/name predicate"
     (let [{:keys [private id]} (fdb-auth/new-private-key)
           ledger         (test/rand-ledger test/ledger-endpoints
-                                           {:owners [id]})
-          _              (test/transact-schema ledger "chat-alt.edn"
-                                               :clj)
+                                           {:opts {:owners [id]}
+                                            :clj/schema ["chat-alt.edn"]})
           query          {:history [nil 40]}
           base-req       {:headers {"content-type" "application/json"}
                           :body    (json/stringify query)}
@@ -158,8 +157,9 @@
 
 (deftest query-block-two-test
   (let [{:keys [private id]} (fdb-auth/new-private-key)
-        ledger         (test/rand-ledger test/ledger-endpoints {:owners [id]})
-        _              (test/transact-schema ledger "chat-alt.edn" :clj)
+        ledger         (test/rand-ledger test/ledger-endpoints
+                                         {:opts       {:owners [id]}
+                                          :clj/schema ["chat-alt.edn"]})
         query          {:block 2}
         base-req       {:headers {"content-type" "application/json"}
                         :body    (json/stringify query)}
