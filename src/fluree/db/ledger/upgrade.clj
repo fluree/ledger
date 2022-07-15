@@ -224,11 +224,10 @@
                 (map db->ledger)
                 (map (partial write-entry tmp-file))
                 dorun)
-           (move-file tmp-file f)))))
-   (txproto/set-data-version group 5)))
+           (move-file tmp-file f)))))))
 
 (def upgrade-fns
-  [v1->v2 v2->v3 v3->v4 v4->v5])
+  [v1->v2 v2->v3 v3->v4])
 
 (defn upgrade
   [conn from-v to-v]
