@@ -16,7 +16,7 @@
           db          (fdb/db (:conn test/system) ledger {:syncTo block})
           res         (<?? (fdb/query-async db crawl-query))]
       (is (= #{5 645 28 -1 1223} (set res))
-          (str "Query result was: " (pr-str res))))))
+          (str "Unexpected query result: " (pr-str res))))))
 
 (deftest analytical-with-two-tuple-subject
   (testing "Analytical query with two-tuple subject")

@@ -117,10 +117,10 @@
           res         (<?? (fdb/query-async db chat-query))]
 
       (is (subset? #{subj1-id subj2-id} (set (map :_id res)))
-          (str "Query result was: " (pr-str res)))
+          (str "Unexpected query result: " (pr-str res)))
 
       (is (= (-> (map #(get % "person/handle") res) set) #{nil "jdoe" "zsmith"})
-          (str "Query result was: " (pr-str res))))))
+          (str "Unexpected query result: " (pr-str res))))))
 
 
 (deftest select-from-predicate
