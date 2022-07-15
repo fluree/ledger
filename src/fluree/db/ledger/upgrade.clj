@@ -9,7 +9,11 @@
             [fluree.db.constants :as const]
             [fluree.db.query.range :as query-range]
             [fluree.db.time-travel :as time-travel]
-            [clojure.string :as str]))
+            [fluree.raft.log :as raft-log]
+            [clojure.java.io :as io]
+            [clojure.string :as str])
+  (:import java.io.File
+           (java.nio.file Files CopyOption StandardCopyOption)))
 
 (set! *warn-on-reflection* true)
 
@@ -166,10 +170,65 @@
                     {:status 400
                      :error  :db/invalid-request}))))
 
+(defn raft?
+  [group]
+  (some-> group :raft boolean))
+
+(defn raft-log-directory
+  [group]
+  (-> group :raft :config :log-directory io/file))
+
+(defn new-db->new-ledger
+  [l]
+  (if (and (= :append-entry (get l 2))
+           (= :new-db (get-in l [3 :entry 0])))
+    (update-in l [3 :entry 0] (constantly :new-ledger))
+    l))
+
+(defn write-entry
+  [f l]
+  (let [idx        (first l)
+        entry-type (get raft-log/entry-types' idx)]
+    (case entry-type
+      :current-term (let [term (get l 1)]
+                      (raft-log/write-current-term f term))
+      :voted-for    (let [[_ term _ voted-for] l]
+                      (raft-log/write-voted-for f term voted-for))
+      :snapshot     (let [[_ snap-term _ snap-idx] l]
+                      (raft-log/write-snapshot f snap-idx snap-term))
+      (let [[idx _ _ entry] l]
+        (raft-log/write-new-command f idx entry)))))
+
+(defn move-file
+  [source target]
+  (Files/move source target
+              (into-array CopyOption
+                          [(StandardCopyOption/ATOMIC_MOVE)
+                           (StandardCopyOption/REPLACE_EXISTING)])))
+
+(defn v4->v5
+  [{:keys [group] :as _conn}]
+  (when (raft? group)
+    (let [log-dir   (raft-log-directory group)
+          log-files (->> log-dir
+                         file-seq
+                         (filter (fn [^File f]
+                                   (.isFile f))))]
+      (doseq [^File f log-files]
+        (let [tmp-file (File/createTempFile (.getName f) ".tmp")]
+          (->> f
+               raft-log/read-log-file
+               (map new-db->new-ledger)
+               (map (partial write-entry tmp-file))
+               dorun)
+          (move-file tmp-file f)))))
+  (txproto/set-data-version group 5))
+
 ;; TODO - Refactor this function
 (defn upgrade
   "Synchronous"
   [conn from-v to-v]
+  (log/info "Upgrading ledgers if necessary")
   (let [from-v (or from-v 1)
         to-v   (or to-v const/data_version)] ;; v0-9-5-PREVIEW2 was first version marker we used - default
     (cond
