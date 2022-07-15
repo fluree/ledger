@@ -9,10 +9,7 @@
             [fluree.db.constants :as const]
             [fluree.db.query.range :as query-range]
             [fluree.db.time-travel :as time-travel]
-            [fluree.raft.log :as raft-log]
-            [clojure.string :as str])
-  (:import java.io.File
-           (java.nio.file CopyOption Files Path StandardCopyOption)))
+            [clojure.string :as str]))
 
 (set! *warn-on-reflection* true)
 
