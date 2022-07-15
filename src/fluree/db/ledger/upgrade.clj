@@ -163,7 +163,7 @@
 
 (defn v3->v4
   "Connect just add _tx/hash, as it needs to be subject _id 99."
-  []
+  [_conn]
   (go-try
     (throw (ex-info "Cannot update ledger from version 3 to version 4. No forwards
     compatible."
