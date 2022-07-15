@@ -161,19 +161,85 @@
      (wait-for-init conn (map :name ledgers-with-opts)))))
 
 
+(defn standard-request
+  ([body]
+   (standard-request body {}))
+  ([body opts]
+   {:headers (cond-> {"content-type" "application/json"}
+                     (:token opts) (assoc "Authorization" (str "Bearer " (:token opts))))
+    :body    (json/stringify body)}))
+
+
+(def endpoint-url-short (str "http://localhost:" @port "/fdb/"))
+
+
+(defn safe-update
+  "Like update but takes a predicate fn p that is first run on the current
+  value for key k in map m. Iff p returns truthy does the update take place."
+  [m k p f]
+  (let [v (get m k)]
+    (if (p v)
+      (update m k f)
+      m)))
+
+
+(defn transact-resource
+  "Transacts the type (keyword form of test-resources subdirectory) of resource
+  with filename file. Optional api arg can be either :http (default) or :clj to
+  indicate which API to use for the transaction. :clj can be useful under
+  closed-api mode since this doesn't sign the HTTP requests."
+  ([type ledger file] (transact-resource type ledger file :http))
+  ([type ledger file api]
+   (let [tx (->> file (str (name type) "/") io/resource slurp edn/read-string)]
+     (case api
+       :clj
+       @(fdb/transact (:conn system) ledger tx)
+
+       :http
+       (let [endpoint (str endpoint-url-short ledger "/transact")]
+         (-> tx
+             standard-request
+             (->> (http/post endpoint))
+             deref
+             (safe-update :body string? json/parse)))))))
+
+(def ^{:arglists '([ledger file] [ledger file api])
+       :doc      "Like transact-resource but bakes in :schemas as the first arg."}
+  transact-schema
+  (partial transact-resource :schemas))
+
+(def ^{:arglists '([ledger file] [ledger file api])
+       :doc      "Like transact-resource but bakes in :data as the first arg."}
+  transact-data
+  (partial transact-resource :data))
+
+
 (defn rand-ledger
   "Generate a random, new, empty ledger with base-name prefix. Waits for it to
   be ready and then returns its name as a string.
 
-  Also takes an optional opts map that will be passed to
-  fluree.db.api/new-ledger-async."
-  [base-name & [opts]]
-  (let [base-name* (if (str/includes? base-name "/")
-                     base-name
-                     (str "test/" base-name))
-        name (str base-name* "-" (UUID/randomUUID))]
-    (init-ledgers! [{:name name, :opts opts}])
-    name))
+  Also takes an optional second map arg with the keys:
+   - :opts that will be passed to fluree.db.api/new-ledger-async
+   - :http/schema schema resource filenames that will be transacted with the HTTP API
+   - :clj/schema schema resource filenames that will be transacted with the CLJ API
+   - :http/data data resource filenames that will be transacted with the HTTP API
+   - :clj/data data resource filenames that will be transacted with the CLJ API"
+  ([base-name] (rand-ledger base-name {}))
+  ([base-name params]
+   (let [base-name* (if (str/includes? base-name "/")
+                      base-name
+                      (str "test/" base-name))
+         name (str base-name* "-" (UUID/randomUUID))]
+     (init-ledgers! [{:name name, :opts (:opts params)}])
+     (doseq [s (:clj/schema params)]
+       (transact-schema name s :clj))
+     (doseq [s (:http/schema params)]
+       (transact-schema name s :http))
+     (doseq [d (:clj/data params)]
+       (transact-data name d :clj))
+     (doseq [d (:http/data params)]
+       (transact-data name d :http))
+     name)))
 
 
 (defn wait-for-system-ready
@@ -224,59 +290,6 @@
      (finally (stop*)))))
 
 
-(defn safe-update
-  "Like update but takes a predicate fn p that is first run on the current
-  value for key k in map m. Iff p returns truthy does the update take place."
-  [m k p f]
-  (let [v (get m k)]
-    (if (p v)
-      (update m k f)
-      m)))
-
-
-(defn standard-request
-  ([body]
-   (standard-request body {}))
-  ([body opts]
-   {:headers (cond-> {"content-type" "application/json"}
-                     (:token opts) (assoc "Authorization" (str "Bearer " (:token opts))))
-    :body    (json/stringify body)}))
-
-
-(def endpoint-url-short (str "http://localhost:" @port "/fdb/"))
-
-
-(defn transact-resource
-  "Transacts the type (keyword form of test-resources subdirectory) of resource
-  with filename file. Optional api arg can be either :http (default) or :clj to
-  indicate which API to use for the transaction. :clj can be useful under
-  closed-api mode since this doesn't sign the HTTP requests."
-  ([type ledger file] (transact-resource type ledger file :http))
-  ([type ledger file api]
-   (let [tx (->> file (str (name type) "/") io/resource slurp edn/read-string)]
-     (case api
-       :clj
-       @(fdb/transact (:conn system) ledger tx)
-
-       :http
-       (let [endpoint (str endpoint-url-short ledger "/transact")]
-         (-> tx
-             standard-request
-             (->> (http/post endpoint))
-             deref
-             (safe-update :body string? json/parse)))))))
-
-(def ^{:arglists '([ledger file] [ledger file api])
-       :doc      "Like transact-resource but bakes in :schemas as the first arg."}
-  transact-schema
-  (partial transact-resource :schemas))
-
-(def ^{:arglists '([ledger file] [ledger file api])
-       :doc      "Like transact-resource but bakes in :data as the first arg."}
-  transact-data
-  (partial transact-resource :data))
-
-
 (defn create-auths
   "Creates 3 auths in the given ledger: root, all persons, all persons no
   handles. Returns of vector of [key-maps create-txn-result]."
@@ -313,6 +326,7 @@
      [keys (->> add-auth
                 (fdb/transact-async conn ledger)
                 <!!)])))
+
 
 (defn create-temp-dir ^File
   []
