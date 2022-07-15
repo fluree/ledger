@@ -208,21 +208,21 @@
 
 (defn v4->v5
   [{:keys [group] :as _conn}]
-  (when (raft? group)
-    (let [log-dir   (raft-log-directory group)
-          log-files (->> log-dir
-                         file-seq
-                         (filter (fn [^File f]
-                                   (.isFile f))))]
-      (doseq [^File f log-files]
-        (let [tmp-file (File/createTempFile (.getName f) ".tmp")]
-          (->> f
-               raft-log/read-log-file
-               (map new-db->new-ledger)
-               (map (partial write-entry tmp-file))
-               dorun)
-          (move-file tmp-file f)))))
-  (txproto/set-data-version group 5))
+  (go-try (when (raft? group)
+            (let [log-dir   (raft-log-directory group)
+                  log-files (->> log-dir
+                                 file-seq
+                                 (filter (fn [^File f]
+                                           (.isFile f))))]
+              (doseq [^File f log-files]
+                (let [tmp-file (File/createTempFile (.getName f) ".tmp")]
+                  (->> f
+                       raft-log/read-log-file
+                       (map new-db->new-ledger)
+                       (map (partial write-entry tmp-file))
+                       dorun)
+                  (move-file tmp-file f)))))
+          (txproto/set-data-version group 5)))
 
 (def upgrade-fns
   [v1->v2 v2->v3 v3->v4 v4->v5])
