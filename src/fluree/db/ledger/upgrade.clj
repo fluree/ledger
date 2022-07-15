@@ -229,10 +229,11 @@
 
 (defn upgrade
   [conn from-v to-v]
-  (let [from-v (or from-v 1)
-        to-v   (or to-v const/data_version)] ;; v0-9-5-PREVIEW2 was first version marker we used - default
+  (let [from-v   (or from-v 1)
+        to-v     (or to-v const/data_version)  ; v0-9-5-PREVIEW2 was first version
+                                               ; marker we used - default
+        fn-range (subvec upgrade-fns (dec from-v) (dec to-v))]
     (log/info "Upgrading ledgers from data version" from-v
               "to data version" to-v)
-    (let [fn-range (subvec upgrade-fns (dec from-v) (dec to-v))]
-      (doseq [upgrade-fn fn-range]
-        (<?? (upgrade-fn conn))))))
+    (doseq [upgrade-fn fn-range]
+      (<?? (upgrade-fn conn)))))
