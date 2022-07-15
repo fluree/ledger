@@ -13,7 +13,7 @@
             [clojure.java.io :as io]
             [clojure.string :as str])
   (:import java.io.File
-           (java.nio.file Files CopyOption StandardCopyOption)))
+           (java.nio.file CopyOption Files Path StandardCopyOption)))
 
 (set! *warn-on-reflection* true)
 
@@ -178,11 +178,14 @@
   [group]
   (-> group :raft :config :log-directory io/file))
 
-(defn new-db->new-ledger
+(defn db->ledger
   [l]
-  (if (and (= :append-entry (get l 2))
-           (= :new-db (get-in l [3 :entry 0])))
-    (update-in l [3 :entry 0] (constantly :new-ledger))
+  (if (= :append-entry (get l 2))
+    (update-in l [3 :entry 0] (fn [entry-type]
+                                (case entry-type
+                                  :new-db         :new-ledger
+                                  :initialized-db :initialized-ledger
+                                  entry-type)))
     l))
 
 (defn write-entry
@@ -200,29 +203,29 @@
         (raft-log/write-new-command f idx entry)))))
 
 (defn move-file
-  [source target]
-  (Files/move source target
+  [^File source ^File target]
+  (Files/move (.toPath source) (.toPath target)
               (into-array CopyOption
-                          [(StandardCopyOption/ATOMIC_MOVE)
-                           (StandardCopyOption/REPLACE_EXISTING)])))
+                          [(StandardCopyOption/REPLACE_EXISTING)])))
 
 (defn v4->v5
   [{:keys [group] :as _conn}]
-  (go-try (when (raft? group)
-            (let [log-dir   (raft-log-directory group)
-                  log-files (->> log-dir
-                                 file-seq
-                                 (filter (fn [^File f]
-                                           (.isFile f))))]
-              (doseq [^File f log-files]
-                (let [tmp-file (File/createTempFile (.getName f) ".tmp")]
-                  (->> f
-                       raft-log/read-log-file
-                       (map new-db->new-ledger)
-                       (map (partial write-entry tmp-file))
-                       dorun)
-                  (move-file tmp-file f)))))
-          (txproto/set-data-version group 5)))
+  (go-try
+   (when (raft? group)
+     (let [log-dir   (raft-log-directory group)
+           log-files (->> log-dir
+                          file-seq
+                          (filter (fn [^File f]
+                                    (.isFile f))))]
+       (doseq [^File f log-files]
+         (let [tmp-file (File/createTempFile (.getName f) ".tmp")]
+           (->> f
+                raft-log/read-log-file
+                (map db->ledger)
+                (map (partial write-entry tmp-file))
+                dorun)
+           (move-file tmp-file f)))))
+   (txproto/set-data-version group 5)))
 
 (def upgrade-fns
   [v1->v2 v2->v3 v3->v4 v4->v5])
