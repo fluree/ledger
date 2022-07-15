@@ -41,6 +41,7 @@
   :user     "_user$jake"
   :fullName "Jake Parsell"
   :active   true
+  :age      29
   :favNums  [7 42]
   :follows  "person$jdoe"
   :favMovies ["movie$2"]}

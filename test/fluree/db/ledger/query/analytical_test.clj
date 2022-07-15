@@ -179,7 +179,26 @@
           {:keys [block]} (test/transact-data ledger "chat.edn")
           db     (fdb/db (:conn test/system) ledger {:syncTo block})
           res    (<?? (fdb/query-async db query))]
-      (is (= [{"handle" "jakethesnake", :_id 351843720888324
+      (is (= [{"handle"  "jakethesnake", :_id 351843720888324
                "favNums" [7 42], "user" {:_id 87960930223081}}]
+             res)
+          (str "Unexpected query result: " (pr-str res))))))
+
+(deftest with-order-by-variable
+  (testing "ordering by a variable should work"
+    (let [query  {:where  [["?p" "person/handle" "?handle"]
+                           ["?p" "person/age" "?age"]]
+                  :select {"?p" ["handle" "age"]}
+                  :opts   {:orderBy ["DESC" "?age"]}}
+          ledger (test/rand-ledger test/ledger-chat
+                                   {:http/schema ["chat.edn" "chat-preds.edn"]})
+          {:keys [block]} (test/transact-data ledger "chat.edn")
+          db     (fdb/db (:conn test/system) ledger {:syncTo block})
+          res    (<?? (fdb/query-async db query))]
+      (is (= [{"handle" "dsanchez", :_id 351843720888323, "age" 70}
+              {"handle" "zsmith", :_id 351843720888321, "age" 63}
+              {"handle" "anguyen", :_id 351843720888322, "age" 34}
+              {"handle" "jakethesnake", :_id 351843720888324, "age" 29}
+              {"handle" "jdoe", :_id 351843720888320, "age" 25}]
              res)
           (str "Unexpected query result: " (pr-str res))))))
