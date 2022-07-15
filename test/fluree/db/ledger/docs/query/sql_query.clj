@@ -103,8 +103,8 @@
                     (fdb/sql-async query)
                     (async/<!!))]
 
-      ;; should be 10 items returned
-      (is (= 10 (count data))))))
+      ;; should be 12 items returned
+      (is (= 12 (count data))))))
 
 (deftest tests-independent
   (basic/add-collections*)

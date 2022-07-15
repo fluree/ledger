@@ -134,7 +134,7 @@
           db         (fdb/db (:conn test/system) ledger {:syncTo block})
           res        (<?? (fdb/query-async db chat-query))]
 
-      (is (= 4 (count res)))
+      (is (= 5 (count res)))
 
       (is (every? #(contains? % "person/handle") res)))))
 
@@ -321,7 +321,7 @@
       (let [query {:select ["?person"] :from "person"
                    :where  [["?person" "person/active" true]]}
             res   (<?? (fdb/query-async db query))]
-        (is (= 3 (count res)))))
+        (is (= 4 (count res)))))
     (testing "with false predicate"
       (let [query {:select ["?person"] :from "person"
                    :where  [["?person" "person/active" false]]}

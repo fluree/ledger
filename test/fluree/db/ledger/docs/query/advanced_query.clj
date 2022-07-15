@@ -18,7 +18,7 @@
     (is (= 3 (count res)))
 
     (is (= #{"zsmith" "dsanchez" "jdoe"}
-           (-> (map #(get-in % ["chat/person" "person/handle"]) res) set) ))))
+           (-> (map #(get-in % ["chat/person" "person/handle"]) res) set)))))
 
 
 (deftest crawl-graph-reverse
@@ -27,19 +27,20 @@
                            :from   "person"}
         db  (basic/get-db test/ledger-chat)
         res  (async/<!! (fdb/query-async db crawl-query))]
-    (is (= 6 (count res)))))
+    (is (= 7 (count res)))))
 
 
 (deftest crawl-graph-reverse-add
   (testing "Crawl the graph with a reverse ref and regular ref")
   (let [crawl-query {:select ["*" {"chat/_person" ["*" {"chat/person" ["*"]}]}]
-              :from   "person"}
+                     :from   "person"}
         db  (basic/get-db test/ledger-chat)
         res  (async/<!! (fdb/query-async db crawl-query))]
 
-    (is (= 6 (count res)))
+    (is (= 7 (count res)))
 
-    (is (= #{nil "zsmith" "dsanchez" "jdoe"} (-> (map #(get-in % ["chat/_person" 0 "chat/person" "person/handle"]) res) set)))))
+    (is (= #{nil "zsmith" "dsanchez" "jdoe"}
+           (-> (map #(get-in % ["chat/_person" 0 "chat/person" "person/handle"]) res) set)))))
 
 
 (deftest select-no-ns-preds
@@ -48,12 +49,14 @@
                        :from   "person"}
         db  (basic/get-db test/ledger-chat)
         res  (async/<!! (fdb/query-async db crawl-query))]
-    (is (= 6 (count res)))
+    (is (= 7 (count res)))
 
-    (is (= #{"dsanchez" "anguyen" "zsmith" "jdoe" "aSmith" "aVargas"}
+    (is (= #{"dsanchez" "anguyen" "zsmith" "jdoe" "aSmith" "aVargas"
+             "jakethesnake"}
            (-> (map #(get % "handle") res) set)))
 
-    (is (= #{"Amy Nguyen" "Zach Smith" "Jane Doe" "Diana Sanchez" "Alex Vargas" "Alice Smith"}
+    (is (= #{"Amy Nguyen" "Zach Smith" "Jane Doe" "Diana Sanchez" "Alex Vargas"
+             "Alice Smith" "Jake Parsell"}
            (-> (map #(get % "fullName") res) set)))))
 
 (deftest select-with-as
@@ -62,12 +65,14 @@
                        :from   "person"}
         db  (basic/get-db test/ledger-chat)
         res  (async/<!! (fdb/query-async db crawl-query))]
-    (is (= 6 (count res)))
+    (is (= 7 (count res)))
 
-    (is (= #{"dsanchez" "anguyen" "zsmith" "jdoe" "aSmith" "aVargas"}
+    (is (= #{"dsanchez" "anguyen" "zsmith" "jdoe" "aSmith" "aVargas"
+             "jakethesnake"}
            (-> (map #(get % "handle") res) set)))
 
-    (is (= #{"Amy Nguyen" "Zach Smith" "Jane Doe" "Diana Sanchez" "Alex Vargas" "Alice Smith"}
+    (is (= #{"Amy Nguyen" "Zach Smith" "Jane Doe" "Diana Sanchez" "Alex Vargas"
+             "Alice Smith" "Jake Parsell"}
            (-> (map #(get % "name") res) set)))))
 
 
@@ -82,13 +87,13 @@
                 first)]
     (is (= "Welcome Diana! This is Amy." (get-in res ["comment" 0 "comment/message"])))))
 
+
 (deftest graphql-with-reverse-ref
   (testing "Graphl with reverse ref")
   (let [graphql-query {:query "{ graph {\n  person {\n    _id\n    handle\n    chat_Via_person (limit: 10) {\n      instant\n      message\n      comments {\n        message\n      }\n    }\n  }\n}}"}
-        db  (basic/get-db test/ledger-chat)
         res  (async/<!! (fdb/graphql-async (basic/get-conn) test/ledger-chat graphql-query))]
 
-    (is (= 6 (-> (:person res) count)))
+    (is (= 7 (-> (:person res) count)))
 
     (is (= #{nil "Hi! I'm a chat from Diana." "Hi! I'm chat from Jane." "Hi! I'm a chat from Zach."}
            (-> (map #(get-in % ["chat/_person" 0 "message"]) (:person res)) set)))
@@ -99,10 +104,10 @@
 (deftest crawl-graph-two
   (testing "Crawl the graph")
   (let [crawl-query     {:select ["handle" {"person/follows" ["handle"]}]
-                         :from "person" }
+                         :from "person"}
         db  (basic/get-db test/ledger-chat)
         res  (async/<!! (fdb/query-async db crawl-query))]
-    (is (= 6(count res)))
+    (is (= 7 (count res)))
 
     (is (= #{nil "jdoe" "zsmith" "anguyen"}
            (-> (map #(get-in % ["person/follows" "handle"]) res) set)))))
@@ -195,8 +200,8 @@
 
 (deftest multi-query
   (testing "Multi query")
-  (let [multi-query    { :chatQuery { :select ["*"] :from "chat" }
-                        :personQuery  { :select ["*"] :from  "person" }}
+  (let [multi-query    { :chatQuery { :select ["*"] :from "chat"}
+                        :personQuery  { :select ["*"] :from  "person"}}
         db  (basic/get-db test/ledger-chat)
         res  (async/<!! (fdb/multi-query-async db multi-query))]
 
@@ -205,16 +210,17 @@
     (is (= #{351843720888320 351843720888321 351843720888323}
            (-> (map #(get-in % ["chat/person" :_id]) (:chatQuery res)) set)))
 
-    (is (= 6 (count (:personQuery res))))
+    (is (= 7 (count (:personQuery res))))
 
-    (is (= #{"dsanchez" "anguyen" "zsmith" "jdoe" "aSmith" "aVargas"}
+    (is (= #{"dsanchez" "anguyen" "zsmith" "jdoe" "aSmith" "aVargas"
+             "jakethesnake"}
            (-> (map #(get % "person/handle") (:personQuery res)) set)))))
 
 ;; TODO - multi-query is not supposed to throw error, but return it
 (deftest multi-query-with-error
   (testing "Multi query with incorrect query")
-  (let [multi-query      { :incorrectQuery { :select ["*"] :from "apples" }
-                          :personQuery  { :select ["*"] :from  "person" }}
+  (let [multi-query      {:incorrectQuery { :select ["*"] :from "apples"}
+                          :personQuery  { :select ["*"] :from  "person"}}
         db  (basic/get-db test/ledger-chat)
         res  (async/<!! (fdb/multi-query-async db multi-query))]
 
@@ -222,7 +228,8 @@
 
     (is (=  6 (count (:personQuery res))))
 
-    (is (= #{"dsanchez" "anguyen" "zsmith" "jdoe" "aSmith" "aVargas"}
+    (is (= #{"dsanchez" "anguyen" "zsmith" "jdoe" "aSmith" "aVargas"
+             "jakethesnake"}
            (-> (map #(get % "person/handle") (:personQuery res)) set)))))
 
 (deftest advanced-query-test
@@ -238,9 +245,9 @@
   (aggregate-binding)
   (group-by-with-limit-offset)
   (group-by-with-having)
-  (multi-query)
+  (multi-query))
   ;(multi-query-with-error)
-  )
+
 
 (deftest tests-independent
   (basic/add-collections*)
