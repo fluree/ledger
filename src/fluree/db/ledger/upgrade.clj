@@ -224,35 +224,15 @@
           (move-file tmp-file f)))))
   (txproto/set-data-version group 5))
 
-;; TODO - Refactor this function
+(def upgrade-fns
+  [v1->v2 v2->v3 v3->v4 v4->v5])
+
 (defn upgrade
-  "Synchronous"
   [conn from-v to-v]
-  (log/info "Upgrading ledgers if necessary")
   (let [from-v (or from-v 1)
         to-v   (or to-v const/data_version)] ;; v0-9-5-PREVIEW2 was first version marker we used - default
-    (cond
-      (= from-v to-v)
-      true ;; no upgrade
-
-      (= [1 2] [from-v to-v])
-      (<?? (v1->v2 conn))
-
-      (= [1 3] [from-v to-v])
-      (do (<?? (v1->v2 conn))
-          (<?? (v2->v3 conn)))
-
-      (= [1 4] [from-v to-v])
-      (do (<?? (v1->v2 conn))
-          (<?? (v2->v3 conn))
-          (<?? (v3->v4)))
-
-      (= [2 3] [from-v to-v])
-      (<?? (v2->v3 conn))
-
-      (= [2 4] [from-v to-v])
-      (do (<?? (v2->v3 conn))
-          (<?? (v3->v4)))
-
-      (= [3 4] [from-v to-v])
-      (<?? (v3->v4)))))
+    (log/info "Upgrading ledgers from data version" from-v
+              "to data version" to-v)
+    (let [fn-range (subvec upgrade-fns (dec from-v) (dec to-v))]
+      (doseq [upgrade-fn fn-range]
+        (<?? (upgrade-fn conn))))))
