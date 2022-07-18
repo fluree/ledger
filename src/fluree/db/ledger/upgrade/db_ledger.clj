@@ -39,9 +39,10 @@
 
 (defn move-file
   [^File source ^File target]
-  (Files/move (.toPath source) (.toPath target)
-              (into-array CopyOption
-                          [(StandardCopyOption/REPLACE_EXISTING)])))
+  (let [source-path (.toPath source)
+        target-path (.toPath target)
+        opt-replace (into-array CopyOption [(StandardCopyOption/REPLACE_EXISTING)])]
+    (Files/move source-path target-path opt-replace)))
 
 (defn rewrite-logs
   [{:keys [group] :as _conn}]
