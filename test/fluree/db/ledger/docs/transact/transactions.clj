@@ -110,8 +110,9 @@
   (testing "Issue a transaction to upsert data instead of creating a new entity")
   (let [failure-txn   [{:_id "person", :handle "ajohnson", :age 26}]
         failure-resp  (async/<!! (fdb/transact-async (get-conn) test/ledger-query+transact failure-txn))
-        _a            (async/<!! (fdb/transact-async (get-conn) test/ledger-query+transact [{:_id ["_predicate/name" "person/handle"], :upsert true}]))
-        _             (Thread/sleep 2000)
+        _a            (async/<!! (fdb/transact-async (get-conn) test/ledger-query+transact
+                                                     [{:_id ["_predicate/name" "person/handle"]
+                                                       :upsert true}]))
         success-txn   [{:_id "person", :handle "ajohnson", :age 26}]
         success-resp  (async/<!! (fdb/transact-async (get-conn) test/ledger-query+transact success-txn))]
 
@@ -123,9 +124,11 @@
                            {:_id ["person/handle" "lEliasz"] :fullName nil}
                            {:_id ["_user/username" "lEliasz"] :auth [["_auth/id" "tempAuthRecord"]] :_action "delete"}]
         delete-resp       (async/<!! (fdb/transact-async (get-conn) test/ledger-query+transact delete-txn))
-        _                 (Thread/sleep 2000)
         test-query        {:select ["*", {"person/user" ["*", {"_user/auth" ["*"]}]}] :from "person"}
-        test-resp         (async/<!! (fdb/query-async (basic/get-db test/ledger-query+transact) test-query))
+        test-resp         (async/<!! (fdb/query-async
+                                       (basic/get-db test/ledger-query+transact
+                                                     {:syncTo (:block delete-resp)})
+                                       test-query))
         remaining-person  (some #(when (get % "person/handle") %) test-resp)]
 
     (is (= 200 (:status delete-resp)))
