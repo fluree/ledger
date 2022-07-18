@@ -6,7 +6,8 @@
    [fluree.db.server-settings :as settings]
    [fluree.db.test-helpers :as test-helpers]
    [fluree.db.util.json :as json]
-   [org.httpkit.client :as http]))
+   [org.httpkit.client :as http]
+   [robert.bruce :refer [try-try-again]]))
 
 (defn start
   ([] (start {}))
@@ -19,6 +20,20 @@
 (defn stop [s]
   (when s (server/shutdown s))
   :stopped)
+
+(defn wait-until-ready
+  [api-port ledger]
+  (try-try-again
+    {:sleep 100, :tries 10}
+    (fn []
+      (let [resp (some-> (http/post
+                           (str "http://localhost:" api-port "/fdb/" ledger
+                                "/ledger-stats"))
+                         deref
+                         (update :body json/parse))]
+       (if (= "ready" (some-> resp :body :data :status))
+         resp
+         (throw (Exception. (str ledger " not ready"))))))))
 
 (deftest query-peer-tests
   (let [ledger-port (test-helpers/get-free-port)
@@ -45,19 +60,17 @@
                                           {:headers {"content-type" "application/json"}
                                            :body    (json/stringify {:ledger/id "test/test2"})})
             ledger-list-resp1 @(http/post (str "http://localhost:" query-port "/fdb/ledgers"))
-            ledger-list-resp2 @(http/post (str "http://localhost:" ledger-port "/fdb/ledgers"))
-            ;; wait for initialization!
-            _                 (Thread/sleep 2000)
-            ledger1-ready?    @(http/post (str "http://localhost:" query-port "/fdb/test/test1/ledger-stats"))
-            ledger2-ready?    @(http/post (str "http://localhost:" ledger-port "/fdb/test/test2/ledger-stats"))]
+            ledger-list-resp2 @(http/post (str "http://localhost:" ledger-port "/fdb/ledgers"))]
         (is (= 200 (:status new-ledger1)))
         (is (= 200 (:status new-ledger2)))
         (is (= [["test" "test1"]
                 ["test" "test2"]]
                (-> ledger-list-resp1 :body json/parse)
                (-> ledger-list-resp2 :body json/parse)))
-        (is (= "ready" (some-> ledger1-ready? :body json/parse :data :status)))
-        (is (= "ready" (some-> ledger2-ready? :body json/parse :data :status)))))
+        (is (= "ready" (-> (wait-until-ready query-port "test/test1")
+                           :body :data :status)))
+        (is (= "ready" (-> (wait-until-ready ledger-port "test/test2")
+                           :body :data :status)))))
 
     (testing "can transact to a ledger"
       (let [transact-resp1 @(http/post (str "http://localhost:" query-port "/fdb/test/test1/transact")

@@ -16,7 +16,6 @@
             com.cognitect.aws/endpoints    {:mvn/version "1.1.12.230"}
             com.cognitect.aws/s3           {:mvn/version "822.2.1145.0"}
 
-
             ;; web server
             http-kit/http-kit              {:mvn/version "2.6.0"}
             ring/ring-core                 {:mvn/version "1.9.5"}

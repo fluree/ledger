@@ -9,11 +9,9 @@
 
             [fluree.db.ledger.docs.getting-started.basic-schema :as basic-schema]
 
-            [fluree.db.ledger.docs.query.basic-query :as basic-query]
             [fluree.db.ledger.docs.query.block-query :as block-query]
             [fluree.db.ledger.docs.query.history-query :as history-query]
             [fluree.db.ledger.docs.query.advanced-query :as advanced-query]
-            [fluree.db.ledger.docs.query.analytical-query :as analytical-query]
             [fluree.db.ledger.docs.query.sparql :as sparql]
             [fluree.db.ledger.docs.query.graphql :as graphql]
             [fluree.db.ledger.docs.query.sql-query :as sql]
@@ -67,11 +65,9 @@
 
              ;; 2- Query
              (test/print-banner "Query Tests")
-             (basic-query/basic-query-test)
              (block-query/block-query-test)
              (history-query/history-query-test)
              (advanced-query/advanced-query-test)
-             (analytical-query/analytical-query-test)
              (sparql/sparql-test)
              (graphql/graphql-test)
              (sql/query-tests)

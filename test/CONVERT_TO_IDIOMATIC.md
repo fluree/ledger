@@ -38,6 +38,9 @@ unconverted ones.
 5. Use `test-helpers/transact-resource` (and its convenience partials
    `transact-schema` & `transact-data`) in each test to pull in schema & data
    from the `test-resources` hierarchy.
+   1. Alternatively you can pass a map arg to `test/rand-ledger` with
+   `:http/schema`, `:clj/schema`, `:http/data`, and/or `:clj/data` keys &
+   vector values of resource filenames and it will transact those for you.
 6. Lowercase & kebab-case any lingering mixed-case / CamelCase dir / filenames.
 7. For unit tests, name the test `[fn-it-is-testing]-test`.
 8. Remove all deftest forms that just run other tests. They are no longer 
