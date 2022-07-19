@@ -143,15 +143,6 @@
       util/str->keyword
       #{:reindex :v2-migrate}))
 
-(defn reindex
-  [settings]
-  (let [{:keys [conn] :as system} (startup settings)]
-    (try (<?? (reindex-all conn))
-         (catch Exception e
-           (log/error e "Failed to rebuild indexes."))
-         (finally
-           (shutdown system)))))
-
 (defn startup
   ([] (startup (runtime-env)))
   ([settings]
@@ -235,6 +226,15 @@
        (txproto/-start-up-activities group conn system* shutdown join?))
 
      system*)))
+
+(defn reindex
+  [settings]
+  (let [{:keys [conn] :as system} (startup settings)]
+    (try (<?? (reindex-all conn))
+         (catch Exception e
+           (log/error e "Failed to rebuild indexes."))
+         (finally
+           (shutdown system)))))
 
 (defn- execute-command
   "Execute some arbitrary commands on FlureeDB (then exit)"

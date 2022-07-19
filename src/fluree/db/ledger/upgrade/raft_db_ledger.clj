@@ -7,7 +7,7 @@
 
 (defn raft?
   [settings]
-  (-> settings :fdb-consensus-type (= "raft"N)))
+  (-> settings :fdb-consensus-type (= "raft")))
 
 (defn raft-log-directory
   [settings]
