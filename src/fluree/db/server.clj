@@ -78,6 +78,9 @@
       (try-continue (:close conn)))
     (ftcp/shutdown-client-event-loop (:this-server group))))
 
+(defn runtime-env
+  []
+  (settings/build-env @environ/runtime-env))
 
 (defn check-version-upgrade-fn
   "Called whenever server newly becomes leader to upgrade raft data if needed."
@@ -140,7 +143,7 @@
       (= :reindex)))
 
 (defn startup
-  ([] (startup (settings/build-env @environ/runtime-env)))
+  ([] (startup (runtime-env)))
   ([settings]
    (log/info "Starting Fluree in mode:" (:fdb-mode settings))
    (log/info "Starting with config:\n" (with-out-str
