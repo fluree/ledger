@@ -6,12 +6,12 @@
            (java.nio.file CopyOption Files Path StandardCopyOption)))
 
 (defn raft?
-  [group]
-  (some-> group :raft boolean))
+  [settings]
+  (-> settings :fdb-consensus-type (= "raft"N)))
 
 (defn raft-log-directory
-  [group]
-  (-> group :raft :config :log-directory io/file))
+  [settings]
+  (:fdb-group-log-directory settings))
 
 (defn db->ledger
   [l]
@@ -45,9 +45,9 @@
     (Files/move source-path target-path opt-replace)))
 
 (defn rewrite-logs
-  [{:keys [group] :as _conn}]
-  (when (raft? group)
-    (let [log-dir   (raft-log-directory group)
+  [settings]
+  (when (raft? settings)
+    (let [log-dir   (raft-log-directory settings)
           log-files (->> log-dir
                          file-seq
                          (filter (fn [^File f]
