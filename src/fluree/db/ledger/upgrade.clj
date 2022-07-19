@@ -161,8 +161,7 @@
   "Connect just add _tx/hash, as it needs to be subject _id 99."
   [_conn]
   (go-try
-    (throw (ex-info "Cannot update ledger from version 3 to version 4. No forwards
-    compatible."
+    (throw (ex-info "Cannot update ledger from version 3 to version 4. No forwards compatible."
                     {:status 400
                      :error  :db/invalid-request}))))
 
@@ -175,7 +174,8 @@
         to-v     (or to-v const/data_version)  ; v0-9-5-PREVIEW2 was first version
                                                ; marker we used - default
         fn-range (subvec upgrade-fns (dec from-v) (dec to-v))]
-    (log/info "Upgrading ledgers from data version" from-v
-              "to data version" to-v)
-    (doseq [upgrade-fn fn-range]
-      (<?? (upgrade-fn conn)))))
+    (when (seq fn-range)
+      (log/info "Upgrading ledgers from data version" from-v
+                "to data version" to-v)
+      (doseq [upgrade-fn fn-range]
+        (<?? (upgrade-fn conn))))))
