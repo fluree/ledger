@@ -1,4 +1,4 @@
-(ns fluree.db.ledger.upgrade.db-ledger
+(ns fluree.db.ledger.upgrade.raft-db-ledger
   (:require [fluree.db.util.log :as log]
             [fluree.raft.log :as raft-log]
             [clojure.java.io :as io])
