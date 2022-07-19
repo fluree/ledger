@@ -21,6 +21,7 @@
             [fluree.db.ledger.storage.memorystore :as memorystore]
             [fluree.db.ledger.txgroup.core :as txgroup]
             [fluree.db.ledger.upgrade :as upgrade]
+            [fluree.db.ledger.upgrade.raft-db-ledger :as migrate-raft]
             [fluree.raft :as raft]
             [fluree.db.ledger.consensus.tcp :as ftcp]
             [fluree.db.ledger.txgroup.txgroup-proto :as txproto]
@@ -140,7 +141,16 @@
       :fdb-command
       (or "none")
       util/str->keyword
-      (= :reindex)))
+      #{:reindex :v2-migrate}))
+
+(defn reindex
+  [settings]
+  (let [{:keys [conn] :as system} (startup settings)]
+    (try (<?? (reindex-all conn))
+         (catch Exception e
+           (log/error e "Failed to rebuild indexes."))
+         (finally
+           (shutdown system)))))
 
 (defn startup
   ([] (startup (runtime-env)))
@@ -239,12 +249,12 @@
       (println "Account id:" account-id))
 
     :reindex
-    (let [{:keys [conn] :as system} (startup)]
-      (try (<?? (reindex-all conn))
-           (catch Exception e
-             (log/error e "Failed to rebuild indexes."))
-           (finally
-             (shutdown system))))
+    (reindex (runtime-env))
+
+    :v2-migrate
+    (let [settings (runtime-env)]
+      (migrate-raft/rewrite-logs settings)
+      (reindex settings))
 
     ;; else
     (println (str "Unknown command: " command)))
