@@ -124,13 +124,13 @@
   ([raft] (leader-async raft 60000))
   ([raft timeout]
    (let [timeout-time (+ (System/currentTimeMillis) timeout)]
-     (async/go-loop [retries 0]
+     (go-loop [retries 0]
        (let [resp-chan (async/promise-chan)
              _         (get-raft-state raft (fn [state]
                                               (if-let [leader (:leader state)]
                                                 (async/put! resp-chan leader)
                                                 (async/close! resp-chan))))
-             resp      (async/<! resp-chan)]
+             resp      (<! resp-chan)]
          (cond
            resp resp
 
@@ -140,14 +140,14 @@
 
            :else
            (do
-             (async/<! (async/timeout 100))
+             (<! (async/timeout 100))
              (recur (inc retries)))))))))
 
 
 (defn is-leader?-async
   [raft]
-  (async/go
-    (let [leader (async/<! (leader-async raft))]
+  (go
+    (let [leader (<! (leader-async raft))]
       (if (instance? Throwable leader)
         leader
         (= (:this-server raft) leader)))))
@@ -155,7 +155,7 @@
 
 (defn is-leader?
   [raft]
-  (let [leader? (async/<!! (is-leader?-async raft))]
+  (let [leader? (<!! (is-leader?-async raft))]
     (if (instance? Throwable leader?)
       (throw leader?)
       leader?)))
@@ -459,9 +459,9 @@
             :storage-read
             (let [file-key data]
               (log/debug "Storage read for key: " file-key)
-              (async/go
+              (go
                 (-> (storage/read {:storage-read key-storage-read-fn} file-key)
-                    (async/<!)
+                    <!
                     (callback))))
 
             :new-command
@@ -563,7 +563,7 @@
 
 (defn state
   [raft]
-  (let [state (async/<!! (get-raft-state-async raft))]
+  (let [state (<!! (get-raft-state-async raft))]
     (if (instance? Throwable state)
       (throw state)
       state)))
@@ -609,7 +609,7 @@
      resp-chan))
   ([group newServer timeout-ms callback]
    (go-try (let [raft'  (:raft group)
-                 leader (async/<! (leader-async group))
+                 leader (<! (leader-async group))
                  id     (str (UUID/randomUUID))]
              (if (= (:this-server raft') leader)
                (let [command-chan (-> group :command-chan)]
@@ -633,7 +633,7 @@
      resp-chan))
   ([group server timeout-ms callback]
    (go-try (let [raft'  (:raft group)
-                 leader (async/<! (leader-async group))
+                 leader (<! (leader-async group))
                  id     (str (UUID/randomUUID))]
              (if (= (:this-server raft') leader)
                (let [command-chan (-> group :command-chan)]
@@ -691,9 +691,9 @@
   Exception doesn't throw, be sure to check for it."
   ([raft] (ensure-fully-committed-index raft false))
   ([raft leader-only?]
-   (async/go-loop [retries 0
+   (go-loop [retries 0
                    last-status nil]
-     (let [rs (async/<! (get-raft-state-async raft))
+     (let [rs (<! (get-raft-state-async raft))
            {:keys [commit index status latest-index]} rs]
        (when (not= last-status [commit index status latest-index])
          (log/trace (str "ensure-fully-committed-index: retry: " retries
@@ -713,7 +713,7 @@
 
          :else
          (do
-           (async/<! (async/timeout 100))
+           (<! (async/timeout 100))
            (recur (inc retries) [commit index status latest-index])))))))
 
 
@@ -765,7 +765,7 @@
   [{:keys [group] :as conn}]
   (go-try
     (try
-      (let [ledgers (async/<! (ledger-storage/ledgers conn))
+      (let [ledgers (<! (ledger-storage/ledgers conn))
             time    (System/currentTimeMillis)]
         (when (util/exception? ledgers)
           (log/error ledgers (str "EXITING: No raft state, and error reading existing ledger files: " (ex-message ledgers)
@@ -779,7 +779,7 @@
                                 :index   index
                                 :indexes (into {} (map #(vector % time) indexes))
                                 :status  :ready}
-                  resp         (async/<! (new-entry-async group [:assoc-in
+                  resp         (<! (new-entry-async group [:assoc-in
                                                                  [:networks network :ledgers ledger]
                                                                  ledger-state]))]
               (when (util/exception? resp)
@@ -855,7 +855,7 @@
          ;; register on the network
          (<! (register-server-lease-async group 5000))
 
-         (when (async/<! (is-leader?-async group))
+         (when (<! (is-leader?-async group))
            (<? (initialize-leader group conn)))
 
          ;; monitor state changes to kick of transactions for any queues
@@ -867,11 +867,11 @@
 
          ;; create a loop to keep this server registered
          (loop []
-           (async/<! (async/timeout 3000)) ; pause 3 seconds
+           (<! (async/timeout 3000)) ; pause 3 seconds
 
            ;; TODO need to stop loop if server stopped
-           (let [registered? (async/<! (register-server-lease-async group 5000))
-                 leader?     (async/<! (is-leader?-async group))]
+           (let [registered? (<! (register-server-lease-async group 5000))
+                 leader?     (<! (is-leader?-async group))]
 
              ;; if leader, re-check worker distribute to ensure nothing is stuck
              (when (and leader? (true? registered?))
