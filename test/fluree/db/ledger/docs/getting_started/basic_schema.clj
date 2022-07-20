@@ -95,7 +95,7 @@
       (is (= 4 (:block resp)))
 
       ;; there should be 17 tempids
-      (is (= 15 (count (:tempids resp))))
+      (is (= 17 (count (:tempids resp))))
 
       ;; there should be 3 chat tempids that were not unique
       (is (= 3 (-> resp :tempids (test/get-tempid-count "chat")))))))

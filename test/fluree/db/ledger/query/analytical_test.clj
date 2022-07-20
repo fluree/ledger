@@ -2,7 +2,8 @@
   (:require [clojure.test :refer :all]
             [fluree.db.test-helpers :as test]
             [fluree.db.api :as fdb]
-            [fluree.db.util.async :refer [<??]]))
+            [fluree.db.util.async :refer [<??]]
+            [clojure.set :as set]))
 
 (use-fixtures :once test/test-system)
 
@@ -43,14 +44,21 @@
 
 (deftest with-nil-subject
   (testing "Analytical query with nil subject"
-    (let [crawl-query {:select "?nums",
-                       :where  [["$fdb", nil, "person/favNums", "?nums"]]}
-          ledger      (test/rand-ledger test/ledger-chat
-                                        {:http/schema ["chat.edn" "chat-preds.edn"]})
+    (let [crawl-query  {:select "?nums",
+                        :where  [["$fdb", nil, "person/favNums", "?nums"]]}
+          ledger       (test/rand-ledger test/ledger-chat
+                                         {:http/schema ["chat.edn" "chat-preds.edn"]})
           {:keys [block]} (test/transact-data ledger "chat.edn")
-          db          (fdb/db (:conn test/system) ledger {:syncTo block})
-          res         (<?? (fdb/query-async db crawl-query))]
-      (is (= #{7 1223 -2 28 12 9 0 1950 5 645 -1 2 98} (set res))))))
+          db           (fdb/db (:conn test/system) ledger {:syncTo block})
+          res          (<?? (fdb/query-async db crawl-query))
+          expected-set #{7 1223 -2 28 12 9 0 1950 5 645 -1 2 98 42}
+          actual-set   (set res)]
+      (is (= expected-set actual-set)
+          (if (set/subset? expected-set actual-set)
+            (str "Additional favNum(s) in query results: "
+                 (set/difference actual-set expected-set))
+            (str "Missing favNum(s) in query results: "
+                 (set/difference expected-set actual-set)))))))
 
 (deftest with-prefix-two-clauses-two-tuple-subject
   (testing "Analytical query with two clauses, two bound variables, two-tuple subjects"
@@ -158,3 +166,39 @@
       (is (every? number? res)))))
 
 ;; TODO: Write wikidata test w/ :online metadata
+
+(deftest with-supplied-vars
+  (testing "query with supplied vars should resolve correctly"
+    (let [query  {:where  [["?p" "person/handle" "?handle"]
+                           ["?p" "person/favNums" "?favNums"]
+                           ["?p" "person/user" "?username"]]
+                  :select {"?p" ["handle" "favNums" "user"]}
+                  :vars   {"?username" ["_user/username" "jake"]}}
+          ledger (test/rand-ledger test/ledger-chat
+                                   {:http/schema ["chat.edn" "chat-preds.edn"]})
+          {:keys [block]} (test/transact-data ledger "chat.edn")
+          db     (fdb/db (:conn test/system) ledger {:syncTo block})
+          res    (<?? (fdb/query-async db query))]
+      (is (= [{"handle"  "jakethesnake", :_id 351843720888324
+               "favNums" [7 42], "user" {:_id 87960930223081}}]
+             res)
+          (str "Unexpected query result: " (pr-str res))))))
+
+(deftest with-order-by-variable
+  (testing "ordering by a variable should work"
+    (let [query  {:where  [["?p" "person/handle" "?handle"]
+                           ["?p" "person/age" "?age"]]
+                  :select {"?p" ["handle" "age"]}
+                  :opts   {:orderBy ["DESC" "?age"]}}
+          ledger (test/rand-ledger test/ledger-chat
+                                   {:http/schema ["chat.edn" "chat-preds.edn"]})
+          {:keys [block]} (test/transact-data ledger "chat.edn")
+          db     (fdb/db (:conn test/system) ledger {:syncTo block})
+          res    (<?? (fdb/query-async db query))]
+      (is (= [{"handle" "dsanchez", :_id 351843720888323, "age" 70}
+              {"handle" "zsmith", :_id 351843720888321, "age" 63}
+              {"handle" "anguyen", :_id 351843720888322, "age" 34}
+              {"handle" "jakethesnake", :_id 351843720888324, "age" 29}
+              {"handle" "jdoe", :_id 351843720888320, "age" 25}]
+             res)
+          (str "Unexpected query result: " (pr-str res))))))

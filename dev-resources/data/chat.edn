@@ -34,6 +34,17 @@
   :favArtists ["artist$2"],
   :follows    "person$anguyen",
   :favMovies  ["movie$1" "movie$2" "movie$3"]}
+ {:_id      "_user$jake"
+  :username "jake"}
+ {:_id      "person$jake"
+  :handle   "jakethesnake"
+  :user     "_user$jake"
+  :fullName "Jake Parsell"
+  :active   true
+  :age      29
+  :favNums  [7 42]
+  :follows  "person$jdoe"
+  :favMovies ["movie$2"]}
  {:_id      "chat",
   :message  "Hi! I'm chat from Jane.",
   :person   "person$jdoe",

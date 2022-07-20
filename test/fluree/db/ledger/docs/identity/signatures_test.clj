@@ -3,9 +3,8 @@
             [fluree.db.test-helpers :as test]
             [fluree.db.ledger.docs.getting-started.basic-schema :as basic]
             [fluree.db.api :as fdb]
-            [fluree.db.api.auth :as fdb-auth]
             [org.httpkit.client :as http]
-            [clojure.core.async :as async :refer [<!!]]
+            [clojure.core.async :as async]
             [fluree.db.util.json :as json]
             [fluree.db.query.http-signatures :as http-signatures]))
 
@@ -58,7 +57,7 @@
       (is (every? #(= "Request requires authentication." (:message %)) resps)))))
 
 
-(deftest signed-queries-test
+(deftest ^:intermittent signed-queries-test
   (testing "/query endpoint should return filtered results"
     (let [ledger           (test/rand-ledger test/ledger-chat)
 
@@ -105,7 +104,10 @@
           responses        [root-resp person-resp no-handle-resp]
           bodies           [root-body person-body no-handle-body]]
 
-      (is (every? #(= 200 %) (map :status responses)))
+      (is (every? #(= 200 %) (map :status responses))
+          (str "Unexpected response(s): " (->> responses
+                                               (filter #(not= 200 (:status %)))
+                                               pr-str)))
 
       (is (apply = (map count bodies)))
 

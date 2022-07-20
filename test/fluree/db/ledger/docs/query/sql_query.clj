@@ -50,8 +50,8 @@
                     (fdb/sql-async query)
                     (async/<!!))]
 
-      ;; should be 3 people
-      (is (= 3 (count data)))))
+      ;; should be 4 people
+      (is (= 4 (count data)))))
 
   (testing "Select all persons younger than 34"
     (let [query "select * from person where age < 34"
@@ -59,8 +59,8 @@
                     (fdb/sql-async query)
                     (async/<!!))]
 
-      ;; should be 1 person
-      (is (= 1 (count data)))))
+      ;; should be 2 people
+      (is (= 2 (count data)))))
 
   (testing "Select all persons 34 years of age or less"
     (let [query "select * from person where age <= 34"
@@ -68,8 +68,8 @@
                     (fdb/sql-async query)
                     (async/<!!))]
 
-      ;; should be 2 people
-      (is (= 2 (count data)))))
+      ;; should be 3 people
+      (is (= 3 (count data)))))
 
   (testing "Select all persons older than 34"
     (let [query "select * from person where age > 34"
@@ -103,8 +103,8 @@
                     (fdb/sql-async query)
                     (async/<!!))]
 
-      ;; should be 10 items returned
-      (is (= 10 (count data))))))
+      ;; should be 12 items returned
+      (is (= 12 (count data))))))
 
 (deftest tests-independent
   (basic/add-collections*)
