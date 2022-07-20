@@ -853,9 +853,9 @@
          (<? (initial-file-sync group conn))
 
          ;; register on the network
-         (<! (register-server-lease-async group 5000))
+         (<? (register-server-lease-async group 5000))
 
-         (when (<! (is-leader?-async group))
+         (when (<? (is-leader?-async group))
            (<? (initialize-leader group conn)))
 
          ;; monitor state changes to kick of transactions for any queues
@@ -870,8 +870,8 @@
            (<! (async/timeout 3000)) ; pause 3 seconds
 
            ;; TODO need to stop loop if server stopped
-           (let [registered? (<! (register-server-lease-async group 5000))
-                 leader?     (<! (is-leader?-async group))]
+           (let [registered? (<? (register-server-lease-async group 5000))
+                 leader?     (<? (is-leader?-async group))]
 
              ;; if leader, re-check worker distribute to ensure nothing is stuck
              (when (and leader? (true? registered?))
