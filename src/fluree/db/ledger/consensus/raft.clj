@@ -2,6 +2,7 @@
   (:require [fluree.raft :as raft]
             [taoensso.nippy :as nippy]
             [clojure.core.async :as async :refer [<! <!! go go-loop]]
+            [clojure.set :refer [intersection]]
             [clojure.pprint :as cprint]
             [fluree.db.util.log :as log]
             [clojure.string :as str]
@@ -267,8 +268,10 @@
                                                       (= 1 block))
                                     server-allowed? (= submission-server
                                                        (get-in @state-atom [:_work :networks network]))]
-                                ;; if :new-ledger in cmd-types, then register new-ledger
-                                (when (cmd-types :new-ledger)
+                                ;; if :new-ledger or :new-db in cmd-types set, then register new-ledger
+                                (when (->> cmd-types
+                                           (intersection #{:new-db :new-ledger})
+                                           seq)
                                   (update-state/register-new-ledgers txns state-atom block-map))
 
                                 (if (and is-next-block? server-allowed?)
@@ -305,10 +308,13 @@
 
                    ;; stages a new db to be created
                    :new-ledger (update-state/stage-new-ledger command state-atom)
+                   :new-db     (update-state/stage-new-ledger command state-atom)
 
                    :delete-ledger (update-state/delete-db command state-atom)
+                   :delete-db     (update-state/delete-db command state-atom)
 
                    :initialized-ledger (update-state/initialized-ledger command state-atom)
+                   :initialized-db     (update-state/initialized-ledger command state-atom)
 
                    :new-index (update-state/new-index command state-atom)
 
