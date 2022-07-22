@@ -12,8 +12,8 @@
             clucie/clucie                  {:mvn/version "0.4.2"}
 
             ;; AWS S3 API
-            com.cognitect.aws/api          {:mvn/version "0.8.561"}
-            com.cognitect.aws/endpoints    {:mvn/version "1.1.12.230"}
+            com.cognitect.aws/api          {:mvn/version "0.8.568"}
+            com.cognitect.aws/endpoints    {:mvn/version "1.1.12.257"}
             com.cognitect.aws/s3           {:mvn/version "822.2.1145.0"}
 
             ;; web server
