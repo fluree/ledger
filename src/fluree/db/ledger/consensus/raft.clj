@@ -269,6 +269,8 @@
                                     server-allowed? (= submission-server
                                                        (get-in @state-atom [:_work :networks network]))]
                                 ;; if :new-ledger or :new-db in cmd-types set, then register new-ledger
+                                ;; TODO: Remove the `:new-db` command type in a later major release
+                                ;;       BL 2022-07-22
                                 (when (->> cmd-types
                                            (intersection #{:new-db :new-ledger})
                                            seq)
@@ -306,7 +308,9 @@
                                                                         :state-dump     @state-atom})))))
 
 
-                   ;; stages a new db to be created
+                   ;; TODO: Remove the `new-db`, `delete-db`, and
+                   ;;       `initialized-db` events in a later major release
+                   ;;       BL 2022-07-22
                    :new-ledger (update-state/stage-new-ledger command state-atom)
                    :new-db     (update-state/stage-new-ledger command state-atom)
 
