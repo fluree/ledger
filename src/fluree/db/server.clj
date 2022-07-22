@@ -78,6 +78,9 @@
       (try-continue (:close conn)))
     (ftcp/shutdown-client-event-loop (:this-server group))))
 
+(defn runtime-env
+  []
+  (settings/build-env @environ/runtime-env))
 
 (defn check-version-upgrade-fn
   "Called whenever server newly becomes leader to upgrade raft data if needed."
@@ -94,7 +97,9 @@
 
             ;; Current version > data-version, shutdown
             (< current-version data-version)
-            (do (log/warn (str "Current data version: " current-version " is greater than the data version of Fluree currently running: " data-version ". Please retry this data with a more recent FlureeDB."))
+            (do (log/warn "Current data version:" current-version
+                          "is greater than the data version of Fluree currently running:" data-version
+                          ". Please retry this data with a more recent FlureeDB.")
                 (shutdown system)
                 (System/exit 1))
 
@@ -138,7 +143,7 @@
       (= :reindex)))
 
 (defn startup
-  ([] (startup (settings/build-env @environ/runtime-env)))
+  ([] (startup (runtime-env)))
   ([settings]
    (log/info "Starting Fluree in mode:" (:fdb-mode settings))
    (log/info "Starting with config:\n" (with-out-str
@@ -221,6 +226,15 @@
 
      system*)))
 
+(defn reindex
+  [settings]
+  (let [{:keys [conn] :as system} (startup settings)]
+    (try (<?? (reindex-all conn))
+         (catch Exception e
+           (log/error e "Failed to rebuild indexes."))
+         (finally
+           (shutdown system)))))
+
 (defn- execute-command
   "Execute some arbitrary commands on FlureeDB (then exit)"
   [command]
@@ -234,12 +248,7 @@
       (println "Account id:" account-id))
 
     :reindex
-    (let [{:keys [conn] :as system} (startup)]
-      (try (<?? (reindex-all conn))
-           (catch Exception e
-             (log/error e "Failed to rebuild indexes."))
-           (finally
-             (shutdown system))))
+    (reindex (runtime-env))
 
     ;; else
     (println (str "Unknown command: " command)))

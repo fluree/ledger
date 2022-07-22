@@ -159,41 +159,23 @@
 
 (defn v3->v4
   "Connect just add _tx/hash, as it needs to be subject _id 99."
-  []
+  [_conn]
   (go-try
-    (throw (ex-info "Cannot update ledger from version 3 to version 4. No forwards
-    compatible."
+    (throw (ex-info "Cannot update ledger from version 3 to version 4. No forwards compatible."
                     {:status 400
                      :error  :db/invalid-request}))))
 
-;; TODO - Refactor this function
+(def upgrade-fns
+  [v1->v2 v2->v3 v3->v4])
+
 (defn upgrade
-  "Synchronous"
   [conn from-v to-v]
-  (let [from-v (or from-v 1)
-        to-v   (or to-v const/data_version)] ;; v0-9-5-PREVIEW2 was first version marker we used - default
-    (cond
-      (= from-v to-v)
-      true ;; no upgrade
-
-      (= [1 2] [from-v to-v])
-      (<?? (v1->v2 conn))
-
-      (= [1 3] [from-v to-v])
-      (do (<?? (v1->v2 conn))
-          (<?? (v2->v3 conn)))
-
-      (= [1 4] [from-v to-v])
-      (do (<?? (v1->v2 conn))
-          (<?? (v2->v3 conn))
-          (<?? (v3->v4)))
-
-      (= [2 3] [from-v to-v])
-      (<?? (v2->v3 conn))
-
-      (= [2 4] [from-v to-v])
-      (do (<?? (v2->v3 conn))
-          (<?? (v3->v4)))
-
-      (= [3 4] [from-v to-v])
-      (<?? (v3->v4)))))
+  (let [from-v   (or from-v 1)
+        to-v     (or to-v const/data_version)  ; v0-9-5-PREVIEW2 was first version
+                                               ; marker we used - default
+        fn-range (subvec upgrade-fns (dec from-v) (dec to-v))]
+    (when (seq fn-range)
+      (log/info "Upgrading ledgers from data version" from-v
+                "to data version" to-v)
+      (doseq [upgrade-fn fn-range]
+        (<?? (upgrade-fn conn))))))

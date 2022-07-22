@@ -1,7 +1,8 @@
 (ns fluree.db.ledger.consensus.raft
   (:require [fluree.raft :as raft]
             [taoensso.nippy :as nippy]
-            [clojure.core.async :as async :refer [<! <!! go-loop]]
+            [clojure.core.async :as async :refer [<! <!! go go-loop]]
+            [clojure.set :refer [intersection]]
             [clojure.pprint :as cprint]
             [fluree.db.util.log :as log]
             [clojure.string :as str]
@@ -124,13 +125,13 @@
   ([raft] (leader-async raft 60000))
   ([raft timeout]
    (let [timeout-time (+ (System/currentTimeMillis) timeout)]
-     (async/go-loop [retries 0]
+     (go-loop [retries 0]
        (let [resp-chan (async/promise-chan)
              _         (get-raft-state raft (fn [state]
                                               (if-let [leader (:leader state)]
                                                 (async/put! resp-chan leader)
                                                 (async/close! resp-chan))))
-             resp      (async/<! resp-chan)]
+             resp      (<! resp-chan)]
          (cond
            resp resp
 
@@ -140,14 +141,14 @@
 
            :else
            (do
-             (async/<! (async/timeout 100))
+             (<! (async/timeout 100))
              (recur (inc retries)))))))))
 
 
 (defn is-leader?-async
   [raft]
-  (async/go
-    (let [leader (async/<! (leader-async raft))]
+  (go
+    (let [leader (<! (leader-async raft))]
       (if (instance? Throwable leader)
         leader
         (= (:this-server raft) leader)))))
@@ -155,7 +156,7 @@
 
 (defn is-leader?
   [raft]
-  (let [leader? (async/<!! (is-leader?-async raft))]
+  (let [leader? (<!! (is-leader?-async raft))]
     (if (instance? Throwable leader?)
       (throw leader?)
       leader?)))
@@ -267,8 +268,12 @@
                                                       (= 1 block))
                                     server-allowed? (= submission-server
                                                        (get-in @state-atom [:_work :networks network]))]
-                                ;; if :new-ledger in cmd-types, then register new-ledger
-                                (when (cmd-types :new-ledger)
+                                ;; if :new-ledger or :new-db in cmd-types set, then register new-ledger
+                                ;; TODO: Remove the `:new-db` command type in a later major release
+                                ;;       BL 2022-07-22
+                                (when (->> cmd-types
+                                           (intersection #{:new-db :new-ledger})
+                                           seq)
                                   (update-state/register-new-ledgers txns state-atom block-map))
 
                                 (if (and is-next-block? server-allowed?)
@@ -303,12 +308,17 @@
                                                                         :state-dump     @state-atom})))))
 
 
-                   ;; stages a new db to be created
+                   ;; TODO: Remove the `new-db`, `delete-db`, and
+                   ;;       `initialized-db` events in a later major release
+                   ;;       BL 2022-07-22
                    :new-ledger (update-state/stage-new-ledger command state-atom)
+                   :new-db     (update-state/stage-new-ledger command state-atom)
 
                    :delete-ledger (update-state/delete-db command state-atom)
+                   :delete-db     (update-state/delete-db command state-atom)
 
                    :initialized-ledger (update-state/initialized-ledger command state-atom)
+                   :initialized-db     (update-state/initialized-ledger command state-atom)
 
                    :new-index (update-state/new-index command state-atom)
 
@@ -459,9 +469,9 @@
             :storage-read
             (let [file-key data]
               (log/debug "Storage read for key: " file-key)
-              (async/go
+              (go
                 (-> (storage/read {:storage-read key-storage-read-fn} file-key)
-                    (async/<!)
+                    <!
                     (callback))))
 
             :new-command
@@ -563,7 +573,7 @@
 
 (defn state
   [raft]
-  (let [state (async/<!! (get-raft-state-async raft))]
+  (let [state (<!! (get-raft-state-async raft))]
     (if (instance? Throwable state)
       (throw state)
       state)))
@@ -609,7 +619,7 @@
      resp-chan))
   ([group newServer timeout-ms callback]
    (go-try (let [raft'  (:raft group)
-                 leader (async/<! (leader-async group))
+                 leader (<! (leader-async group))
                  id     (str (UUID/randomUUID))]
              (if (= (:this-server raft') leader)
                (let [command-chan (-> group :command-chan)]
@@ -633,7 +643,7 @@
      resp-chan))
   ([group server timeout-ms callback]
    (go-try (let [raft'  (:raft group)
-                 leader (async/<! (leader-async group))
+                 leader (<! (leader-async group))
                  id     (str (UUID/randomUUID))]
              (if (= (:this-server raft') leader)
                (let [command-chan (-> group :command-chan)]
@@ -676,7 +686,7 @@
 
 
 
-(defn index-fully-committed?
+(defn ensure-fully-committed-index
   "Returns a core async channel that will eventually return the index/commit once they are both equal.
 
   This helps when building state machine at startup if there is no pre-existing leader.
@@ -689,14 +699,14 @@
   Note if massively high volume, could be that commit and index are never equal. Not likely but in
   this case we eventually return an exception if we retry 10000 times just to have an upper bounds.
   Exception doesn't throw, be sure to check for it."
-  ([raft] (index-fully-committed? raft false))
+  ([raft] (ensure-fully-committed-index raft false))
   ([raft leader-only?]
-   (async/go-loop [retries 0
+   (go-loop [retries 0
                    last-status nil]
-     (let [rs (async/<! (get-raft-state-async raft))
+     (let [rs (<! (get-raft-state-async raft))
            {:keys [commit index status latest-index]} rs]
        (when (not= last-status [commit index status latest-index])
-         (log/trace (str "index-fully-committed?: retry: " retries
+         (log/trace (str "ensure-fully-committed-index: retry: " retries
                          " [commit index status latest-index] is: " [commit index status latest-index])))
        (cond
 
@@ -708,12 +718,12 @@
 
 
          (> retries 10000)
-         (ex-info (str "Raft index-fully-committed? loop tried 10000 times without a change. Latest state: " (pr-str rs))
+         (ex-info (str "Raft ensure-fully-committed-index loop tried 10000 times without a change. Latest state: " (pr-str rs))
                   {:status 500 :error :db/unexpected-error})
 
          :else
          (do
-           (async/<! (async/timeout 100))
+           (<! (async/timeout 100))
            (recur (inc retries) [commit index status latest-index])))))))
 
 
@@ -765,7 +775,7 @@
   [{:keys [group] :as conn}]
   (go-try
     (try
-      (let [ledgers (async/<! (ledger-storage/ledgers conn))
+      (let [ledgers (<! (ledger-storage/ledgers conn))
             time    (System/currentTimeMillis)]
         (when (util/exception? ledgers)
           (log/error ledgers (str "EXITING: No raft state, and error reading existing ledger files: " (ex-message ledgers)
@@ -779,7 +789,7 @@
                                 :index   index
                                 :indexes (into {} (map #(vector % time) indexes))
                                 :status  :ready}
-                  resp         (async/<! (new-entry-async group [:assoc-in
+                  resp         (<! (new-entry-async group [:assoc-in
                                                                  [:networks network :ledgers ledger]
                                                                  ledger-state]))]
               (when (util/exception? resp)
@@ -805,80 +815,84 @@
         x
         (recur)))))
 
+(defn initial-file-sync
+  "Synchronize files to eliminate possible gaps in the committed raft state. "
+  [group conn]
+  (go
+    (when (some? (-> conn :meta :file-storage-path)) ; TODO: Support full-text indexes on s3 storage too
+      (let [ledgers-info (txproto/ledgers-info-map conn)
+            others       (-> group :raft :other-servers)]
+        (when-let [exception (<! (filter-exception
+                                  (dbsync2/consistency-full-check conn ledgers-info others)))]
+          (dbsync2/terminate! conn (str "Terminating due to file syncing error, "
+                                        "unable to sync required files with other servers.")
+                              exception))
+        (when-let [exception (<! (filter-exception
+                                  (dbsync2/check-full-text-synced conn ledgers-info)))]
+          (dbsync2/terminate! conn (str "Terminating due to full text index syncing error, "
+                                        "unable to sync index with the current ledgers.")
+                              exception))
+        (log/debug "All database files synchronized.")))))
+
+(defn initialize-leader
+  [group conn]
+  (go-try
+   (let [new-instance? (empty? (txproto/get-shared-private-key group))]
+     (if new-instance?
+       (let [config-private-key (:tx-private-key conn)
+             generated-key      (when-not config-private-key
+                                  (crypto/generate-key-pair))
+             private-key        (or config-private-key
+                                    (:private generated-key))]
+         (log/info "Brand new Fluree instance.")
+         (if config-private-key
+           (log/info "Using default private key obtained from configuration settings.")
+           (log/info (str "Generating brand new default key pair, public key is: " (:public generated-key))))
+         (txproto/set-shared-private-key (:group conn) private-key)
+         (<? (check-existing-ledgers-on-disk conn)))
+       ;; not a new instance, but just started as leader - could have old
+       ;; raft files that don't have latest blocks. Check, and potentially add latest block
+       ;; files to network.
+       (<? (check-if-newer-blocks-on-disk conn))))))
+
 (defn raft-start-up
-  [group conn system* shutdown _]
-  (async/go
-    (try (let [fully-committed? (async/<! (index-fully-committed? group true))]
-           (when (instance? Throwable fully-committed?)
-             (log/error fully-committed? "Exception when initializing raft. Shutting down.")
-             (shutdown system*)
-             (System/exit 1))
+  [group conn system shutdown _]
+  (go
+    (try (<? (ensure-fully-committed-index group true))
 
-           ;; do an initial file sync... the committed raft may contain blocks that end up leaving gaps
-           (let [file-storage? (some? (-> conn :meta :file-storage-path))]
-             (when file-storage?                            ; TODO: Support full-text indexes on s3 storage too
-               (let [ledgers-info (txproto/ledgers-info-map conn)
-                     others       (-> group :raft :other-servers)]
-                 (when-let [exception (<! (filter-exception
-                                           (dbsync2/consistency-full-check conn ledgers-info others)))]
-                   (dbsync2/terminate! conn (str "Terminating due to file syncing error, "
-                                                 "unable to sync required files with other servers.")
-                                       exception))
-                 (when-let [exception (<! (filter-exception
-                                           (dbsync2/check-full-text-synced conn ledgers-info)))]
-                   (dbsync2/terminate! conn (str "Terminating due to full text index syncing error, "
-                                                 "unable to sync index with the current ledgers.")
-                                       exception))
-                 (log/debug "All database files synchronized."))))
+         (<? (initial-file-sync group conn))
 
-           ;; register on the network
-           (async/<! (register-server-lease-async group 5000))
+         ;; register on the network
+         (<? (register-server-lease-async group 5000))
 
-           (when (async/<! (is-leader?-async group))
-             (let [new-instance? (empty? (txproto/get-shared-private-key group))]
-               (if new-instance?
-                 (let [config-private-key (:tx-private-key conn)
-                       generated-key      (when-not config-private-key
-                                            (crypto/generate-key-pair))
-                       private-key        (or config-private-key
-                                              (:private generated-key))]
-                   (log/info "Brand new Fluree instance.")
-                   (if config-private-key
-                     (log/info "Using default private key obtained from configuration settings.")
-                     (log/info (str "Generating brand new default key pair, public key is: " (:public generated-key))))
-                   (txproto/set-shared-private-key (:group conn) private-key)
-                   (<? (check-existing-ledgers-on-disk conn)))
-                 ;; not a new instance, but just started as leader - could have old
-                 ;; raft files that don't have latest blocks. Check, and potentially add latest block
-                 ;; files to network.
-                 (<? (check-if-newer-blocks-on-disk conn)))))
+         (when (<? (is-leader?-async group))
+           (<? (initialize-leader group conn)))
 
+         ;; monitor state changes to kick of transactions for any queues
+         (register-state-change-fn (str (UUID/randomUUID))
+                                   (partial group-monitor/state-updates-monitor system))
 
-           ;; monitor state changes to kick of transactions for any queues
-           (register-state-change-fn (str (UUID/randomUUID))
-                                     (partial group-monitor/state-updates-monitor system*))
+         ;; in case we are responsible for networks but some exist in current queue, kick them off
+         (group-monitor/kick-all-assigned-networks-with-queue conn)
 
-           ;; in case we are responsible for networks but some exist in current queue, kick them off
-           (group-monitor/kick-all-assigned-networks-with-queue conn)
+         ;; create a loop to keep this server registered
+         (loop []
+           (<! (async/timeout 3000)) ; pause 3 seconds
 
-           ;; create a loop to keep this server registered
-           (loop []
-             (let [;; pause 3 seconds
-                   _           (async/<! (async/timeout 3000))
-                   ;; TODO need to stop loop if server stopped
-                   registered? (async/<! (register-server-lease-async group 5000))
-                   leader?     (async/<! (is-leader?-async group))]
+           ;; TODO need to stop loop if server stopped
+           (let [registered? (<? (register-server-lease-async group 5000))
+                 leader?     (<? (is-leader?-async group))]
 
-               ;; if leader, re-check worker distribute to ensure nothing is stuck
-               (when (and leader? (true? registered?))
-                 (group-monitor/redistribute-workers group)))
+             ;; if leader, re-check worker distribute to ensure nothing is stuck
+             (when (and leader? (true? registered?))
+               (group-monitor/redistribute-workers group)))
 
-             (recur)))
+           (recur))
 
          (catch Exception e
            (log/warn "Error during raft initialization. Shutting down system")
            (log/error e)
-           (shutdown system*)
+           (shutdown system)
            (System/exit 1)))))
 
 
