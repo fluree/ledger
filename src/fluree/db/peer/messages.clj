@@ -82,7 +82,8 @@
         ; 1) execute the query or 2) queue the execution of the signed query?
         (case action
           :query
-          (let [result (async/<!! (fdb/query-async db (assoc-in qry [:opts :meta] meta)))
+          (let [_ (log/debug ":signed-qry w/ :query db:" db "\nquery:" qry "\nmeta:" meta)
+                result (async/<!! (fdb/query-async db (assoc-in qry [:opts :meta] meta)))
                 _      (when (instance? clojure.lang.ExceptionInfo result)
                          (throw result))]
             result)
