@@ -170,11 +170,14 @@ if [ "$1" == "test" ]; then
   exit 0
 fi
 
-FDB_LOG_LEVEL=${FDB_LOG_LEVEL:-INFO}
+FLUREE_DB_LOG_LEVEL=${FLUREE_DB_LOG_LEVEL:-INFO}
+FLUREE_RAFT_LOG_LEVEL=${FLUREE_RAFT_LOG_LEVEL:-INFO}
 
 echo "Fluree ledger starting with properties file: ${FLUREE_PROPERTIES}"
 echo "Fluree ledger starting with java options: ${XMS} ${XMX} ${JAVA_OPTS}"
-echo "fluree.db log level is ${FDB_LOG_LEVEL}"
+echo "fluree.db log level is ${FLUREE_DB_LOG_LEVEL}"
+echo "fluree.raft log level is ${FLUREE_RAFT_LOG_LEVEL}"
 
 exec ${JAVA_X} -server ${XMX} ${XMS} ${JAVA_OPTS} ${FLUREE_ARGS} -Dfdb.properties.file=${FLUREE_PROPERTIES} \
-  -Dfdb.log.ansi -Dfdb.log.level=${FDB_LOG_LEVEL} -Dlogback.configurationFile=${FLUREE_LOGBACK_CONFIGURATION_FILE} -jar ${FLUREE_SERVER}
+  -Dfdb.log.ansi -Dfluree.db.log.level=${FLUREE_DB_LOG_LEVEL} -Dfluree.raft.log.level=${FLUREE_RAFT_LOG_LEVEL} \
+  -Dlogback.configurationFile=${FLUREE_LOGBACK_CONFIGURATION_FILE} -jar ${FLUREE_SERVER}

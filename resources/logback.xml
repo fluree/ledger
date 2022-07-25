@@ -29,7 +29,8 @@
     </root>
 
     <logger name="ch.qos.logback" level="WARN"/>
-    <logger name="fluree.db" level="${fdb.log.level}"/>
+    <logger name="fluree.db" level="${fluree.db.log.level}"/>
+    <logger name="fluree.raft" level="${fluree.raft.log.level}"/>
 
 </configuration>
 
