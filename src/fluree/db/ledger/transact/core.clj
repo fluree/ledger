@@ -246,6 +246,7 @@
 (defn resolve-object
   "Resolves object into its final state so can be used for consistent comparisons with existing data."
   [object _id pred-info tx-state]
+  (log/debug "Resolving object:" object "for pred:" pred-info)
   (let [multi? (pred-info :multi)]
     (if (nil? object)
       (async/go :delete) ;; delete any existing object
@@ -267,6 +268,7 @@
   Performs some logic to determine if the new flake should get added at
   all (i.e. if retract-flake is identical to the new flake)."
   [flakes ^Flake new-flake ^Flake retract-flake pred-info tx-state]
+  (log/debug "add-singleton-flake new-flake:" new-flake "retract-flake:" retract-flake)
   (cond
     ;; no retraction flake, always add
     (nil? retract-flake)
@@ -297,7 +299,9 @@
                    if the tempid is resolved via a ':unique true' predicate
                    need to look up and retract any existing flakes with same subject+predicate
   - _temp-multi-flakes - multi-flakes that need permanent ids yet, but then act like _multi-flakes"
-  [{:keys [db-before t tempids] :as tx-state} {:keys [_id _action _meta] :as txi} res-chan]
+  [{:keys [db-before t tempids upserts] :as tx-state}
+   {:keys [_id _action _meta] :as txi}
+   res-chan]
   (async/go
     (try
       (let [_p-o-pairs (dissoc txi :_id :_action :_meta)
@@ -367,16 +371,20 @@
                     (recur acc** r))
 
                   (or tempid? (tempid/TempId? obj*))
-                  (-> acc
-                      (update :_temp-flakes conj (flake/->Flake _id** pid obj* t true nil))
-                      (recur r))
+                  (do
+                    (swap! upserts conj _id**) ; make sure we retract the old value
+                    (-> acc
+                        (update :_temp-flakes conj (flake/->Flake _id** pid obj* t true nil))
+                        (recur r)))
 
                   ;; single-cardinality, and no tempid - we can make final and also do the lookup here
                   ;; for a retraction flake, if present
                   :else
                   (let [new-flake     (flake/->Flake _id** pid obj* t true nil)
+                        _             (log/debug "new-flake:" (pr-str new-flake))
                         ;; need to see if an existing flake exists that needs to get retracted
                         retract-flake (first (<? (tx-retract/flake _id** pid nil tx-state)))
+                        _             (log/debug "retract-flake:" (pr-str retract-flake))
                         final-flakes  (add-singleton-flake (:_final-flakes acc) new-flake retract-flake pred-info tx-state)]
                     (recur (assoc acc :_final-flakes final-flakes) r)))))))
         (async/close! res-chan))
@@ -480,7 +488,7 @@
      :idents           (atom {})
      ;; if a tempid resolves to existing subject via :upsert predicate, set it here. tempids don't need
      ;; to check for existing duplicate values, but if a tempid resolves via upsert, we need to check it
-     :upserts          (atom nil) ;; cache of resolved identities
+     :upserts          (atom #{}) ;; cache of resolved identities
      ;; Unique predicate + value used in transaction kept here, to ensure the same unique is not used
      ;; multiple times within the transaction
      :uniques          (atom #{})

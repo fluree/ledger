@@ -19,14 +19,6 @@
 (def scott {:auth        "TfCFawNeET5FFHAfES61vMf9aGc1vmehjT2"
             :private-key "a603e772faec02056d4ec3318187487d62ec46647c0cba7320c7f2a79bed2615"})
 
-
-;; Helper function: Query-as auth
-(defn query-as
-  [auth]
-  (-> (basic/get-db test/ledger-invoice {:auth ["_auth/id" auth]})
-      (fdb/query-async {:select ["*"] :from "invoice"})
-      async/<!!))
-
 ;; Helper function: Get values for key
 (defn get-values-for-key
   [m k]
@@ -73,6 +65,15 @@
 
       ;; there should be 14 tempids
       (is (= 14 (count (:tempids data-resp)))))))
+
+;; Helper function: Query-as auth
+(defn query-as
+  [auth]
+  (let [exp-blk 3]
+    (-> (basic/get-db test/ledger-invoice {:auth ["_auth/id" auth]
+                                           :syncTo exp-blk})
+        (fdb/query-async {:select ["*"] :from "invoice"})
+        async/<!!)))
 
 ;; Verify each user's results:
 ;; 1) Freddie can see all

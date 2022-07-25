@@ -472,7 +472,7 @@
               (go
                 (-> (storage/read {:storage-read key-storage-read-fn} file-key)
                     <!
-                    (callback))))
+                    callback)))
 
             :new-command
             (let [{:keys [id entry]} data
@@ -685,7 +685,6 @@
       false)))
 
 
-
 (defn ensure-fully-committed-index
   "Returns a core async channel that will eventually return the index/commit once they are both equal.
 
@@ -702,7 +701,7 @@
   ([raft] (ensure-fully-committed-index raft false))
   ([raft leader-only?]
    (go-loop [retries 0
-                   last-status nil]
+             last-status nil]
      (let [rs (<! (get-raft-state-async raft))
            {:keys [commit index status latest-index]} rs]
        (when (not= last-status [commit index status latest-index])
@@ -773,7 +772,7 @@
 
 (defn check-existing-ledgers-on-disk
   [{:keys [group] :as conn}]
-  (go-try
+  (go
     (try
       (let [ledgers (<! (ledger-storage/ledgers conn))
             time    (System/currentTimeMillis)]
@@ -804,6 +803,7 @@
                           "raft state: " (ex-message e)))
         (System/exit 1)))))
 
+
 (defn filter-exception
   "Return a channel that will eventually contain the first exception passed
   through `ch` or closing without any values if no exceptions pass through
@@ -814,6 +814,7 @@
       (if (exception? x)
         x
         (recur)))))
+
 
 (defn initial-file-sync
   "Synchronize files to eliminate possible gaps in the committed raft state. "
@@ -833,6 +834,7 @@
                                         "unable to sync index with the current ledgers.")
                               exception))
         (log/debug "All database files synchronized.")))))
+
 
 (defn initialize-leader
   [group conn]
@@ -854,6 +856,7 @@
        ;; raft files that don't have latest blocks. Check, and potentially add latest block
        ;; files to network.
        (<? (check-if-newer-blocks-on-disk conn))))))
+
 
 (defn raft-start-up
   [group conn system shutdown _]
@@ -889,7 +892,7 @@
 
            (recur))
 
-         (catch Exception e
+      (catch Exception e
            (log/warn "Error during raft initialization. Shutting down system")
            (log/error e)
            (shutdown system)
@@ -996,5 +999,5 @@
 
 
     (-> (assoc raft-instance :raft-initialized raft-initialized-chan
-                             :close close-fn)
+               :close close-fn)
         map->RaftGroup)))

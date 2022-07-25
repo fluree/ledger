@@ -742,7 +742,7 @@
         ledger       (keyword nw ledger-id)
         auth-map     (auth-map system ledger request body-str)
         session      (session/session conn [nw ledger-id])
-        db          (<?? (session/current-db session))
+        db           (<?? (session/current-db session))
         ;; TODO - root role just checks if the auth has a role with id 'root' this can
         ;; be manipulated, so we need a better way of handling this.
         _            (when-not (or (open-api? system)
