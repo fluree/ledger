@@ -98,7 +98,7 @@
               json-encode? (or (map? body) (sequential? body) (boolean? body) (number? body))]
           (if (>= status 500)
             (log/error e "Server exception:" body)
-            (log/info "Request exception:" body))
+            (log/error e "Request exception:" body))
           (cond-> {:status status :headers headers :body body}
                   json-encode?
                   (assoc :headers (merge headers {"content-type" "application/json; charset=UTF-8"})
@@ -457,9 +457,12 @@
           db       (fdb/db conn ledger db-opts)]
       (case action
         :query
-        (let [query (update param :opts merge {:meta true, :open-api open-api})
-              res   (<? (fdb/query-async db query))]
-          [(dissoc res :result) (:result res)])
+        (do
+          (log/debug "action-handler :default param:" param)
+          (let [query (update param :opts merge {:meta true, :open-api open-api})
+                _     (log/debug "action-handler :default calling query-async w/ db:" db "\nquery:" query)
+                res   (<? (fdb/query-async db query))]
+            [(dissoc res :result) (:result res)]))
 
         :multi-query
         (let [query (update param :opts merge {:meta true, :open-api open-api})
