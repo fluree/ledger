@@ -43,10 +43,10 @@
         auth-id  (try
                    (crypto/account-id-from-message (or signed cmd) sig)
                    (catch Exception _ (throw-invalid-command "Invalid signature on command.")))]
-    (log/trace "Processing signed command:" (pr-str signed-cmd))
+    (log/debug "Processing signed command:" (pr-str signed-cmd))
     (case cmd-type
       :tx (let [{:keys [ledger tx deps expire nonce]} cmd-data
-                _ (log/trace "tx command:" cmd-data)
+                _ (log/debug "tx command:" cmd-data)
                 _ (when-not ledger (throw-invalid-command "No ledger specified for transaction."))
                 [network ledger-id] (session/resolve-ledger conn ledger)]
             (when-not tx
