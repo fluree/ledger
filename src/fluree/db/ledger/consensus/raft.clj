@@ -72,6 +72,27 @@
       (<?? (storage-write file snapshot-data)))))
 
 
+(defn snapshot-dbs->ledgers
+  "Replaces :dbs keys w/ :ledgers in snapshot data."
+  [snapshot]
+  (reduce
+    (fn [snap network]
+      (if-let [dbs (get-in snap [:networks network :dbs])]
+        (-> snap
+            (assoc-in [:networks network :ledgers] dbs)
+            (update-in [:networks network] dissoc :dbs))
+        snap))
+    snapshot (-> snapshot :networks keys)))
+
+
+(defn upgrade-snapshot
+  "Upgrades old snapshots to the latest format so we can ensure the in-memory
+  data structure is consistent with the code."
+  [snapshot]
+  ;; Thread snapshot through additional upgrade fns here when/if necessary
+  (snapshot-dbs->ledgers snapshot))
+
+
 (defn snapshot-reify
   "Reifies a snapshot, should populate whatever data is needed into an initialized state machine
   that is used for raft.
@@ -81,12 +102,13 @@
   [{:keys [path state-atom storage-read]}]
   (fn [snapshot-id]
     (try
-      (let [file  (str path snapshot-id ".snapshot")
-            _     (log/debug "Reifying snapshot" file)
-            data  (<?? (storage-read file))
-            state (when data (nippy/thaw data))]
-        (log/debug "Read snapshot data:" state)
-        (reset! state-atom state))
+      (let [file   (str path snapshot-id ".snapshot")
+            _      (log/debug "Reifying snapshot" file)
+            data   (<?? (storage-read file))
+            state  (when data (nippy/thaw data))
+            state' (upgrade-snapshot state)]
+        (log/debug "Read snapshot data:" state')
+        (reset! state-atom state'))
       (catch Exception e (log/error e "Error reifying snapshot: " snapshot-id)))))
 
 
