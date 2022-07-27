@@ -72,6 +72,27 @@
       (<?? (storage-write file snapshot-data)))))
 
 
+(defn snapshot-dbs->ledgers
+  "Replaces :dbs keys w/ :ledgers in snapshot data."
+  [snapshot]
+  (reduce
+    (fn [snap network]
+      (if-let [dbs (get-in snap [:networks network :dbs])]
+        (-> snap
+            (assoc-in [:networks network :ledgers] dbs)
+            (update-in [:networks network] dissoc :dbs))
+        snap))
+    snapshot (-> snapshot :networks keys)))
+
+
+(defn upgrade-snapshot
+  "Upgrades old snapshots to the latest format so we can ensure the in-memory
+  data structure is consistent with the code."
+  [snapshot]
+  ;; Thread snapshot through additional upgrade fns here when/if necessary
+  (snapshot-dbs->ledgers snapshot))
+
+
 (defn snapshot-reify
   "Reifies a snapshot, should populate whatever data is needed into an initialized state machine
   that is used for raft.
@@ -81,12 +102,13 @@
   [{:keys [path state-atom storage-read]}]
   (fn [snapshot-id]
     (try
-      (let [file  (str path snapshot-id ".snapshot")
-            _     (log/debug "Reifying snapshot" file)
-            data  (<?? (storage-read file))
-            state (when data (nippy/thaw data))]
-        (log/debug "Read snapshot data:" state)
-        (reset! state-atom state))
+      (let [file   (str path snapshot-id ".snapshot")
+            _      (log/debug "Reifying snapshot" file)
+            data   (<?? (storage-read file))
+            state  (when data (nippy/thaw data))
+            state' (upgrade-snapshot state)]
+        (log/debug "Read snapshot data:" state')
+        (reset! state-atom state'))
       (catch Exception e (log/error e "Error reifying snapshot: " snapshot-id)))))
 
 
@@ -286,9 +308,9 @@
                                            (fn [state] (update-state/update-ledger-block network ledger-id txids state block)))
 
                                     (log/info (str network "/" ledger-id " new-block " {:block         block
-                                                                                   :txns          txids
-                                                                                   :server        submission-server
-                                                                                   :network-queue (count (get-in @state-atom [:cmd-queue network]))}))
+                                                                                        :txns          txids
+                                                                                        :server        submission-server
+                                                                                        :network-queue (count (get-in @state-atom [:cmd-queue network]))}))
 
                                     ;; publish new-block event
                                     (event-bus/publish :block [network ledger-id] block-map)
@@ -312,13 +334,13 @@
                    ;;       `initialized-db` events in a later major release
                    ;;       BL 2022-07-22
                    :new-ledger (update-state/stage-new-ledger command state-atom)
-                   :new-db     (update-state/stage-new-ledger command state-atom)
+                   :new-db (update-state/stage-new-ledger command state-atom)
 
                    :delete-ledger (update-state/delete-db command state-atom)
-                   :delete-db     (update-state/delete-db command state-atom)
+                   :delete-db (update-state/delete-db command state-atom)
 
                    :initialized-ledger (update-state/initialized-ledger command state-atom)
-                   :initialized-db     (update-state/initialized-ledger command state-atom)
+                   :initialized-db (update-state/initialized-ledger command state-atom)
 
                    :new-index (update-state/new-index command state-atom)
 
@@ -709,7 +731,7 @@
                          " [commit index status latest-index] is: " [commit index status latest-index])))
        (cond
 
-         (and (>= index latest-index) status)               ;; status will be 'nil' until leader or follower initiating
+         (and (>= index latest-index) status) ;; status will be 'nil' until leader or follower initiating
          (if (or (not leader-only?)
                  (= :leader status))
            commit
@@ -789,8 +811,8 @@
                                 :indexes (into {} (map #(vector % time) indexes))
                                 :status  :ready}
                   resp         (<! (new-entry-async group [:assoc-in
-                                                                 [:networks network :ledgers ledger]
-                                                                 ledger-state]))]
+                                                           [:networks network :ledgers ledger]
+                                                           ledger-state]))]
               (when (util/exception? resp)
                 (log/error resp (str "EXITING: Unexpected raft error syncing existing ledgers at startup. "
                                      "Error occurred when syncing ledger: " network "/" ledger
@@ -824,12 +846,12 @@
       (let [ledgers-info (txproto/ledgers-info-map conn)
             others       (-> group :raft :other-servers)]
         (when-let [exception (<! (filter-exception
-                                  (dbsync2/consistency-full-check conn ledgers-info others)))]
+                                   (dbsync2/consistency-full-check conn ledgers-info others)))]
           (dbsync2/terminate! conn (str "Terminating due to file syncing error, "
                                         "unable to sync required files with other servers.")
                               exception))
         (when-let [exception (<! (filter-exception
-                                  (dbsync2/check-full-text-synced conn ledgers-info)))]
+                                   (dbsync2/check-full-text-synced conn ledgers-info)))]
           (dbsync2/terminate! conn (str "Terminating due to full text index syncing error, "
                                         "unable to sync index with the current ledgers.")
                               exception))
@@ -839,23 +861,23 @@
 (defn initialize-leader
   [group conn]
   (go-try
-   (let [new-instance? (empty? (txproto/get-shared-private-key group))]
-     (if new-instance?
-       (let [config-private-key (:tx-private-key conn)
-             generated-key      (when-not config-private-key
-                                  (crypto/generate-key-pair))
-             private-key        (or config-private-key
-                                    (:private generated-key))]
-         (log/info "Brand new Fluree instance.")
-         (if config-private-key
-           (log/info "Using default private key obtained from configuration settings.")
-           (log/info (str "Generating brand new default key pair, public key is: " (:public generated-key))))
-         (txproto/set-shared-private-key (:group conn) private-key)
-         (<? (check-existing-ledgers-on-disk conn)))
-       ;; not a new instance, but just started as leader - could have old
-       ;; raft files that don't have latest blocks. Check, and potentially add latest block
-       ;; files to network.
-       (<? (check-if-newer-blocks-on-disk conn))))))
+    (let [new-instance? (empty? (txproto/get-shared-private-key group))]
+      (if new-instance?
+        (let [config-private-key (:tx-private-key conn)
+              generated-key      (when-not config-private-key
+                                   (crypto/generate-key-pair))
+              private-key        (or config-private-key
+                                     (:private generated-key))]
+          (log/info "Brand new Fluree instance.")
+          (if config-private-key
+            (log/info "Using default private key obtained from configuration settings.")
+            (log/info (str "Generating brand new default key pair, public key is: " (:public generated-key))))
+          (txproto/set-shared-private-key (:group conn) private-key)
+          (<? (check-existing-ledgers-on-disk conn)))
+        ;; not a new instance, but just started as leader - could have old
+        ;; raft files that don't have latest blocks. Check, and potentially add latest block
+        ;; files to network.
+        (<? (check-if-newer-blocks-on-disk conn))))))
 
 
 (defn raft-start-up
@@ -892,11 +914,11 @@
 
            (recur))
 
-      (catch Exception e
-           (log/warn "Error during raft initialization. Shutting down system")
-           (log/error e)
-           (shutdown system)
-           (System/exit 1)))))
+         (catch Exception e
+              (log/warn "Error during raft initialization. Shutting down system")
+              (log/error e)
+              (shutdown system)
+              (System/exit 1)))))
 
 
 (defrecord RaftGroup [state-atom event-chan command-chan server this-server port
@@ -931,7 +953,7 @@
                                 (throw (ex-info (str "This server: " (pr-str this-server) " has to be included in the group
                                 server configuration." (pr-str server-configs))
                                                 {:status 400 :error :db/invalid-configuration})))
-        raft-servers          (->> server-configs           ;; ensure unique
+        raft-servers          (->> server-configs ;; ensure unique
                                    (mapv :server-id server-configs)
                                    (into #{})
                                    (into []))
@@ -999,5 +1021,5 @@
 
 
     (-> (assoc raft-instance :raft-initialized raft-initialized-chan
-               :close close-fn)
+                             :close close-fn)
         map->RaftGroup)))
