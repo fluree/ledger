@@ -1,36 +1,52 @@
 <!-- Logback configuration. See http://logback.qos.ch/manual/index.html -->
 <configuration scan="true">
-    <!-- Console output -->
-    <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
-        <!-- encoder defaults to ch.qos.logback.classic.encoder.PatternLayoutEncoder -->
-        <encoder>
-            <!-- ensure logs including exceptions are a single line -->
-            <pattern>%date %-5level %logger{24} - %message - %replace(%xException){"\n", "\\n"}%nopex%n</pattern>
-        </encoder>
-    </appender>
-    <appender name="STDOUT-COLOR" class="ch.qos.logback.core.ConsoleAppender">
-        <!-- encoder defaults to ch.qos.logback.classic.encoder.PatternLayoutEncoder -->
-        <encoder>
-            <!-- ensure logs including exceptions are a single line -->
-            <pattern>%date %highlight(%-5level) %white(%logger{24}) - %message - %replace(%xException){"\n", "\\n"}%nopex%n</pattern>
-        </encoder>
-    </appender>
+  <!-- Console output -->
+  <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
+    <!-- encoder defaults to ch.qos.logback.classic.encoder.PatternLayoutEncoder -->
+    <encoder>
+      <!-- ensure logs including exceptions are a single line -->
+      <pattern>%date %-5level %logger{24} - %message - %replace(%xException){"\n", "\\n"}%nopex%n</pattern>
+    </encoder>
+  </appender>
 
-    <root level="INFO">
-        <!-- to use enable this mode pass -Dfdb.log.ansi to jvm -->
+  <appender name="STDOUT-COLOR" class="ch.qos.logback.core.ConsoleAppender">
+    <!-- encoder defaults to ch.qos.logback.classic.encoder.PatternLayoutEncoder -->
+    <encoder>
+      <!-- ensure logs including exceptions are a single line -->
+      <pattern>%date %highlight(%-5level) %white(%logger{24}) - %message - %replace(%xException){"\n", "\\n"}%nopex%n</pattern>
+    </encoder>
+  </appender>
+
+  <appender name="JsonConsole" class="ch.qos.logback.core.ConsoleAppender">
+    <layout class="ch.qos.logback.contrib.json.classic.JsonLayout">
+      <jsonFormatter class="ch.qos.logback.contrib.jackson.JacksonJsonFormatter">
+        <prettyPrint>true</prettyPrint>
+      </jsonFormatter>
+      <timestampFormat>yyyy-MM-dd' 'HH:mm:ss</timestampFormat>
+    </layout>
+  </appender>
+
+  <root level="INFO">
+    <!-- to use enable this mode pass -Dfdb.log.ansi to jvm -->
+    <if condition='isDefined("fdb.log.json")'>
+      <then>
+        <appender-ref ref="JsonConsole"/>
+      </then>
+      <else>
         <if condition='isDefined("fdb.log.ansi")'>
-            <then>
-                <appender-ref ref="STDOUT-COLOR"/>
-            </then>
-            <else>
-                <appender-ref ref="STDOUT"/>
-            </else>
+          <then>
+            <appender-ref ref="STDOUT-COLOR"/>
+          </then>
+          <else>
+            <appender-ref ref="STDOUT"/>
+          </else>
         </if>
-    </root>
+      </else>
+    </if>
+  </root>
 
-    <logger name="ch.qos.logback" level="WARN"/>
-    <logger name="fluree.db" level="${fluree.db.log.level}"/>
-    <logger name="fluree.raft" level="${fluree.raft.log.level}"/>
+  <logger name="ch.qos.logback" level="WARN"/>
+  <logger name="fluree.db" level="${fluree.db.log.level}"/>
+  <logger name="fluree.raft" level="${fluree.raft.log.level}"/>
 
 </configuration>
-
