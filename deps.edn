@@ -1,9 +1,9 @@
 {:deps     {org.clojure/clojure                         {:mvn/version "1.11.1"}
             org.clojure/data.xml                        {:mvn/version "0.2.0-alpha6"}
             com.fluree/alphabase                        {:mvn/version "3.3.0"}
-            ;com.fluree/db                  {:mvn/version "2.0.0-alpha5"}
+            ;com.fluree/db                              {:mvn/version "2.0.0-alpha5"}
             com.fluree/db                               {:git/url "https://github.com/fluree/db.git"
-                                                         :git/sha "fa7be500842238fd8bbd705cab8555b06a97ed9d"}
+                                                         :git/sha "7b852d2e0d735fdec06a04cb166f26b52ee19ddb"}
             com.fluree/raft                             {:mvn/version "1.0.0-beta1"}
             com.fluree/crypto                           {:mvn/version "0.3.10"}
 
