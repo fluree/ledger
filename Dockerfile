@@ -1,4 +1,4 @@
-FROM --platform=$BUILDPLATFORM clojure:openjdk-11-tools-deps-1.10.3.1040-slim-bullseye AS builder
+FROM --platform=$BUILDPLATFORM clojure:temurin-11-tools-deps-1.11.1.1149-jammy AS builder
 
 RUN apt-get update && apt-get install --assume-yes --no-install-recommends curl
 
@@ -20,7 +20,7 @@ COPY . ./
 RUN make uberjar
 RUN make stage-release
 
-FROM eclipse-temurin:17-jre-focal AS runner
+FROM eclipse-temurin:17-jre-jammy AS runner
 
 RUN apt-get update && apt-get upgrade -y
 
