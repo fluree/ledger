@@ -456,8 +456,8 @@
 (defn validate-idx-continuity
   "Checks continuity of provided index in that the 'rhs' is equal to the
   first-flake of the following segment."
-  ([conn idx-root] (validate-idx-continuity idx-root false))
-  ([conn idx-root throw?] (validate-idx-continuity idx-root throw? nil))
+  ([conn idx-root] (validate-idx-continuity conn idx-root false))
+  ([conn idx-root throw?] (validate-idx-continuity conn idx-root throw? nil))
   ([conn idx-root throw? cmp]
    (let [node     (async/<!! (index/resolve conn idx-root))
          children (:children node)
