@@ -2,6 +2,9 @@
   (:gen-class)
   (:require [environ.core :as environ]
             [fluree.db.util.log :as log]
+            [cambium.core :as slog]
+            [cambium.logback.json.flat-layout :as flat]
+            [cambium.codec :as codec]
             [clojure.core.async :as async]
             [clojure.string :as str]
 
@@ -146,12 +149,14 @@
   ([] (startup (runtime-env)))
   ([settings]
    (log/info "Starting Fluree in mode:" (:fdb-mode settings))
-   (log/info "Starting with config:\n" (with-out-str
-                                         (pprint/pprint
-                                           (cond-> (into (sorted-map) settings) ;; hide encryption secret from logs
-                                                   (:fdb-encryption-secret settings) (assoc :fdb-encryption-secret "prying eyes want to know...")))))
-   (log/info "JVM arguments:" (stats/jvm-arguments))
-   (log/info "Memory Info:" (stats/memory-stats))
+   (slog/info {:fluree/settings
+               (cond-> (into (sorted-map) settings) ;; hide encryption secret from logs
+                       (:fdb-encryption-secret settings)
+                       (assoc :fdb-encryption-secret "prying eyes want to know..."))}
+              "Starting with config:")
+
+   (slog/info {:fluree/jvm-args (stats/jvm-arguments)} "JVM arguments:")
+   (slog/info {:fluree/memory-info (stats/memory-stats)} "Memory Info:")
 
    (Thread/setDefaultUncaughtExceptionHandler
     (reify Thread$UncaughtExceptionHandler
@@ -256,6 +261,7 @@
 
 
 (defn -main []
+  (flat/set-decoder! codec/destringify-val)
   (if-let [command (:fdb-command environ/env)]
     (execute-command command)
     (let [system (startup)]

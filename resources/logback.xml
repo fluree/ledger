@@ -5,7 +5,7 @@
     <!-- encoder defaults to ch.qos.logback.classic.encoder.PatternLayoutEncoder -->
     <encoder>
       <!-- ensure logs including exceptions are a single line -->
-      <pattern>%date %-5level %logger{24} - %message - %replace(%xException){"\n", "\\n"}%nopex%n</pattern>
+      <pattern>%date %-5level %logger{24} - %message %replace('{ %mdc } '){'\{\s+\}\s+', ''}- %replace(%xException){"\n", "\\n"}%nopex%n</pattern>
     </encoder>
   </appender>
 
@@ -13,24 +13,28 @@
     <!-- encoder defaults to ch.qos.logback.classic.encoder.PatternLayoutEncoder -->
     <encoder>
       <!-- ensure logs including exceptions are a single line -->
-      <pattern>%date %highlight(%-5level) %white(%logger{24}) - %message - %replace(%xException){"\n", "\\n"}%nopex%n</pattern>
+      <pattern>%date %highlight(%-5level) %white(%logger{24}) - %message %replace({ %mdc } ){'\{\s+\}\s+', ''}- %replace(%xException){"\n", "\\n"}%nopex%n</pattern>
     </encoder>
   </appender>
 
-  <appender name="JsonConsole" class="ch.qos.logback.core.ConsoleAppender">
-    <layout class="ch.qos.logback.contrib.json.classic.JsonLayout">
-      <jsonFormatter class="ch.qos.logback.contrib.jackson.JacksonJsonFormatter">
-        <prettyPrint>true</prettyPrint>
-      </jsonFormatter>
-      <timestampFormat>yyyy-MM-dd' 'HH:mm:ss</timestampFormat>
-    </layout>
+  <appender name="StructuredJsonConsole" class="ch.qos.logback.core.ConsoleAppender">
+    <encoder class="ch.qos.logback.core.encoder.LayoutWrappingEncoder">
+      <layout class="cambium.logback.json.FlatJsonLayout">
+        <jsonFormatter class="ch.qos.logback.contrib.jackson.JacksonJsonFormatter">
+          <prettyPrint>false</prettyPrint>
+        </jsonFormatter>
+        <timestampFormat>yyyy-MM-dd'T'HH:mm:ss.SSS'Z'</timestampFormat>
+        <timestampFormatTimezoneId>UTC</timestampFormatTimezoneId>
+        <appendLineSeparator>true</appendLineSeparator>
+      </layout>
+    </encoder>
   </appender>
 
   <root level="INFO">
     <!-- to use enable this mode pass -Dfdb.log.ansi to jvm -->
     <if condition='isDefined("fdb.log.json")'>
       <then>
-        <appender-ref ref="JsonConsole"/>
+        <appender-ref ref="StructuredJsonConsole"/>
       </then>
       <else>
         <if condition='isDefined("fdb.log.ansi")'>

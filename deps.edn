@@ -1,9 +1,9 @@
 {:deps     {org.clojure/clojure                         {:mvn/version "1.11.1"}
             org.clojure/data.xml                        {:mvn/version "0.2.0-alpha6"}
             com.fluree/alphabase                        {:mvn/version "3.3.0"}
-            ;com.fluree/db                  {:mvn/version "2.0.0-alpha5"}
+            ;com.fluree/db                              {:mvn/version "2.0.0-alpha5"}
             com.fluree/db                               {:git/url "https://github.com/fluree/db.git"
-                                                         :git/sha "fa7be500842238fd8bbd705cab8555b06a97ed9d"}
+                                                         :git/sha "813dd3b99c8fc2fb597aae4c2fe8b525be3b9848"}
             com.fluree/raft                             {:mvn/version "1.0.0-beta1"}
             com.fluree/crypto                           {:mvn/version "0.3.10"}
 
@@ -26,10 +26,11 @@
 
             ;; logging
             ch.qos.logback/logback-classic              {:mvn/version "1.2.11"}
-            ch.qos.logback/logback-core                 {:mvn/version "1.2.11"}
-            ch.qos.logback.contrib/logback-json-classic {:mvn/version "0.1.5"}
-            ch.qos.logback.contrib/logback-jackson      {:mvn/version "0.1.5"}
-            com.fasterxml.jackson.core/jackson-databind {:mvn/version "2.13.2.2"}
+            cambium/cambium.core                        {:mvn/version "1.1.1"}
+            cambium/cambium.codec-cheshire              {:mvn/version "1.0.0"}
+            cambium/cambium.logback.json                {:mvn/version "0.4.5"}
+            cambium/cambium.codec-simple                {:mvn/version "1.0.0"}
+            cambium/cambium.logback.core                {:mvn/version "0.4.5"}
 
             ;; config
             environ/environ                             {:git/url   "https://github.com/cap10morgan/environ.git"
