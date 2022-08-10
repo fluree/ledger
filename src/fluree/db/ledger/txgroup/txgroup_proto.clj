@@ -113,6 +113,10 @@
   [group network ledger-id]
   (latest-index* (-local-state group) network ledger-id))
 
+(defn latest-commit
+  [group network ledger-name]
+  (get-in (-local-state group) [:networks network :ledgers ledger-name :commit]))
+
 (defn write-index-point-async
   "Attempts to register a new index point. If older than the previous index point,
 or this server is not responsible for this ledger, will return false. Else true upon success."
@@ -196,7 +200,11 @@ or this server is not responsible for this ledger, will return false. Else true 
 
 (defn ledger-exists?
   [group network ledger-id]
-  (boolean (latest-index group network ledger-id)))
+  (let [current-state (-local-state group)
+        ledger-state  (get-in current-state [:networks network :ledgers ledger-id])]
+    (if (= :json-ld (:db-type ledger-state))
+      true
+      (boolean (latest-index* current-state network ledger-id)))))
 
 (defn ledger-info
   "Returns all info we have on given ledger."
@@ -225,11 +233,13 @@ or this server is not responsible for this ledger, will return false. Else true 
 (defn initialized-ledger-async
   "Registers first block of initialized db. Rejects if db already initialized.
   Always removes command-id from qeued new ledgers."
-  [group {:keys [txid db-type network ledger-id method fork block index]}]
+  [group {:keys [txid db-type network ledger-id method fork commit block index address]}]
   (let [status  (util/without-nils {:status    :ready
                                     :block     block
                                     :db-type   db-type
                                     :method    method
+                                    :address   address
+                                    :commit    commit
                                     :fork      fork
                                     :forkBlock (when fork block)
                                     :index     index})

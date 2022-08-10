@@ -9,8 +9,10 @@
             [fluree.db.serde.avro :as avro]
             [fluree.db.serde.none :as none]
             [clojure.core.async :as async]
+            [fluree.db.util.async :refer [go-try]]
             [fluree.db.ledger.stats :as stats]
             [fluree.crypto :as crypto]
+            [fluree.db.ledger.txgroup.txgroup-proto :as txproto]
             [fluree.crypto.util :refer [hash-string-key]])
   (:import (java.util Hashtable$Entry Properties)
            (java.lang.management ManagementFactory)
@@ -396,6 +398,21 @@
       (file-storage-path* type env))))
 
 
+(defn ns-lookup-fn
+  "Given a ledger address, pulls the latest commit from raft state.
+
+  Both the ledger name and the commit address should start with fluree:raft://..."
+  [{:keys [group] :as _conn} address]
+  (go-try
+    (let [ledger-name (second (re-find #"^fluree:raft://(.+)" address))
+          _           (when-not ledger-name
+                        (throw (ex-info (str "Invalid raft ledger address format, must start with fluree:raft://. Provided: " address)
+                                        {:status 400 :error :db/invalid-ledger-name})))
+          commit      (txproto/latest-commit group "file" ledger-name)]
+      ;; if properly formatted but not a ledger address, it is likely a direct file reference so just return original name
+      (or commit address))))
+
+
 (defn generate-conn-settings
   [settings]
   (let [encryption-key           (encryption-secret->key settings)
@@ -447,6 +464,7 @@
                                    :s3 (s3store/connection-storage-list
                                          s3-conn s3-ledger-storage-prefix)
                                    :memory memorystore/connection-storage-list)
+        ns-lookup                ns-lookup-fn
         serializer               (get-serializer settings)
         close-fn                 (case storage-type
                                    :file   (fn [] nil)
@@ -464,6 +482,7 @@
                     :storage-rename storage-rename
                     :storage-delete storage-delete
                     :storage-list   storage-list
+                    :ns-lookup      ns-lookup
 
                     ;; create our own request channel so we can monitor it if in 'dev' mode
                     :req-chan (async/chan)

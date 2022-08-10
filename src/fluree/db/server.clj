@@ -160,7 +160,12 @@
          memory?        (= :memory storage-type)
          group          (txgroup/start (:group config) consensus-type join?)
          remote-writer  (fn [k data]
-                          (txproto/storage-write-async group k data))
+                          (go-try
+                            (<? (txproto/storage-write-async group k data))
+                            {:name    k
+                             :address (if-let [address (second (re-find #"^(.+)\.jsonld$" k))]
+                                        (str "fluree:raft://" address)
+                                        k)}))
          conn           (let [storage-write-fn  (case storage-type
                                                   :file remote-writer
                                                   :s3 remote-writer

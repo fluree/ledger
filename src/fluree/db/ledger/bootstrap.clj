@@ -11,7 +11,8 @@
             [fluree.db.util.async :refer [go-try <?]]
             [fluree.db.util.core :as util]
             [fluree.db.util.log :as log]
-            [fluree.db.ledger.json-ld :as jld-ledger])
+            [fluree.db.ledger.json-ld :as jld-ledger]
+            [fluree.db.ledger.proto :as ledger-proto])
   (:import (fluree.db.flake Flake)))
 
 (set! *warn-on-reflection* true)
@@ -336,25 +337,25 @@
 (defn bootstrap-json-ld-db
   [{:keys [conn group]} txid cmd-data owners {:keys [cmd sig] :as _command}]
   (go-try
-    (let [{new-db-name :db method :method
+    (let [{ledger-name :ledger method :method
            context     :context did :did} cmd-data
-          opts        {:context context :did did}
-          ledger      (<? (jld-ledger/create conn name opts))
-          db          (jld-ledger/db ledger nil)
-          commit-data (jld-ledger/commit! ledger db opts)
-          ]
-
+          opts   {:context context :did did}
+          ledger (<? (jld-ledger/create conn ledger-name opts))
+          db     (jld-ledger/db ledger nil)
+          db-new (<? (jld-ledger/commit! ledger db opts))
+          commit (-> db-new :commit :address)]
       ;; write out new index point
-      #_(<? (txproto/initialized-ledger-async group {:txid    txid
-                                                     :network method
-                                                     :ledger  new-db-name
-                                                     :db-type :json-ld
-                                                     :block   block
-                                                     :fork    fork
-                                                     :index   indexed-block})))
-    (throw (ex-info "NOT YET IMPLEMENTED!!!" {}))
+      (<? (txproto/initialized-ledger-async group {:txid      txid
+                                                   :network   method
+                                                   :db-type   :json-ld
+                                                   :ledger-id ledger-name
+                                                   :block     (:block db-new)
+                                                   :method    :raft
+                                                   :commit    commit
+                                                   :address   (ledger-proto/-address ledger)
+                                                   :index     nil}))
 
-    ))
+      db)))
 
 
 (defn bootstrap-ledger
