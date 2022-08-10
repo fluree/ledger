@@ -19,8 +19,7 @@
             [fluree.db.ledger.storage :as ledger-storage]
             [fluree.db.constants :as const]
             [fluree.db.util.core :as util :refer [exception?]])
-  (:import (java.util UUID)
-           (fluree.db.flake Flake)))
+  (:import (fluree.db.flake Flake)))
 
 (set! *warn-on-reflection* true)
 
@@ -448,7 +447,7 @@
   connection doesn't exist (not established, or closed)."
   [raft server operation data callback]
   (let [this-server (:this-server raft)
-        msg-id      (str (UUID/randomUUID))
+        msg-id      (str (random-uuid))
         header      {:op     operation
                      :from   this-server
                      :to     server
@@ -619,7 +618,7 @@
                  leader (<! (leader-async group))]
              (if (= (:this-server raft') leader)
                (raft/new-entry raft' entry callback timeout-ms)
-               (let [id           (str (UUID/randomUUID))
+               (let [id           (str (random-uuid))
                      command-data {:id id :entry entry}]
                  ;; since not leader, register entry id locally and will receive callback when committed to state machine
                  (raft/register-callback raft' id timeout-ms callback)
@@ -642,7 +641,7 @@
   ([group newServer timeout-ms callback]
    (go-try (let [raft'  (:raft group)
                  leader (<! (leader-async group))
-                 id     (str (UUID/randomUUID))]
+                 id     (str (random-uuid))]
              (if (= (:this-server raft') leader)
                (let [command-chan (-> group :command-chan)]
                  (async/put! command-chan [:add-server [id newServer] callback]))
@@ -666,7 +665,7 @@
   ([group server timeout-ms callback]
    (go-try (let [raft'  (:raft group)
                  leader (<! (leader-async group))
-                 id     (str (UUID/randomUUID))]
+                 id     (str (random-uuid))]
              (if (= (:this-server raft') leader)
                (let [command-chan (-> group :command-chan)]
                  (async/put! command-chan [:remove-server [id server] callback]))
@@ -894,7 +893,7 @@
            (<? (initialize-leader group conn)))
 
          ;; monitor state changes to kick of transactions for any queues
-         (register-state-change-fn (str (UUID/randomUUID))
+         (register-state-change-fn (str (random-uuid))
                                    (partial group-monitor/state-updates-monitor system))
 
          ;; in case we are responsible for networks but some exist in current queue, kick them off
