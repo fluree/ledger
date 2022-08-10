@@ -9,6 +9,7 @@
             [fluree.db.storage.core :as storage]
             [fluree.db.serde.avro :as avro]
             [fluree.db.event-bus :as event-bus]
+            [fluree.db.flake :as flake]
             [fluree.db.ledger.consensus.tcp :as ftcp]
             [fluree.db.util.async :refer [go-try <? <??]]
             [fluree.db.ledger.txgroup.txgroup-proto :as txproto :refer [TxGroup]]
@@ -18,8 +19,7 @@
             [fluree.crypto :as crypto]
             [fluree.db.ledger.storage :as ledger-storage]
             [fluree.db.constants :as const]
-            [fluree.db.util.core :as util :refer [exception?]])
-  (:import (fluree.db.flake Flake)))
+            [fluree.db.util.core :as util :refer [exception?]]))
 
 (set! *warn-on-reflection* true)
 
@@ -779,9 +779,9 @@
                       ;; would error in raft if these are not included, recreate from block data
                       block-data* (assoc block-data :cmd-types #{:tx}
                                                     :txns (->> (:flakes block-data)
-                                                               (keep #(let [^Flake f %]
-                                                                        (when (= const/$_tx:id (.-p f))
-                                                                          [(.-o f) nil])))
+                                                               (keep (fn [f]
+                                                                       (when (= const/$_tx:id (flake/p f))
+                                                                         [(flake/o f) nil])))
                                                                (into {})))]
 
                   (log/info (str "Ledger " network "/" ledger-id
