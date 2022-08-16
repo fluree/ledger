@@ -319,14 +319,15 @@
 (defn queue-command-async
   "Enqueues a new command processing"
   [group network ledger-id command-id command]
-  (kv-assoc-in-async group [:cmd-queue network command-id]
-                     {:command command
-                      :size    (count (:cmd command))
-                      :id      command-id
-                      :network network
-                      :ledger-id    ledger-id
-                      :instant (System/currentTimeMillis)}))
-
+  (let [queue-time  (System/currentTimeMillis)
+        size        (-> command :cmd count)
+        queue-entry {:command   command
+                     :size      size
+                     :id        command-id
+                     :network   network
+                     :ledger-id ledger-id
+                     :instant   queue-time}]
+    (kv-assoc-in-async group [:cmd-queue network command-id] queue-entry)))
 
 ;; Block commands
 
