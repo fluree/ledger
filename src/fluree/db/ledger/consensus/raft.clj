@@ -303,8 +303,7 @@
                                     (storage-write file-key (avro/serialize-block block-map))
 
                                     ;; update current block, and remove txids from queue
-                                    (swap! state-atom
-                                           (fn [state] (update-state/update-ledger-block network ledger-id txids state block)))
+                                    (swap! state-atom update-state/update-ledger-block network ledger-id block txids)
 
                                     (log/info (str network "/" ledger-id " new-block " {:block         block
                                                                                         :txns          txids

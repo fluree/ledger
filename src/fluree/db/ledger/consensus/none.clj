@@ -81,8 +81,7 @@
                                     (memorystore/connection-storage-write file-key block-map)
 
                                     ;; update current block, and remove txids from queue
-                                    (swap! state-atom
-                                           (fn [state] (update-state/update-ledger-block network ledger-id txids state block)))
+                                    (swap! state-atom update-state/update-ledger-block network ledger-id block txids)
 
                                     ;; publish new-block event
                                     (event-bus/publish :block [network ledger-id] block-map)

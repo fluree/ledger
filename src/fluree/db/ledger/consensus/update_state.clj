@@ -30,6 +30,14 @@
                                  (assoc pool k v)
                                  pool))))
 
+(defn clear-pool
+  "Remove the entries associated with each id in `cmd-ids` from the command pool
+  specified by `pool-path` in `state`."
+  [state pool-path cmd-ids]
+  (reduce (fn [s cmd-id]
+            (update-in s pool-path dissoc cmd-id))
+          state cmd-ids))
+
 (defn dissoc-in
   "Like Clojure's dissoc, but takes a key sequence to enable dissoc within a
   nested map."
@@ -154,8 +162,9 @@
 
 
 (defn update-ledger-block
-  [network ledger-id txids state block]
-  (-> (reduce (fn [s txid] (dissoc-in s [:cmd-queue network txid])) state txids)
+  [state network ledger-id block txids]
+  (-> state
+      (clear-pool [:cmd-queue network] txids)
       (assoc-in [:networks network :ledgers ledger-id :block] block)))
 
 (defn delete-ledger
