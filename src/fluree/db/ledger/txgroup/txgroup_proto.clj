@@ -29,12 +29,21 @@
 ;; get, assoc, dissoc functions
 
 (defn kv-get-in
-  "Performs a get-in using current local state. If you want a fully consistent get-in, use kv-get-in-sync."
+  "Performs a get-in using current local state. If you want a fully consistent
+  get-in, use kv-get-in-async*."
   [group ks]
   (get-in (-local-state group) ks))
 
+(defn kv-get-in-async*
+  "Perform a fully consistent get-in operation (sends operation to all raft
+  servers for sync)"
+  [raft ks]
+  (let [command [:get-in ks]]
+    (-new-entry-async raft command)))
+
 (defn kv-assoc-in-async
-  "Writes value to specified key. Returns core async channel that will eventually have a response."
+  "Writes value to specified key. Returns core async channel that will eventually
+  have a response."
   [group ks v]
   (let [command [:assoc-in ks v]]
     (-new-entry-async group command)))
@@ -45,36 +54,33 @@
   (async/<!! (kv-assoc-in-async group ks v)))
 
 (defn kv-dissoc-in-async
-  "Dissoc value as key sequence. Returns true if a value was present and removed, false if no value existed.
+  "Remove value as key sequence. Returns true if a value was present and removed, false if no value existed.
   Returns core async channel that will eventually have a response."
   [group ks]
   (let [command [:dissoc-in ks]]
     (-new-entry-async group command)))
 
 (defn kv-dissoc-in
-  "Dissoc value as key sequence. Returns true if a value was present and removed, false if no value existed."
+  "Remove value as key sequence. Returns true if a value was present and removed,
+  false if no value existed."
   [group ks]
   (async/<!! (kv-dissoc-in-async group ks)))
 
 (defn kv-max-in-async
-  "Writes value to specified key sequence. Will only write is proposed value is greater
-  than the current value. Returns true if value is written, false if it is not written.
-  Returns core async channel that will eventually have a response."
+  "Writes value to specified key sequence. Will only write is proposed value is
+  greater than the current value. Returns true if value is written, false if it
+  is not written. Returns core async channel that will eventually have a
+  response."
   [group ks v]
   (assert (number? v))
   (let [command [:max-in ks v]]
     (-new-entry-async group command)))
 
-(defn kv-get-in-async*
-  "Perform a fully consistent get-in operation (sends operation to all raft servers for sync)"
-  [raft ks]
-  (let [command [:get-in ks]]
-    (-new-entry-async raft command)))
-
 (defn kv-cas-in-async
   "Compare and swap. Compares current value and compare value at compare key sequence.
-  If equal, sets swap value at swap key sequence. If compare key sequence is not provided, uses
-  the swap key sequence for compare. Returns core async channel that will eventually have a response."
+  If equal, sets swap value at swap key sequence. If compare key sequence is not
+  provided, uses the swap key sequence for compare. Returns core async channel
+  that will eventually have a response."
   ([raft ks swap-v compare-v]
    (kv-cas-in-async raft ks swap-v ks compare-v))
   ([raft ks swap-v compare-ks compare-v]
@@ -115,7 +121,8 @@
 
 (defn write-index-point-async
   "Attempts to register a new index point. If older than the previous index point,
-or this server is not responsible for this ledger, will return false. Else true upon success."
+  or this server is not responsible for this ledger, will return false. Else
+  true upon success."
   ([group db] (write-index-point-async group (:network db) (:ledger-id db) (get-in db [:stats :indexed])
                                        (:this-server group) {}))
   ([group network ledger-id index-point submission-server opts]
@@ -129,7 +136,8 @@ or this server is not responsible for this ledger, will return false. Else true 
     (kv-dissoc-in group ks)))
 
 (defn remove-index-point
-  "Removes an index point. Returns true if index point existed and was successfully removed."
+  "Removes an index point. Returns true if index point existed and was
+  successfully removed."
   [group network ledger-id idx-point]
   (let [ks [:networks network :ledgers ledger-id :indexes idx-point]]
     (kv-dissoc-in group ks)))
@@ -157,7 +165,8 @@ or this server is not responsible for this ledger, will return false. Else true 
 ;; Ledger commands
 
 (defn ledger-list*
-  "Returns a list of all ready or initialized ledgers for all networks as a two-tuple, [network ledger-id]."
+  "Returns a list of all ready or initialized ledgers for all networks as a
+  two-tuple, `[network ledger-id]`."
   [current-state]
   (let [networks (-> current-state :networks (keys))]
     (reduce
@@ -169,7 +178,7 @@ or this server is not responsible for this ledger, will return false. Else true 
       [] networks)))
 
 (defn all-ledger-list*
-  "Returns a list of all ledgers for all networks as a two-tuple, [network ledger-id]."
+  "Returns a list of all ledgers for all networks as a two-tuple, `[network ledger-id]`."
   [current-state]
   (let [networks (-> current-state :networks (keys))]
     (reduce
@@ -179,13 +188,13 @@ or this server is not responsible for this ledger, will return false. Else true 
       [] networks)))
 
 (defn all-ledger-list
-  "Returns a list of all ledgers for all networks as a two-tuple, [network ledger-id]."
+  "Returns a list of all ledgers for all networks as a two-tuple, `[network ledger-id]`."
   [group]
   (all-ledger-list* (-local-state group)))
 
 
 (defn ledger-list
-  "Returns a list of ready ledgers for all networks as a two-tuple, [network ledger-id]."
+  "Returns a list of ready ledgers for all networks as a two-tuple, `[network ledger-id]`."
   [group]
   (ledger-list* (-local-state group)))
 
@@ -264,7 +273,8 @@ or this server is not responsible for this ledger, will return false. Else true 
   (get-in (-local-state group) [:private-keys]))
 
 (defn set-shared-private-key
-  "Sets a default public key to use for any network operations (creating a new network)"
+  "Sets a default public key to use for any network operations (creating a new
+  network)"
   ([group private-key]
    (kv-assoc-in group [:private-key] private-key))
   ([group network private-key]
@@ -284,29 +294,30 @@ or this server is not responsible for this ledger, will return false. Else true 
 ;; Command queue commands
 
 (defn command-queue
-  "Returns command queue as a list of maps.
-   Queued commands are stored in state machine with key-seq of [:cmd-queue network txid].
-    Map keys are:
-    1. id
-    2. command    - command data (map)
-    3. size    - size of command in bytes
-    4. network
-    5. ledger-id
-    6. instant - instant we put this tx into our state machine"
+  "Returns command queue as a list of command entry maps containing the command
+  and associated metadata. Queued command entry maps are stored in state machine
+  under key sequence of `[:cmd-queue network command-id]`.
+
+  Command entry map keys are:
+    1. :id        - command id
+    2. :command   - command data (map)
+    3. :size      - size of command in bytes
+    4. :network
+    5. :ledger-id
+    6. :instant   - time the entry was enqueued"
   ([group]
-   (->> (get-in (-local-state group) [:cmd-queue])
-        (vals)
+   (->> (kv-get-in group [:cmd-queue])
+        vals
         (mapcat vals)))
   ([group network]
-   (-> (get-in (-local-state group) [:cmd-queue network])
-       (vals)))
+   (vals (kv-get-in group [:cmd-queue network])))
   ([group network ledger-id]
-   (->> (get-in (-local-state group) [:cmd-queue network])
-        vals
-        (filter #(= ledger-id (:ledger-id %))))))
+   (filter (fn [cmd-entry]
+             (-> cmd-entry :ledger-id (= ledger-id)))
+           (command-queue group network))))
 
 (defn queue-command-async
-  "Writes a new tx to the queue"
+  "Enqueues a new command processing"
   [group network ledger-id command-id command]
   (kv-assoc-in-async group [:cmd-queue network command-id]
                      {:command command
@@ -352,4 +363,3 @@ or this server is not responsible for this ledger, will return false. Else true 
   [raft k data]
   (let [command [:storage-write k data]]
     (-new-entry-async raft command)))
-
