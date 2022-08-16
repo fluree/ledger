@@ -347,6 +347,12 @@
 
                    :assoc-in (update-state/assoc-in* command state-atom)
 
+                   :put-pool (let [[_ pool-path cmd-id cmd] command]
+                               (-> state-atom
+                                   (swap! update-state/put-pool pool-path cmd-id cmd)
+                                   (update-state/get-pool pool-path cmd-id)
+                                   (= cmd)))
+
                    ;; worker assignments are a little different in that they organize the key-seq
                    ;; both prepended by the server-id (for easy lookup of work based on server-id)
                    ;; and also at the end of the key-seq (for easy lookup of worker(s) for given resource(s))

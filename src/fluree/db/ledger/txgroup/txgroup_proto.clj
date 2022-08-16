@@ -87,6 +87,14 @@
    (let [command [:cas-in ks swap-v compare-ks compare-v]]
      (-new-entry-async raft command))))
 
+(defn kv-put-pool-async
+  [group pool-path k v]
+  (let [command [:put-pool pool-path k v]]
+    (-new-entry-async group command)))
+
+(defn kv-put-pool
+  [group pool-path k v]
+  (async/<!! (kv-put-pool-async group pool-path k v)))
 
 ;; version, this-server commands
 
@@ -327,7 +335,7 @@
                      :network   network
                      :ledger-id ledger-id
                      :instant   queue-time}]
-    (kv-assoc-in-async group [:cmd-queue network command-id] queue-entry)))
+    (kv-put-pool-async group [:cmd-queue network] command-id queue-entry)))
 
 ;; Block commands
 

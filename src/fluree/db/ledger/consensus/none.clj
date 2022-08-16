@@ -102,6 +102,12 @@
 
                    :assoc-in (update-state/assoc-in* entry state-atom)
 
+                   :put-pool (let [[_ pool-path cmd-id cmd] entry]
+                               (-> state-atom
+                                   (swap! update-state/put-pool pool-path cmd-id cmd)
+                                   (update-state/get-pool pool-path cmd-id)
+                                   (= cmd)))
+
                    ;; For no consensus, just returns true
                    :worker-assign true
 

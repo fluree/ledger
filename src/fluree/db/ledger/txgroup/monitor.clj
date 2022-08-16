@@ -178,15 +178,15 @@
 
 
 (defn queued-tx
-  "If state change is a new tx that was queued
-   returns three-tuple of [network ledger-id txid], else nil."
+  "If state change is a new command that was queued returns three-tuple
+  of [network ledger-id command-id], else nil."
   [state-change]
   (let [{:keys [command result]} state-change
-        [op arg1 arg2] command]
-    (when (and (= :assoc-in op)
+        [op arg1 arg2 arg3] command]
+    (when (and (= :put-pool op)
                (= :cmd-queue (first arg1))
                (true? result))
-      (let [{:keys [ledger-id network id]} arg2]
+      (let [{:keys [ledger-id network id]} arg3]
         [network ledger-id id]))))
 
 
@@ -404,7 +404,7 @@
                 session (session/session conn [(get command 2) (get command 3)])]
             (session/close session))))
 
-      :assoc-in
+      :put-pool
       (when-let [[network ledger-id _] (queued-tx state-change)]
         (when (network-assigned-to? (:group conn) network)
           (let [queue-chan (ledger-queue conn network ledger-id)]
