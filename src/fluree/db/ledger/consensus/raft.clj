@@ -335,8 +335,12 @@
                    :new-ledger (update-state/stage-new-ledger command state-atom)
                    :new-db (update-state/stage-new-ledger command state-atom)
 
-                   :delete-ledger (update-state/delete-db command state-atom)
-                   :delete-db (update-state/delete-db command state-atom)
+                   :delete-ledger (let [[_ old-network old-ledger] command]
+                                    (swap! state-atom update-state/delete-ledger old-network old-ledger)
+                                    true)
+                   :delete-db (let [[_ old-network old-ledger] command]
+                                    (swap! state-atom update-state/delete-ledger old-network old-ledger)
+                                    true)
 
                    :initialized-ledger (update-state/initialized-ledger command state-atom)
                    :initialized-db (update-state/initialized-ledger command state-atom)
@@ -345,7 +349,9 @@
 
                    :lowercase-all-names (update-state/lowercase-all-names state-atom)
 
-                   :assoc-in (update-state/assoc-in* command state-atom)
+                   :assoc-in (let [[_ ks v] command]
+                               (swap! state-atom update-state/assoc-in* ks v)
+                               true)
 
                    :put-pool (let [[_ pool-path cmd-id cmd] command]
                                (-> state-atom
@@ -375,10 +381,12 @@
                                                      (assoc-in worker-ks (System/currentTimeMillis)))))))
                                     true)
 
-                   :get-in (update-state/get-in* command state-atom)
+                   :get-in (let [[_ ks] command]
+                             (update-state/get-in* @state-atom ks))
 
                    ;; Returns true if there was an existing value removed, else false.
-                   :dissoc-in (update-state/dissoc-in* command state-atom)
+                   :dissoc-in (let [[_ ks] command]
+                                (swap! state-atom update-state/dissoc-in ks))
 
                    ;; acquires lease, stored at specified ks (a more elaborate cas). Uses local clock
                    ;; to help combat clock skew. Will only allow a single lease at specified ks.
@@ -417,10 +425,18 @@
 
                    ;; Will replace current val at key sequence only if existing val is = compare value at compare key sequence.
                    ;; Returns true if value updated.
-                   :cas-in (update-state/cas-in command state-atom)
+                   :cas-in (let [[_ ks swap-v compare-ks compare-v] command]
+                             (-> state-atom
+                                 (swap! update-state/cas-in ks swap-v compare-ks compare-v)
+                                 (get-in ks)
+                                 (= swap-v)))
 
                    ;; Will replace current val only if existing val is < proposed val. Returns true if value updated.
-                   :max-in (update-state/max-in command state-atom)
+                   :max-in (let [[_ ks proposed-v] command]
+                             (-> state-atom
+                                 (update-state/max-in ks proposed-v)
+                                 (get-in ks)
+                                 (= proposed-v)))
 
                    ;; only used for local file-system storage (not centralized)
                    ;; does not block, always returns true.

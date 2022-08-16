@@ -100,7 +100,9 @@
 
                    :new-index (update-state/new-index entry state-atom)
 
-                   :assoc-in (update-state/assoc-in* entry state-atom)
+                   :assoc-in (let [[_ ks v] entry]
+                               (swap! state-atom update-state/assoc-in* ks v)
+                               true)
 
                    :put-pool (let [[_ pool-path cmd-id cmd] entry]
                                (-> state-atom
@@ -111,18 +113,28 @@
                    ;; For no consensus, just returns true
                    :worker-assign true
 
-                   :get-in (update-state/get-in* entry state-atom)
+                   :get-in (let [[_ ks] entry]
+                             (update-state/get-in* @state-atom ks))
 
-                   :dissoc-in (update-state/dissoc-in* entry state-atom)
+                   :dissoc-in (let [[_ ks] entry]
+                                (swap! state-atom update-state/dissoc-in ks))
 
                    ;; Will replace current val at key sequence only if existing val is = compare value at
                    ;; compare key sequence.
                    ;; Returns true if value updated.
-                   :cas-in (update-state/cas-in entry state-atom)
+                   :cas-in (let [[_ ks swap-v compare-ks compare-v] entry]
+                             (-> state-atom
+                                 (swap! update-state/cas-in ks swap-v compare-ks compare-v)
+                                 (get-in ks)
+                                 (= swap-v)))
 
                    ;; Will replace current val only if existing val is < proposed val. Returns true if value
                    ;; updated.
-                   :max-in (update-state/max-in entry state-atom)
+                   :max-in (let [[_ ks proposed-v] entry]
+                             (-> state-atom
+                                 (update-state/max-in ks proposed-v)
+                                 (get-in ks)
+                                 (= proposed-v)))
 
                    ;; Identical to local writes in no-consensus mode. Most writes should happen in local state
                    :storage-write

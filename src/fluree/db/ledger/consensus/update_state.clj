@@ -30,67 +30,42 @@
                                  (assoc pool k v)
                                  pool))))
 
-(defn dissoc-ks
-  "Dissoc, but with a key sequence."
-  [map ks]
-  (if (= 1 (count ks))
-    (dissoc map (first ks))
-    (update-in map (butlast ks) dissoc (last ks))))
+(defn dissoc-in
+  "Like Clojure's dissoc, but takes a key sequence to enable dissoc within a
+  nested map."
+  [state ks]
+  (let [[k & rst] ks]
+    (if (empty? rst)
+      (dissoc state k)
+      (update state k dissoc-in rst))))
 
 (defn assoc-in*
-  "Handles assoc-in commands. If assoc-in is called without a value to associate into,
-  treats operation as a dissoc-in operation."
-  [command state-atom]
-  (let [[_ ks v] command]
-    (if (nil? v)
-      (swap! state-atom dissoc-ks ks)
-      (swap! state-atom assoc-in ks v))
-    true))
+  "Associates the value `v` with the key sequence `ks` in `state` if `v` is
+  non-nil. If the value `v` is nil, the key sequene `ks` is dissociated from
+  state."
+  [state ks v]
+  (if (nil? v)
+    (dissoc-in state ks)
+    (assoc-in state ks v)))
 
 (defn get-in*
-  [command state-atom]
-  (let [[_ ks] command]
-    (get-in @state-atom ks)))
-
-(defn dissoc-in
-  "Like Clojure's dissoc, but takes a key sequence to enable dissoc within a nested map."
-  [map ks]
-  (let [ks*        (butlast ks)
-        dissoc-key (last ks)]
-    (if ks*
-      (update-in map ks* dissoc dissoc-key)
-      (dissoc map dissoc-key))))
-
-(defn dissoc-in*
-  "Executes incoming :dissoc-in command against state atom.
-  Like Clojure's dissoc, but takes a key sequence to enable
-  dissoc within a nested map."
-  [command state-atom]
-  (let [[_ ks] command]
-    (let [res (swap! state-atom dissoc-in ks)]
-      res)))
+  [state ks]
+  (get-in state ks))
 
 (defn cas-in
-  [command state-atom]
-  (let [[_ ks swap-v compare-ks compare-v] command
-        new-state (swap! state-atom (fn [state]
-                                      (let [current-v (get-in state compare-ks)]
-                                        (if (= current-v compare-v)
-                                          (assoc-in state ks swap-v)
-                                          state))))]
-    (= swap-v (get-in new-state ks))))
+  [state ks swap-v compare-ks compare-v]
+  (let [current-v (get-in state compare-ks)]
+    (if (= current-v compare-v)
+      (assoc-in state ks swap-v)
+      state)))
 
 (defn max-in
-  [command state-atom]
-  (let [[_ ks proposed-v] command
-        new-state (swap! state-atom
-                         update-in ks
-                         (fn [current-val]
-                           (if (or (nil? current-val)
-                                   (> proposed-v current-val))
-                             proposed-v
-                             current-val)))]
-    (= proposed-v (get-in new-state ks))))
+  [state ks proposed-v]
+  (update-in state ks (fn [current-val]
+                        (if (or (nil? current-val)
+                                (> proposed-v current-val))
+                          proposed-v
+                          current-val))))
 
 (defn- extract-flake-object
   "Returns flake object (.-o flake) from block-map of the given type whose
@@ -183,15 +158,12 @@
   (-> (reduce (fn [s txid] (dissoc-in s [:cmd-queue network txid])) state txids)
       (assoc-in [:networks network :ledgers ledger-id :block] block)))
 
-(defn delete-db
-  [command state-atom]
-  (let [[_ old-network old-ledger] command
-        ;; dissoc all other values, set status to :deleted
-        _ (swap! state-atom assoc-in [:networks old-network :ledgers old-ledger] {:status :delete})]
-    ;; If we eventually decide to allow renaming ledgers, we should ensure evenly distributed
-    ;; networks after migration. For now, we don't delete network
-
-    true))
+(defn delete-ledger
+  [state old-network old-ledger]
+  ;; dissoc all other values, set status to :deleted
+  ;; If we eventually decide to allow renaming ledgers, we should ensure evenly
+  ;; distributed networks after migration. For now, we don't delete network
+  (assoc-in state [:networks old-network :ledgers old-ledger] {:status :delete}))
 
 (defn rename-keys-in-state
   [state-atom path]
