@@ -10,6 +10,26 @@
 
 (set! *warn-on-reflection* true)
 
+(def ^:const max-pool-size 100000)
+
+(defn get-pool
+  "Returns the entry from the capped pool in the `state` map specified by
+  `pool-path` with key `k`. Returns the entire pool if `k` is not provided."
+  ([state pool-path]
+   (get-in state pool-path))
+  ([state pool-path k]
+   (get-in state (conj pool-path k))))
+
+(defn put-pool
+  "Adds `v` to a capped command pool map within the `state` map specified by
+  `pool-path` under the key `k` if and only if there are less than
+  `max-pool-size` entries previously in the specified pool."
+  [state pool-path k v]
+  (update-in state pool-path (fn [pool]
+                               (if (< (count pool) max-pool-size)
+                                 (assoc pool k v)
+                                 pool))))
+
 (defn dissoc-ks
   "Dissoc, but with a key sequence."
   [map ks]
@@ -244,4 +264,3 @@
                        " Submission server: " submission-server
                        " Assigned network server: " (get-in @state-atom [:_work :networks network])))
         false))))
-
