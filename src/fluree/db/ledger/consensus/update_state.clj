@@ -165,40 +165,34 @@
   ;; distributed networks after migration. For now, we don't delete network
   (assoc-in state [:networks old-network :ledgers old-ledger] {:status :delete}))
 
-(defn rename-keys-in-state
-  [state-atom path]
-  (let [networks     (-> (get-in @state-atom path) keys)
-        new-networks (map str/lower-case networks)]
-    (swap! state-atom update-in path set/rename-keys (zipmap networks new-networks))))
-
+(defn lowercase-keys-in
+  [state path]
+  (let [old-keys (-> state
+                     (get-in path)
+                     keys)
+        new-keys (map str/lower-case old-keys)
+        keymap   (zipmap old-keys new-keys)]
+    (update-in state path set/rename-keys keymap)))
 
 (defn lowercase-all-names
-  [state-atom]
-  (let [;; Rename :networks
-        _        (rename-keys-in-state state-atom [:networks])
-        networks (->> (get @state-atom :networks) keys (map str/lower-case))
-        ;; Update :ledgers in :networks
-        _        (mapv (fn [nw]
-                         (let [ledgers     (-> (get-in @state-atom [:networks nw :ledgers]) keys)
-                               new-ledgers (map str/lower-case ledgers)]
-                           (swap! state-atom update-in [:networks nw :ledgers]
-                                  set/rename-keys (zipmap ledgers new-ledgers))))
-                       networks)
-        ;; Rename :new-ledger-queue
-        _        (rename-keys-in-state state-atom [:new-ledger-queue])
-
-        ;; Rename :cmd-queue
-        _        (rename-keys-in-state state-atom [:cmd-queue])
-
-        ;; Rename :_work
-        _        (rename-keys-in-state state-atom [:_work :networks])
-
-        servers  (-> (get-in @state-atom [:_worker]) keys)
-
-        ;; Rename :_worker
-        _        (mapv #(rename-keys-in-state state-atom [:_worker % :networks])
-                       servers)]
-    true))
+  "Convert string names to lowercase under the `:networks`, `:new-ledger-queue`,
+  and `:cmd-queue` keys, and the `[:_work :networks]` path, as well as all
+  string ledger names within the map associated with the `:networks` key and
+  string server names within the map associated with the `:_worker` key within
+  `state`."
+  [state]
+  (-> state
+      (lowercase-keys-in [:networks])
+      (update :networks (fn [nw-map]
+                          (reduce-kv (fn [m k v]
+                                       (assoc m k (lowercase-keys-in [:ledgers])))
+                                     {} nw-map)))
+      (lowercase-keys-in [:new-ledger-queue])
+      (lowercase-keys-in [:cmd-queue])
+      (lowercase-keys-in [:_work :networks])
+      (update :_worker (fn [worker-map]
+                         (reduce-kv (fn [m k v]
+                                      (assoc m k (lowercase-keys-in [:networks]))))))))
 
 (defn new-index
   "Options include:

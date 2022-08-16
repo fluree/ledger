@@ -347,7 +347,8 @@
 
                    :new-index (update-state/new-index command state-atom)
 
-                   :lowercase-all-names (update-state/lowercase-all-names state-atom)
+                   :lowercase-all-names (do (swap! state-atom update-state/lowercase-all-names)
+                                            true)
 
                    :assoc-in (let [[_ ks v] command]
                                (swap! state-atom update-state/assoc-in* ks v)
