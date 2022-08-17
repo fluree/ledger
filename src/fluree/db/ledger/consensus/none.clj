@@ -99,7 +99,13 @@
                                            (update-state/ledger-staged? network cmd-id))
                                    cmd-id))
 
-                   :initialized-ledger (update-state/initialized-ledger entry state-atom)
+                   :initialized-ledger (let [[_ cmd-id network ledger-id status] entry
+                                             idx (:index status)
+                                             ts (System/currentTimeMillis)]
+                                         (-> state-atom
+                                             (swap! update-state/initialized-ledger network ledger-id cmd-id status ts)
+                                             (update-state/ledger-indexed-at network ledger-id idx)
+                                             (= ts)))
 
                    :new-index (update-state/new-index entry state-atom)
 

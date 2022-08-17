@@ -349,8 +349,20 @@
                                     (swap! state-atom update-state/delete-ledger old-network old-ledger)
                                     true)
 
-                   :initialized-ledger (update-state/initialized-ledger command state-atom)
-                   :initialized-db (update-state/initialized-ledger command state-atom)
+                   :initialized-ledger (let [[_ cmd-id network ledger-id status] command
+                                             idx (:index status)
+                                             ts (System/currentTimeMillis)]
+                                         (-> state-atom
+                                             (swap! update-state/initialized-ledger network ledger-id cmd-id status ts)
+                                             (update-state/ledger-indexed-at network ledger-id idx)
+                                             (= ts)))
+                   :initialized-db (let [[_ cmd-id network ledger-id status] command
+                                         idx (:index status)
+                                         ts (System/currentTimeMillis)]
+                                     (-> state-atom
+                                         (swap! update-state/initialized-ledger network ledger-id cmd-id status ts)
+                                         (update-state/ledger-indexed-at network ledger-id idx)
+                                         (= ts)))
 
                    :new-index (update-state/new-index command state-atom)
 

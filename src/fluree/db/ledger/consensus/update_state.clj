@@ -139,26 +139,31 @@
                      :ledger-id ledger-id
                      :command   new-ledger-command})))))
 
+(defn ledger-initializing?
+  [state network ledger-id]
+  (-> state
+      (get-in [:networks network :ledgers ledger-id :status])
+      (= :initialize)))
+
+(defn ledger-indexed-at
+  [state network ledger-id index]
+  (get-in state [:networks network
+                 :ledgers ledger-id
+                 :indexes index]))
 
 (defn initialized-ledger
-  [command state-atom]
-  (let [[_ cmd-id network ledger-id status] command
-        ok? (= :initialize (get-in @state-atom [:networks network :ledgers ledger-id :status]))]
-    (if ok?
-      (do (swap! state-atom (fn [s]
-                              (-> s
-                                  (update-in [:networks network :ledgers ledger-id]
-                                             merge status)
-                                  (assoc-in [:networks network :ledgers ledger-id
-                                             :indexes (:index status)]
-                                            (System/currentTimeMillis))
-                                  (dissoc-in [:new-ledger-queue network cmd-id]))))
-          true)
-      (do
-        (swap! state-atom (fn [s]
-                            (-> s
-                                (dissoc-in [:new-ledger-queue network cmd-id]))))
-        false))))
+  [state network ledger-id cmd-id status ts]
+  (let [idx (:index status)]
+    (if (ledger-initializing? state network ledger-id)
+      (-> state
+          (update-in [:networks network :ledgers ledger-id]
+                     merge status)
+          (assoc-in [:networks network
+                     :ledgers ledger-id
+                     :indexes idx]
+                    ts)
+          (dissoc-in [:new-ledger-queue network cmd-id]))
+      (dissoc-in state [:new-ledger-queue network cmd-id]))))
 
 
 (defn update-ledger-block
