@@ -120,24 +120,24 @@
       ;; publish out new db events
       (event-bus/publish :new-ledger [network ledger-id] db-status))))
 
+(defn ledger-staged?
+  [state network new-ledger-cmd-id]
+  (-> state
+      (get-in [:new-ledger-queue network new-ledger-cmd-id])
+      boolean))
 
 (defn stage-new-ledger
   "Stages new ledgers. Part of state-machine. Updates state-atom."
-  [command state-atom]
-  (let [[_ network ledger-id cmd-id new-ledger-command] command
-        db-status {:status :initialize}]
-    (if (get-in @state-atom [:networks network :ledgers ledger-id])
-      false ; already exists
-      (do
-        (swap! state-atom
-               (fn [s]
-                 (-> s
-                     (assoc-in [:networks network :ledgers ledger-id] db-status)
-                     (assoc-in [:new-ledger-queue network cmd-id]
-                               {:network   network
-                                :ledger-id ledger-id
-                                :command   new-ledger-command}))))
-        cmd-id))))
+  [state network ledger-id cmd-id new-ledger-command]
+  (if (get-in state [:networks network :ledgers ledger-id])
+    state
+    (let [ledger-status {:status :initialize}]
+      (-> state
+          (assoc-in [:networks network :ledgers ledger-id] ledger-status)
+          (assoc-in [:new-ledger-queue network cmd-id]
+                    {:network   network
+                     :ledger-id ledger-id
+                     :command   new-ledger-command})))))
 
 
 (defn initialized-ledger

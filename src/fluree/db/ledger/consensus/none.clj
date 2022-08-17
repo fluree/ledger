@@ -93,7 +93,11 @@
                                                :state-dump     @state-atom}) false)))
 
                    ;; stages a new ledger to be created
-                   :new-ledger (update-state/stage-new-ledger entry state-atom)
+                   :new-ledger (let [[_ network ledger-id cmd-id new-ledger-command] entry]
+                                 (when (-> state-atom
+                                           (swap! update-state/stage-new-ledger network ledger-id cmd-id new-ledger-command)
+                                           (update-state/ledger-staged? network cmd-id))
+                                   cmd-id))
 
                    :initialized-ledger (update-state/initialized-ledger entry state-atom)
 

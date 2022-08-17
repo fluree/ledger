@@ -331,8 +331,16 @@
                    ;; TODO: Remove the `new-db`, `delete-db`, and
                    ;;       `initialized-db` events in a later major release
                    ;;       BL 2022-07-22
-                   :new-ledger (update-state/stage-new-ledger command state-atom)
-                   :new-db (update-state/stage-new-ledger command state-atom)
+                   :new-ledger (let [[_ network ledger-id cmd-id new-ledger-command] command]
+                                 (when (-> state-atom
+                                           (swap! update-state/stage-new-ledger network ledger-id cmd-id new-ledger-command)
+                                           (update-state/ledger-staged? network cmd-id))
+                                   cmd-id))
+                   :new-db (let [[_ network ledger-id cmd-id new-ledger-command] command]
+                             (when (-> state-atom
+                                       (swap! update-state/stage-new-ledger network ledger-id cmd-id new-ledger-command)
+                                       (update-state/ledger-staged? network cmd-id))
+                               cmd-id))
 
                    :delete-ledger (let [[_ old-network old-ledger] command]
                                     (swap! state-atom update-state/delete-ledger old-network old-ledger)
