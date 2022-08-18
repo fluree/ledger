@@ -364,7 +364,25 @@
                                          (update-state/ledger-indexed-at network ledger-id idx)
                                          (= ts)))
 
-                   :new-index (update-state/new-index command state-atom)
+                   :new-index (let [[_ network ledger-id index submission-server opts] command
+                                    {:keys [status force? ignore-submission-server?]}  opts
+                                    ts (System/currentTimeMillis)
+                                    new-state
+                                    (-> state-atom
+                                        (swap! update-state/new-index network ledger-id index submission-server (assoc opts :timestamp ts)))
+                                    updated? (-> new-state
+                                                 (update-state/ledger-indexed-at network ledger-id index)
+                                                 (= ts))]
+                                (if updated?
+                                  (do ;; publish new-block event
+                                    (event-bus/publish :new-index [network ledger-id] index)
+                                    true)
+                                  (do (log/warn (str "Skipping index update (maybe reindexing?). Index must be more current and submission server must be currently assigned"
+                                                     " Current index: " (update-state/get-current-index new-state network ledger-id)
+                                                     " Proposed index: " index
+                                                     " Submission server: " submission-server
+                                                     " Assigned network server: " (update-state/get-worker new-state [:_work :networks network])))
+                                      false)))
 
                    :lowercase-all-names (do (swap! state-atom update-state/lowercase-all-names)
                                             true)

@@ -208,39 +208,39 @@
                          (reduce-kv (fn [m k v]
                                       (assoc m k (lowercase-keys-in [:networks]))))))))
 
+(defn get-current-index
+  [state network ledger-id]
+  (get-in state [:networks network :ledgers ledger-id :index]))
+
+(defn get-worker
+  [state network]
+  (get-in state [:_work :networks network]))
+
+(defn newer-index?
+  [proposed current]
+  (or (not current)
+      (>= proposed current)))
+
 (defn new-index
   "Options include:
   :force? - force updated to index point even if point is earlier
   :ignore-submission-server? - Normally only the server registered to the ledger as the worker can update
                                index points. This allows this to be overridden.
   :status - all ledgers can have an associated status, typically 'ready' "
-  [command state-atom]
-  (let [[_ network ledger-id index submission-server opts] command
-        {:keys [status force? ignore-submission-server?]} opts
-        current-index    (get-in @state-atom [:networks network :ledgers ledger-id :index])
-        is-more-current? (cond (true? force?) true ;; force override, set no matter what
-                               current-index (>= index current-index)
-                               :else true)
-        server-allowed?  (cond (true? force?) true ;; force override, set no matter what
-                               (true? ignore-submission-server?) true ;; ignore if came from assigned worker server
-                               :else (= submission-server
-                                        (get-in @state-atom [:_work :networks network])))]
-    (if (and is-more-current? server-allowed?)
-      (do
-        (swap! state-atom update-in [:networks network :ledgers ledger-id]
-               (fn [db-data]
-                 (-> db-data
-                     (assoc :index index)
-                     (update :block max index)
-                     (assoc-in [:indexes index] (System/currentTimeMillis))
-                     (assoc :status (or status :ready)))))
-        ;; publish new-block event
-        (event-bus/publish :new-index [network ledger-id] index)
-        true)
-      (do
-        (log/warn (str "Skipping index update (maybe reindexing?). Index must be more current and submission server must be currently assigned"
-                       " Current index: " current-index
-                       " Proposed index: " index
-                       " Submission server: " submission-server
-                       " Assigned network server: " (get-in @state-atom [:_work :networks network])))
-        false))))
+  [state network ledger-id index submission-server
+   {:keys [timestamp status force? ignore-submission-server?] :as _opts}]
+  (let [current-index    (get-current-index state network ledger-id)
+        assigned-worker  (get-worker state network)
+        server-allowed?  (or ignore-submission-server?  ;; ignore if came from assigned worker server
+                             (= submission-server assigned-worker))]
+    (if (or force?
+            (and (newer-index? index current-index)
+                 server-allowed?))
+      (update-in state [:networks network :ledgers ledger-id]
+                 (fn [db-data]
+                   (-> db-data
+                       (assoc :index index)
+                       (update :block max index)
+                       (assoc-in [:indexes index] timestamp)
+                       (assoc :status (or status :ready)))))
+      state)))
