@@ -1,11 +1,7 @@
 (ns fluree.db.ledger.consensus.update-state
-  (:require [fluree.db.constants :as constants]
-            [clojure.string :as str]
+  (:require [clojure.string :as str]
             [fluree.db.flake :as flake]
             [fluree.db.util.core :as util]
-            [fluree.db.event-bus :as event-bus]
-            [fluree.db.util.json :as json]
-            [fluree.db.util.log :as log]
             [clojure.set :as set]))
 
 (set! *warn-on-reflection* true)
@@ -75,50 +71,13 @@
                           proposed-v
                           current-val))))
 
-(defn- extract-flake-object
-  "Returns flake object (.-o flake) from block-map of the given type whose
-  subject matches (:t tx-data). Returns nil if none is found."
-  [{:keys [flakes] :as _block-map} {:keys [t] :as _tx-data} type]
-  (some #(when (and (= type (flake/p %))
-                    (= t (flake/s %)))
-           (flake/o %))
-        flakes))
+(defn register-new-ledger
+  [state {:keys [network ledger-id ledger-info]}]
+  (assoc-in state [:networks network :ledgers ledger-id] ledger-info))
 
 (defn register-new-ledgers
-  "Register new ledgers. Part of state-machine. Updates state-atom, and publishes out :new-ledger on event-bus"
-  [txns state-atom block-map]
-  (let [init-ledger-status
-        (->> txns
-             (filter #(and (= :new-ledger (:type (val %)))
-                           (= 200 (:status (val %)))))
-             (map (fn [[_ tx-data]]
-                    (let [efo         (partial extract-flake-object block-map
-                                               tx-data)
-                          orig-cmd    (efo constants/$_tx:tx)
-                          orig-sig    (efo constants/$_tx:sig)
-                          orig-signed (efo constants/$_tx:signed)
-                          {:keys [ledger fork forkBlock]} (when orig-cmd
-                                                            (json/parse orig-cmd))
-                          [network ledger-id] (when orig-cmd
-                                                (if (sequential? ledger)
-                                                  ledger
-                                                  (str/split ledger #"/")))]
-                      [network ledger-id (util/without-nils
-                                           {:status    :initialize
-                                            :command   (util/without-nils
-                                                         {:cmd    orig-cmd
-                                                          :sig    orig-sig
-                                                          :signed orig-signed})
-                                            :fork      fork
-                                            :forkBlock forkBlock})]))))]
-    (swap! state-atom (fn [s]
-                        (reduce (fn [s* [network ledger-id db-status]]
-                                  (assoc-in s* [:networks network :ledgers ledger-id] db-status))
-                                s init-ledger-status)))
-    ;; publish out new db
-    (doseq [[network ledger-id db-status] init-ledger-status]
-      ;; publish out new db events
-      (event-bus/publish :new-ledger [network ledger-id] db-status))))
+  [state new-ledger-maps]
+  (reduce register-new-ledger state new-ledger-maps))
 
 (defn ledger-staged?
   [state network new-ledger-cmd-id]
@@ -127,7 +86,6 @@
       boolean))
 
 (defn stage-new-ledger
-  "Stages new ledgers. Part of state-machine. Updates state-atom."
   [state network ledger-id cmd-id new-ledger-command]
   (if (get-in state [:networks network :ledgers ledger-id])
     state

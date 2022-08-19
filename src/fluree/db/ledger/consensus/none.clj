@@ -73,7 +73,18 @@
                                                      (= 1 block))]
                                 ;; if :new-ledger in cmd-types, then register new-ledger
                                 (when (cmd-types :new-ledger)
-                                  (update-state/register-new-ledgers txns state-atom block-map))
+                                  (let [{:keys [flakes]} block
+                                        new-ledger-maps  (-> txns
+                                                             vals
+                                                             (filter new-ledger-txn?)
+                                                             (map :t)
+                                                             (map (fn [t]
+                                                                    (command-envelope t flakes)))
+                                                             (map new-ledger-command->ledger-data))]
+                                    (swap! state-atom update-state/register-new-ledgers new-ledger-maps)
+                                    (doseq [{:keys [network ledger-id ledger-info]} new-ledger-maps]
+                                      ;; publish out new ledger events
+                                      (event-bus/publish :new-ledger [network ledger-id] ledger-info))))
 
                                 (if is-next-block?
                                   (do

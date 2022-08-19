@@ -6,9 +6,11 @@
             [clojure.pprint :as cprint]
             [fluree.db.util.log :as log]
             [clojure.string :as str]
+            [fluree.db.constants :as constants]
             [fluree.db.storage.core :as storage]
             [fluree.db.serde.avro :as avro]
             [fluree.db.event-bus :as event-bus]
+            [fluree.db.util.json :as json]
             [fluree.db.flake :as flake]
             [fluree.db.ledger.consensus.tcp :as ftcp]
             [fluree.db.util.async :refer [go-try <? <??]]
@@ -267,6 +269,51 @@
              {:error  :db/invalid-block
               :status 500})))
 
+(defn new-ledger-txn?
+  [{:keys [type status] :as _txn}]
+  (and (= :new-ledger type)
+       (= 200 status)))
+
+(def envelope-keys
+  {constants/$_tx:tx     :cmd
+   constants/$_tx:sig    :sig
+   constants/$_tx:signed :signed})
+
+(defn command-envelope
+  [t flakes]
+  (->> flakes
+       (filter (fn [f]
+                 (= t (flake/s f))))
+       (reduce (fn [m f]
+                 (if-let [k (get envelope-keys (flake/p f))]
+                   (let [o (flake/o f)
+                         m' (assoc m k o)]
+                     (if (= (-> m' keys set)
+                            #{:cmd :sig :signed})
+                       (reduced m')
+                       m'))
+                   m)))))
+
+(defn parse-ledger
+  [ledger]
+  (when ledger
+    (if (sequential? ledger)
+      ledger
+      (str/split ledger #"/"))))
+
+(defn new-ledger-command->ledger-data
+  [{:keys [cmd sig signed] :as command}]
+  (let [{:keys [ledger fork forkBlock]} (json/parse cmd)
+        [network ledger-id] (parse-ledger ledger)]
+    (when (and network ledger-id)
+      (let [command'    (util/without-nils command)
+            ledger-info (util/without-nils {:status    :initialize
+                                            :command   command'
+                                            :fork      fork
+                                            :forkBlock forkBlock})]
+        {:network     network
+         :ledger-id   ledger-id
+         :ledger-info ledger-info}))))
 
 (defn state-machine
   [_ state-atom storage-read storage-write]
@@ -295,7 +342,18 @@
                                 (when (->> cmd-types
                                            (intersection #{:new-db :new-ledger})
                                            seq)
-                                  (update-state/register-new-ledgers txns state-atom block-map))
+                                  (let [{:keys [flakes]} block
+                                        new-ledger-maps  (-> txns
+                                                             vals
+                                                             (filter new-ledger-txn?)
+                                                             (map :t)
+                                                             (map (fn [t]
+                                                                    (command-envelope t flakes)))
+                                                             (map new-ledger-command->ledger-data))]
+                                    (swap! state-atom update-state/register-new-ledgers new-ledger-maps)
+                                    (doseq [{:keys [network ledger-id ledger-info]} new-ledger-maps]
+                                      ;; publish out new ledger events
+                                      (event-bus/publish :new-ledger [network ledger-id] ledger-info))))
 
                                 (if (and is-next-block? server-allowed?)
                                   (try
