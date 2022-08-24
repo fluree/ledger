@@ -59,8 +59,10 @@
               (throw-invalid-command (str "Ledger does not exist: " ledger)))
             (when (and nonce (not (int? nonce)))
               (throw-invalid-command (format "Nonce, if provided, must be an integer. Provided: %s" nonce)))
-            (async/<!! (txproto/queue-command-async (:group system) network ledger-id id signed-cmd))
-            id)
+            (let [queued? (async/<!! (txproto/queue-command-async (:group system) network ledger-id id signed-cmd))]
+              (when-not queued?
+                (throw (ex-info "Command pool full" {:status 503, :error :db/pool-error})))
+              id))
 
       :signed-qry
       (let [{:keys [ledger qry expire nonce meta]} cmd-data
