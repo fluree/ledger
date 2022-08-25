@@ -347,11 +347,11 @@
 
                    :assoc-in (update-state/assoc-in* command state-atom)
 
+                   ;; returns a boolean for whether the command was added
                    :put-pool (let [[_ pool-path cmd-id cmd] command]
                                (-> state-atom
-                                   (swap! update-state/put-pool pool-path cmd-id cmd)
-                                   (update-state/get-pool pool-path cmd-id)
-                                   (= cmd)))
+                                   (swap! update-state/put-pool pool-size pool-path cmd-id cmd)
+                                   (update-state/in-pool? pool-path cmd-id cmd)))
 
                    ;; worker assignments are a little different in that they organize the key-seq
                    ;; both prepended by the server-id (for easy lookup of work based on server-id)

@@ -30,6 +30,12 @@
                                  (assoc pool k v)
                                  pool))))
 
+(defn in-pool?
+  [state pool-path k v]
+  (-> state
+      (get-pool pool-path k)
+      (= v)))
+
 (defn dissoc-ks
   "Dissoc, but with a key sequence."
   [map ks]
