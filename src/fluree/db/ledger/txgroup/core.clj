@@ -74,26 +74,19 @@
                 log-history snapshot-threshold log-directory storage-type
                 storage-ledger-read storage-group-read storage-ledger-write
                 storage-group-write storage-group-exists storage-group-delete
-                storage-group-list catch-up-rounds private-keys
-                open-api]} group-settings
-        raft-config {:port                  port
-                     :log-directory         log-directory
-                     :storage-ledger-read   storage-ledger-read
-                     :storage-ledger-write  storage-ledger-write
-                     :storage-group-read    storage-group-read
-                     :storage-group-write   storage-group-write
-                     :storage-group-exists  storage-group-exists
-                     :storage-group-delete  storage-group-delete
-                     :storage-group-list    storage-group-list
-                     :timeout-ms            timeout-ms
-                     :heartbeat-ms          heartbeat-ms
-                     :log-history           log-history
-                     :snapshot-threshold    snapshot-threshold
-                     :only-leader-snapshots (not= :file storage-type)
-                     :join?                 join?
-                     :catch-up-rounds       catch-up-rounds
-                     :private-keys          private-keys
-                     :open-api              open-api}
+                storage-group-list catch-up-rounds private-keys open-api
+                pending-tx-limit]}
+        group-settings
+
+        raft-config (-> group-settings
+                        (select-keys [:port :log-directory :storage-ledger-read
+                                      :storage-ledger-write :storage-group-read
+                                      :storage-group-write :storage-group-exists
+                                      :storage-group-delete :storage-group-list
+                                      :timeout-ms :heartbeat-ms :log-history
+                                      :snapshot-threshold :join? :catch-up-rounds
+                                      :private-keys :open-api :pool-size])
+                        (assoc :only-leader-snapshots (not= :file storage-type)))
         group       (condp = consensus-type
                       :raft (raft/launch-raft-server
                               server-configs
@@ -113,4 +106,3 @@
   [group version]
   (assert (number? version))
   (txproto/kv-assoc-in group [:version] version))
-

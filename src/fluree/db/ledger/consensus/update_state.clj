@@ -10,8 +10,6 @@
 
 (set! *warn-on-reflection* true)
 
-(def ^:const max-pool-size 100000)
-
 (defn get-pool
   "Returns the entry from the capped pool in the `state` map specified by
   `pool-path` with key `k`. Returns the entire pool if `k` is not provided."
@@ -24,13 +22,15 @@
   "Adds `v` to a capped command pool map within the `state` map specified by
   `pool-path` under the key `k` if and only if there are less than
   `max-pool-size` entries previously in the specified pool."
-  [state pool-path k v]
+  [state max-size pool-path k v]
   (update-in state pool-path (fn [pool]
-                               (if (< (count pool) max-pool-size)
+                               (if (< (count pool) max-size)
                                  (assoc pool k v)
                                  pool))))
 
 (defn in-pool?
+  "Returns a boolean indicating whether or not the key `k` has the value `v`
+  within the command pool in the `state` map under the `pool-path`."
   [state pool-path k v]
   (-> state
       (get-pool pool-path k)

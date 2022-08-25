@@ -58,7 +58,7 @@
 
 
 (defn state-machine
-  [state-atom]
+  [state-atom pool-size]
   (fn [command _ callback]
     (let [entry  (:entry command)
           op     (first entry)
@@ -104,9 +104,8 @@
 
                    :put-pool (let [[_ pool-path cmd-id cmd] entry]
                                (-> state-atom
-                                   (swap! update-state/put-pool pool-path cmd-id cmd)
-                                   (update-state/get-pool pool-path cmd-id)
-                                   (= cmd)))
+                                   (swap! update-state/put-pool pool-size pool-path cmd-id cmd)
+                                   (update-state/in-pool? pool-path cmd-id cmd)))
 
                    ;; For no consensus, just returns true
                    :worker-assign true
@@ -199,7 +198,7 @@
   (-start-up-activities [group conn system shutdown join?] (in-memory-start-up group conn system shutdown)))
 
 (defn launch-in-memory-server
-  [{:keys [private-keys this-server port open-api] :as _group-settings}]
+  [{:keys [private-keys this-server port pool-size open-api] :as _group-settings}]
   (let [event-chan         (async/chan)
         command-chan       (async/chan)
         state-machine-atom (atom default-state)
@@ -218,7 +217,7 @@
                             :port          port
                             :private-keys  private-keys
                             :command-chan  command-chan
-                            :state-machine (state-machine state-machine-atom)}]
+                            :state-machine (state-machine state-machine-atom pool-size)}]
     (event-loop config*)
     (map->InMemoryGroup {:in-memory-server config*
                          :state-atom       state-machine-atom

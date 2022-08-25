@@ -60,6 +60,7 @@
    :fdb-memory-reindex           "1mb"
    :fdb-memory-reindex-max       "2mb"
    :fdb-stats-report-frequency   "1m"
+   :fdb-pending-tx-limit         "10000"
 
    ;; api settings
    :fdb-api-port                 8090                       ;; integer
@@ -624,6 +625,7 @@
      :catch-up-rounds       (env-integer (:fdb-group-catch-up-rounds settings)) ;; defaults to 10
      :log-history           (env-integer (:fdb-group-log-history settings)) ;; number of historical log files to keep around
      :snapshot-threshold    (env-integer (:fdb-group-snapshot-threshold settings)) ;; how many new index entries before creating a new snapshot
+     :pool-size             (env-integer (:fdb-pending-tx-limit settings)) ;; maximum number of pending commands allowed at one time
      :private-keys          (not-empty private-keys)        ;; Transactor group private key(s). Separate multiple keys with commas. These keys will be replicated to all servers in the group, which they can use as identities for external networks or as defaults for DBs. They only need to be provided one time.
      :open-api              (-> settings :fdb-api-open env-boolean)
      :log-directory         (-> settings :fdb-group-log-directory canonicalize-path) ;; where to store raft logs for the group

@@ -269,7 +269,7 @@
 
 
 (defn state-machine
-  [_ state-atom storage-read storage-write]
+  [_ state-atom storage-read storage-write pool-size]
   (fn [command _]
     (let [op     (first command)
           result (case op
@@ -522,7 +522,9 @@
   (let [{:keys [port this-server log-directory entries-max log-history
                 storage-ledger-read storage-group-read storage-ledger-write
                 storage-group-write storage-group-exists storage-group-delete
-                storage-group-list private-keys open-api]} raft-config
+                storage-group-list private-keys open-api pool-size]}
+        raft-config
+
         event-chan             (async/chan)
         command-chan           (async/chan)
         state-machine-atom     (atom default-state)
@@ -544,7 +546,8 @@
                                  :state-machine (state-machine this-server
                                                                state-machine-atom
                                                                storage-ledger-read
-                                                               storage-ledger-write)
+                                                               storage-ledger-write
+                                                               pool-size)
                                  :snapshot-write (snapshot-writer snapshot-config)
                                  :snapshot-reify (snapshot-reify snapshot-config)
                                  :snapshot-xfer (snapshot-xfer snapshot-config)
