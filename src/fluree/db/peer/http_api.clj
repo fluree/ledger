@@ -39,15 +39,10 @@
             [fluree.db.query.fql-resp :refer [flakes->res]])
   (:import (java.time Instant)
            (java.net BindException URL)
-           (fluree.db.flake Flake)
            (clojure.lang ExceptionInfo)
            (org.httpkit BytesInputStream)))
 
 (set! *warn-on-reflection* true)
-
-(defn s
-  [^Flake f]
-  (.-s f))
 
 (defn- count-graphql-resp
   [res fuel]
@@ -380,7 +375,7 @@
               flakes'      (concat flakes-all flakes)]
           (if (empty? txs)
             (let [_                 (session/close session)
-                  flakes-by-subject (group-by s flakes')
+                  flakes-by-subject (group-by flake/s flakes')
                   res-map           (async/go-loop [vals' (vals flakes-by-subject)
                                                     acc []]
                                       (let [val' (first vals')
@@ -1037,4 +1032,3 @@
                        (server-close-fn :timeout 1000))
                      (swap! web-server dissoc port))]
       (map->WebServer {:close close-fn}))))
-
