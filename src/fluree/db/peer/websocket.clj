@@ -6,8 +6,7 @@
             [fluree.db.permissions-validate :as permissions-validate]
             [fluree.db.peer.messages :as messages]
             [fluree.db.api :as fdb]
-            [fluree.db.ledger.util :as util])
-  (:import (java.util UUID)))
+            [fluree.db.ledger.util :as util]))
 
 (set! *warn-on-reflection* true)
 
@@ -118,7 +117,7 @@
 
 (defn handler
   [system req]
-  (let [ws-id (str (UUID/randomUUID))
+  (let [ws-id (str (random-uuid))
         producer-chan (async/chan (async/sliding-buffer 20))
         consumer-chan (async/chan (async/sliding-buffer 20))
         msg-handler #(future
@@ -148,4 +147,3 @@
         {:status  400
          :headers {"content-type" "application/text"}
          :body    "Expected a websocket request"}))))
-
