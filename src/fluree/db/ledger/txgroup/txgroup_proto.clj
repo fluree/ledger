@@ -325,7 +325,7 @@
            (command-queue group network))))
 
 (defn queue-command-async
-  "Enqueues a new command or transaction for processing."
+  "Adds a new command to the command queue for processing."
   [group network ledger-id command-id command]
   (let [queue-time  (System/currentTimeMillis)
         size        (-> command :cmd count)
