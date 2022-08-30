@@ -67,10 +67,10 @@
   (async/<!! (kv-dissoc-in-async group ks)))
 
 (defn kv-max-in-async
-  "Writes value to specified key sequence. Will only write is proposed value is
-  greater than the current value. Returns true if value is written, false if it
-  is not written. Returns core async channel that will eventually have a
-  response."
+  "Writes value to specified key sequence. Will only write if the proposed value
+  is greater than the current value. Returns a core async channel that will
+  eventually have a response of true if the value is written, false if it is not
+  written."
   [group ks v]
   (assert (number? v))
   (let [command [:max-in ks v]]
@@ -325,7 +325,7 @@
            (command-queue group network))))
 
 (defn queue-command-async
-  "Enqueues a new command processing"
+  "Enqueues a new command or transaction for processing."
   [group network ledger-id command-id command]
   (let [queue-time  (System/currentTimeMillis)
         size        (-> command :cmd count)
