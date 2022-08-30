@@ -27,7 +27,7 @@
   "Does sanity checks for a new command and if valid, propagates it.
   Returns command-id/txid upon successful persistence to network, else
   throws."
-  [{:keys [conn] :as system}  {:keys [cmd sig signed] :as signed-cmd}]
+  [{:keys [conn group] :as _system}  {:keys [cmd sig signed] :as signed-cmd}]
   (when-not (and (string? cmd) (string? sig))
     (throw-invalid-command (str "Command map requires keys of 'cmd' and 'sig', with a json string command map and signature of the command map respectively. Provided: "
                                 (pr-str signed-cmd))))
@@ -55,11 +55,11 @@
               (throw-invalid-command (format "Transaction 'deps', when provided, must be a sequence of txid(s). Provided: %s" deps)))
             (when (and expire (or (not (pos-int? expire)) (< expire (System/currentTimeMillis))))
               (throw-invalid-command (format "Transaction 'expire', when provided, must be epoch millis and be later than now. expire: %s current time: %s" expire (System/currentTimeMillis))))
-            (when-not (txproto/ledger-exists? (:group system) network ledger-id)
+            (when-not (txproto/ledger-exists? group network ledger-id)
               (throw-invalid-command (str "Ledger does not exist: " ledger)))
             (when (and nonce (not (int? nonce)))
               (throw-invalid-command (format "Nonce, if provided, must be an integer. Provided: %s" nonce)))
-            (let [queued? (async/<!! (txproto/queue-command-async (:group system) network ledger-id id signed-cmd))]
+            (let [queued? (async/<!! (txproto/queue-command-async group network ledger-id id signed-cmd))]
               (when-not queued?
                 (throw (ex-info "Command pool full" {:status 503, :error :db/pool-error})))
               id))
@@ -73,7 +73,7 @@
             _      (when (and nonce (not (int? nonce)))
                      (throw-invalid-command (format "Nonce, if provided, must be an integer. Provided: %s" nonce)))
             [network ledger-id] (session/resolve-ledger conn ledger)
-            _      (when-not (txproto/ledger-exists? (:group system) network ledger-id)
+            _      (when-not (txproto/ledger-exists? group network ledger-id)
                      (throw-invalid-command (str "The ledger does not exist: " ledger)))
             action (keyword (:action cmd-data))
             meta   (if (nil? meta) false meta)
@@ -130,39 +130,39 @@
                                                      expire (System/currentTimeMillis))))
                     (when (and nonce (not (int? nonce)))
                       (throw-invalid-command (format "Nonce, if provided, must be an integer. Provided: %s" nonce)))
-                    (when ((set (txproto/all-ledger-list (:group system))) [network ledger-id])
+                    (when ((set (txproto/all-ledger-list group)) [network ledger-id])
                       (throw-invalid-command (format "Cannot create a new ledger, it already exists or existed: %s" ledger)))
                     (when snapshot
-                      (let [storage-exists? (-> system :conn :storage-exists)
+                      (let [storage-exists? (:storage-exists conn)
                             exists?         (storage-exists? (str snapshot))]
                         (when-not exists?
                           (throw-invalid-command
                             (format "Cannot create a new ledger, snapshot file %s does not exist in storage %s"
-                                    snapshot (case (-> system :conn :storage-type)
-                                               :s3 (-> system :conn :meta :s3-storage)
-                                               :file (-> system :conn :meta :file-storage-path)
-                                               (-> system :conn :storage-type)))))))
+                                    snapshot (case (:storage-type conn)
+                                               :s3 (-> conn :meta :s3-storage)
+                                               :file (-> conn :meta :file-storage-path)
+                                               (:storage-type conn)))))))
 
                     ;; TODO - do more validation, reconcile with "unsigned-cmd" validation before this
 
-                    (async/<!! (txproto/new-ledger-async (:group system) network ledger-id id signed-cmd owners))
+                    (async/<!! (txproto/new-ledger-async group network ledger-id id signed-cmd owners))
 
                     id)
       :delete-ledger (let [{:keys [ledger]} cmd-data
                            [network ledger-id] (if (sequential? ledger) ledger (str/split ledger #"/"))
                            old-session (session/session conn ledger)
                            db          (async/<!! (session/current-db old-session))
-                           _           (when-not (or (-> system :group :open-api)
+                           _           (when-not (or (:open-api group)
                                                      (async/<!! (auth/root-role? db ["_auth/id" auth-id])))
                                          (throw (ex-info (str "To delete a ledger, must be using an open API or an auth record with a root role.")
                                                          {:status 401 :error :db/invalid-auth})))]
                        (async/<!! (ledger-delete/process conn network ledger-id))
                        (session/close old-session))
       :default-key (let [{:keys [expire nonce network ledger-id private-key]} cmd-data
-                         default-auth-id (some-> (txproto/get-shared-private-key (:group system))
+                         default-auth-id (some-> (txproto/get-shared-private-key group)
                                                  (crypto/account-id-from-private))
                          network-auth-id (some->> network
-                                                  (txproto/get-shared-private-key (:group system))
+                                                  (txproto/get-shared-private-key group)
                                                   (crypto/account-id-from-private))]
                      ;; signed auth-id must be either the network or txgroup default key to succeed
                      (when-not (or (= auth-id default-auth-id)
@@ -180,13 +180,13 @@
                        (throw-invalid-command (str "Network must be a string if provided. Provided: " (pr-str network))))
                      (cond
                        (and network ledger-id)
-                       (txproto/set-shared-private-key (:group system) network ledger-id private-key)
+                       (txproto/set-shared-private-key group network ledger-id private-key)
 
                        network
-                       (txproto/set-shared-private-key (:group system) network private-key)
+                       (txproto/set-shared-private-key group network private-key)
 
                        :else
-                       (txproto/set-shared-private-key (:group system) private-key))))))
+                       (txproto/set-shared-private-key group private-key))))))
 
 
 (def subscription-auth (atom {}))
@@ -339,13 +339,14 @@
 
          :nw-unsubscribe (raft/monitor-raft-stop (-> system :group))
 
-         :unsigned-cmd (let [cmd-data    arg
-                             {:keys [type ledger jwt]} cmd-data
+         :unsigned-cmd (let [{:keys [type ledger jwt] :as cmd-data}
+                             arg
+
                              cmd-type    (keyword type)
                              _           (when-not (#{:tx :new-ledger :default-key :delete-ledger} cmd-type)
                                            (throw-invalid-command
                                              (str "Invalid command type (:type) provided in unsigned command: "
-                                                  (:type cmd-data))))
+                                                  type)))
                              [network ledger-id] (cond
                                                    (= :new-ledger cmd-type)
                                                    (cond
@@ -363,17 +364,16 @@
                                                    (= :default-key cmd-type)
                                                    (let [{:keys [network ledger-id]} cmd-data]
                                                      [network ledger-id]))
-                             private-key (if (nil? jwt)
-                                           (let [pk (txproto/get-shared-private-key
-                                                      (:group system) network ledger-id)]
-                                             (if pk
-                                               (log/debug "Signing unsigned cmd with default private key")
-                                               (log/error "No private key found to sign unsigned cmd"))
-                                             pk)
-                                           (let [jwt-options (-> system :conn :meta :password-auth)
-                                                 {:keys [secret]} jwt-options
-                                                 _           (token-auth/verify-jwt secret jwt)]
-                                             (async/<!! (pw-auth/fluree-decode-jwt (:conn system) jwt))))
+                             private-key (if jwt
+                                           (let [secret (get-in system [:conn :meta :password-auth :secret])
+                                                 jwt    (token-auth/verify-jwt secret jwt)]
+                                             (async/<!! (pw-auth/fluree-decode-jwt (:conn system) jwt)))
+                                           (if-let [pk (txproto/get-shared-private-key (:group system)
+                                                                                    network ledger-id)]
+                                             (do (log/debug "Signing unsigned cmd with default private key")
+                                                 pk)
+                                             (do (log/error "No private key found to sign unsigned cmd")
+                                                 nil)))
                              {:keys [expire nonce] :or {nonce (System/currentTimeMillis)}} cmd-data
                              expire      (or expire (+ 60000 nonce))
                              cmd-data*   (assoc cmd-data :expire expire :nonce nonce)]
