@@ -28,7 +28,7 @@
   "Does sanity checks for a new command and if valid, propagates it.
   Returns command-id/txid upon successful persistence to network, else
   throws."
-  [{:keys [conn group] :as _system} signed-cmd timestamp]
+  [{:keys [conn group] :as _system} timestamp signed-cmd]
   (log/debug "Processing signed command:" (pr-str signed-cmd))
   (let [{:keys [id auth-id data]} (command/parse signed-cmd)]
     (case (:type data)
@@ -249,7 +249,7 @@
                                                                              (ab-core/byte-array-to-base :hex)))
                              true success!))
 
-         :cmd (success! (process-command system arg now))
+         :cmd (success! (process-command system now arg))
 
          :subscribe (let [pw-enabled?     (pw-auth/password-enabled? (:conn system))
                           open-api?       (-> system :group :open-api)
@@ -387,7 +387,7 @@
                                            :sig    sig
                                            :id     id
                                            :ledger ledger}]
-                           (success! (process-command system signed-cmd now))))
+                           (success! (process-command system now signed-cmd))))
 
          :ledger-info (let [[network ledger-id] (session/resolve-ledger (:conn system) arg)]
                         (success! (ledger-info system network ledger-id)))
@@ -411,7 +411,7 @@
                                                              "key for use with ledger: " ledger ". Unable to process an unsigned "
                                                              "transaction.")))
                    cmd         (fdb/tx->command ledger tx private-key tx-map)]
-               (success! (process-command system cmd now)))
+               (success! (process-command system now cmd)))
 
          :pw-login (let [{:keys [ledger password user auth]} arg]
                      (when-not (pw-auth/password-enabled? (:conn system))
