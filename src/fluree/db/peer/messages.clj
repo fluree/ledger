@@ -30,10 +30,10 @@
   throws."
   [{:keys [conn group] :as _system} timestamp signed-cmd]
   (log/debug "Processing signed command:" (pr-str signed-cmd))
-  (let [{:keys [id auth-id data]} (command/parse signed-cmd)]
-    (case (:type data)
-      :tx (let [{:keys [ledger tx deps expire nonce]} data
-                _ (log/debug "tx command:" data)
+  (let [{:keys [id auth-id cmd-data]} (command/parse signed-cmd)]
+    (case (:type cmd-data)
+      :tx (let [{:keys [ledger tx deps expire nonce]} cmd-data
+                _ (log/debug "tx command:" cmd-data)
                 _ (when-not ledger (throw-invalid-command "No ledger specified for transaction."))
                 [network ledger-id] (session/resolve-ledger conn ledger)]
             (when-not tx
@@ -52,7 +52,7 @@
               id))
 
       :signed-qry
-      (let [{:keys [ledger qry expire nonce meta]} data
+      (let [{:keys [ledger qry expire nonce meta]} cmd-data
             _      (when-not ledger (throw-invalid-command "No ledger specified for signed query."))
             _      (when-not qry (throw-invalid-command "No qry specified for signed query."))
             _      (when (and expire (or (not (pos-int? expire)) (< expire timestamp)))
@@ -62,7 +62,7 @@
             [network ledger-id] (session/resolve-ledger conn ledger)
             _      (when-not (txproto/ledger-exists? group network ledger-id)
                      (throw-invalid-command (str "The ledger does not exist: " ledger)))
-            action (keyword (:action data))
+            action (keyword (:action cmd-data))
             meta   (if (nil? meta) false meta)
             db     (if (= action :block)
                      nil
@@ -102,7 +102,7 @@
                           {:status 400
                            :error  :db/invalid-action}))))
 
-      :new-ledger (let [{:keys [ledger snapshot auth expire nonce owners]} data
+      :new-ledger (let [{:keys [ledger snapshot auth expire nonce owners]} cmd-data
                         [network ledger-id] (if (sequential? ledger) ledger (str/split ledger #"/"))]
                     (when (and auth auth-id (not= auth auth-id))
                       (throw-invalid-command (str "New-ledger command was signed by auth: " auth-id
@@ -135,7 +135,7 @@
                     (async/<!! (txproto/new-ledger-async group network ledger-id id signed-cmd owners))
 
                     id)
-      :delete-ledger (let [{:keys [ledger]} data
+      :delete-ledger (let [{:keys [ledger]} cmd-data
                            [network ledger-id] (if (sequential? ledger) ledger (str/split ledger #"/"))
                            old-session (session/session conn ledger)
                            db          (async/<!! (session/current-db old-session))
@@ -145,7 +145,7 @@
                                                          {:status 401 :error :db/invalid-auth})))]
                        (async/<!! (ledger-delete/process conn network ledger-id))
                        (session/close old-session))
-      :default-key (let [{:keys [expire nonce network ledger-id private-key]} data
+      :default-key (let [{:keys [expire nonce network ledger-id private-key]} cmd-data
                          default-auth-id (some-> (txproto/get-shared-private-key group)
                                                  (crypto/account-id-from-private))
                          network-auth-id (some->> network

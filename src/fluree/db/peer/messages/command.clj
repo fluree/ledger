@@ -22,12 +22,12 @@
 (s/def ::sig string?)
 (s/def ::signed (s/nilable string?))
 
-(s/def ::signed-command
+(s/def ::signed-cmd
   (s/keys :req-un [::cmd ::sig]
           :opt-un [::signed]))
 
 (s/def ::type keyword?)
-(s/def ::data
+(s/def ::cmd-data
   (s/keys :req-un [::type]))
 
 (defn throw-invalid
@@ -38,9 +38,9 @@
 
 (defn parse-signed-command
   [msg]
-  (let [signed-cmd (s/conform ::signed-command msg)]
+  (let [signed-cmd (s/conform ::signed-cmd msg)]
     (when (s/invalid? signed-cmd)
-      (throw-invalid (s/explain-str ::signed-command msg)))
+      (throw-invalid (s/explain-str ::signed-cmd msg)))
     signed-cmd))
 
 (defn parse-json
@@ -52,12 +52,12 @@
     (catch Exception _
       (throw-invalid "Invalid command serialization, could not decode JSON."))))
 
-(defn parse-data
+(defn parse-cmd-data
   [parsed-cmd]
-  (let [data (s/conform ::data parsed-cmd)]
-    (when (s/invalid? data)
-      (throw-invalid (s/explain-str ::data parsed-cmd)))
-    data))
+  (let [cmd-data (s/conform ::cmd-data parsed-cmd)]
+    (when (s/invalid? cmd-data)
+      (throw-invalid (s/explain-str ::cmd-data parsed-cmd)))
+    cmd-data))
 
 (defn parse-auth-id
   [{:keys [cmd sig signed] :as _parsed-command}]
@@ -76,9 +76,10 @@
         (parse-signed-command msg)
 
         parsed-cmd (parse-json cmd)
-        cmd-data   (parse-data parsed-cmd)
+        cmd-data   (parse-cmd-data parsed-cmd)
         auth-id    (parse-auth-id signed-cmd)
         id         (parse-id cmd)]
-    {:id      id
-     :auth-id auth-id
-     :data    cmd-data}))
+    {:id         id
+     :auth-id    auth-id
+     :signed-cmd signed-cmd
+     :cmd-data   cmd-data}))
