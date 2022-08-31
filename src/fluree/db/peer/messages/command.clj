@@ -26,9 +26,7 @@
   (s/keys :req-un [::cmd ::sig]
           :opt-un [::signed]))
 
-(s/def ::type (s/or :string  (s/and string? no-colon?)
-                    :symbol  symbol?
-                    :keyword keyword?))
+(s/def ::type keyword?)
 (s/def ::data
   (s/keys :req-un [::type]))
 
@@ -48,7 +46,9 @@
 (defn parse-json
   [cmd]
   (try
-    (json/parse cmd)
+    (-> cmd
+        json/parse
+        (update :type keyword))
     (catch Exception _
       (throw-invalid "Invalid command serialization, could not decode JSON."))))
 
@@ -57,7 +57,7 @@
   (let [data (s/conform ::data parsed-cmd)]
     (when (s/invalid? data)
       (throw-invalid (s/explain-str ::data parsed-cmd)))
-    (update data :type (comp keyword second))))
+    data))
 
 (defn parse-auth-id
   [{:keys [cmd sig signed] :as _parsed-command}]
