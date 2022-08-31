@@ -27,8 +27,14 @@
           :opt-un [::signed]))
 
 (s/def ::type keyword?)
-(s/def ::cmd-data
+
+(defmulti cmd-data-type :type)
+(defmethod cmd-data-type :default
+  [_]
   (s/keys :req-un [::type]))
+
+(s/def ::cmd-data
+  (s/multi-spec cmd-data-type :type))
 
 (defn throw-invalid
   [message]
