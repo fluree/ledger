@@ -99,7 +99,14 @@
                               (map :id)
                               set)
                          (:id (first subject-under-test)))
-              "preserves the node ancestry")))
+              "preserves the node ancestry")
+
+          (is (every? (complement index/resolved?)
+                      (->> subject-under-test
+                           last
+                           :children
+                           vals))
+              "un-resolves child nodes")))
 
       (testing "with lower sorted flakes in novelty"
         (let [new-tx             (inc-tx last-tx)
