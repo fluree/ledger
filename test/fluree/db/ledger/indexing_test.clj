@@ -92,8 +92,13 @@
                                              set)))
               "updates all the :id attributes")
 
-          (is (contains? (->> subject-under-test last :children vals set)
-                         (first subject-under-test))
+          (is (contains? (->> subject-under-test
+                              last
+                              :children
+                              vals
+                              (map :id)
+                              set)
+                         (:id (first subject-under-test)))
               "preserves the node ancestry")))
 
       (testing "with lower sorted flakes in novelty"
@@ -115,6 +120,11 @@
                    (every? #{lowest-novelty}))
               "sets the first novelty item as first flake for every leftmost node")
 
-          (is (contains? (->> subject-under-test last :children vals set)
-                         (first subject-under-test))
+          (is (contains? (->> subject-under-test
+                              last
+                              :children
+                              vals
+                              (map :id)
+                              set)
+                         (:id (first subject-under-test)))
               "preserves the node ancestry"))))))
