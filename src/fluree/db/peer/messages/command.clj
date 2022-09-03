@@ -18,6 +18,18 @@
   [s]
   (not (str/includes? s ":")))
 
+(defn network?
+  [s]
+  (some? (re-matches #"^[a-z0-9-]+$" s)))
+
+(defn ledger-id?
+  [s]
+  (some? (re-matches #"^[a-z0-9-]+$" s)))
+
+(defn ledger-string?
+  [s]
+  (some? (re-matches #"^[a-z0-9-]+/[a-z0-9-]+$" s)))
+
 (s/def ::cmd (s/and string? small?))
 (s/def ::sig string?)
 (s/def ::signed (s/nilable string?))
@@ -28,7 +40,23 @@
 
 (s/def ::type keyword?)
 
+(s/def ::tx (s/or :map  map?
+                  :coll (s/coll-of map?)))
+(s/def ::deps (s/coll-of string?))
+(s/def ::expire pos-int?)
+(s/def ::nonce int?)
+(s/def ::network (s/and string? network?))
+(s/def ::ledger-id (s/and string? ledger-id?))
+(s/def ::ledger (s/or :pair   (s/tuple ::network ::ledger-id)
+                      :string ledger-string?))
+
 (defmulti cmd-data-type :type)
+
+(defmethod cmd-data-type :tx
+  [_]
+  (s/keys :req-un [::type ::tx ::ledger]
+          :opt-un [::deps ::expire ::nonce]))
+
 (defmethod cmd-data-type :default
   [_]
   (s/keys :req-un [::type]))
@@ -63,7 +91,7 @@
   (let [cmd-data (s/conform ::cmd-data parsed-cmd)]
     (when (s/invalid? cmd-data)
       (throw-invalid (s/explain-str ::cmd-data parsed-cmd)))
-    cmd-data))
+    (s/unform ::cmd-data cmd-data)))
 
 (defn parse-auth-id
   [{:keys [cmd sig signed] :as _parsed-command}]

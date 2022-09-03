@@ -32,24 +32,16 @@
   (log/debug "Processing signed command:" (pr-str signed-cmd))
   (let [{:keys [id auth-id cmd-data]} (command/parse signed-cmd)]
     (case (:type cmd-data)
-      :tx (let [{:keys [ledger tx deps expire nonce]} cmd-data
-                _ (log/debug "tx command:" cmd-data)
-                _ (when-not ledger (throw-invalid-command "No ledger specified for transaction."))
-                [network ledger-id] (session/resolve-ledger conn ledger)]
-            (when-not tx
-              (throw-invalid-command "No tx specified for transaction."))
-            (when (and deps (or (not (sequential? deps)) (not (every? string? deps))))
-              (throw-invalid-command (format "Transaction 'deps', when provided, must be a sequence of txid(s). Provided: %s" deps)))
-            (when (and expire (or (not (pos-int? expire)) (< expire timestamp)))
-              (throw-invalid-command (format "Transaction 'expire', when provided, must be epoch millis and be later than now. expire: %s current time: %s" expire timestamp)))
-            (when-not (txproto/ledger-exists? group network ledger-id)
-              (throw-invalid-command (str "Ledger does not exist: " ledger)))
-            (when (and nonce (not (int? nonce)))
-              (throw-invalid-command (format "Nonce, if provided, must be an integer. Provided: %s" nonce)))
-            (let [queued? (async/<!! (txproto/queue-command-async group network ledger-id id signed-cmd))]
-              (when-not queued?
-                (throw (ex-info "Command pool full" {:status 503, :error :db/pool-error})))
-              id))
+      :tx (do (log/debug "tx command:" cmd-data)
+              (let [{:keys [ledger tx deps expire nonce]} cmd-data
+                    [network ledger-id] (session/resolve-ledger conn ledger)]
+                (when (and expire (< expire timestamp))
+                  (throw-invalid-command (format "Transaction 'expire', when provided, must be epoch millis and be later than now. expire: %s current time: %s" expire timestamp)))
+                (when-not (txproto/ledger-exists? group network ledger-id)
+                  (throw-invalid-command (str "Ledger does not exist: " ledger)))
+                (when-not (async/<!! (txproto/queue-command-async group network ledger-id id signed-cmd))
+                  (throw (ex-info "Command pool full" {:status 503, :error :db/pool-error})))
+                id))
 
       :signed-qry
       (let [{:keys [ledger qry expire nonce meta]} cmd-data
