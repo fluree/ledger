@@ -24,6 +24,130 @@
   [message]
   (throw (ex-info message {:status 400 :error :db/invalid-command})))
 
+(defmulti process-parsed-command
+  (fn [conn id auth-id timestamp signed-cmd cmd-data]
+    (:type cmd-data)))
+
+(defmethod process-parsed-command :tx
+  [{:keys [group] :as conn} id auth-id timestamp signed-cmd {:keys [ledger tx deps
+                                                                    expire nonce]
+                                                             :as cmd-data}]
+  (log/debug "tx command:" cmd-data)
+  (let [[network ledger-id] (session/resolve-ledger conn ledger)]
+    (when (and expire (< expire timestamp))
+      (throw-invalid-command (format "Transaction 'expire', when provided, must be epoch millis and be later than now. expire: %s current time: %s" expire timestamp)))
+    (when-not (txproto/ledger-exists? group network ledger-id)
+      (throw-invalid-command (str "Ledger does not exist: " ledger)))
+    (when-not (async/<!! (txproto/queue-command-async group network ledger-id id signed-cmd))
+      (throw (ex-info "Command pool full" {:status 503, :error :db/pool-error})))
+    id))
+
+(defmethod process-parsed-command :signed-qry
+  [{:keys [group] :as conn} id auth-id timestamp signed-cmd {:keys [ledger action qry
+                                                                    expire nonce meta]
+                                                             :or   {meta false}}]
+  (let [[network ledger-id] (session/resolve-ledger conn ledger)]
+    (if (txproto/ledger-exists? group network ledger-id)
+      (let [db (if (= action :block)
+                 nil
+                 (fdb/db conn ledger {:auth (when auth-id ["_auth/id" auth-id])}))]
+
+                                        ; 1) execute the query or 2) queue the execution of the signed query?
+        (case action
+          :query
+          (let [_ (log/debug ":signed-qry w/ :query db:" db "\nquery:" qry "\nmeta:" meta)
+                result (async/<!! (fdb/query-async db (assoc-in qry [:opts :meta] meta)))
+                _      (when (instance? clojure.lang.ExceptionInfo result)
+                         (throw result))]
+            result)
+
+          :multi-query
+          (let [result (async/<!! (fdb/multi-query-async db (assoc-in qry [:opts :meta] meta)))
+                _      (when (instance? clojure.lang.ExceptionInfo result)
+                         (throw result))]
+            result)
+
+          :block
+          (let [query  (update qry :opts merge {:meta meta, :auth auth-id})
+                result (async/<!! (fdb/block-query-async conn ledger query))
+                _      (when (instance? clojure.lang.ExceptionInfo result)
+                         (throw result))]
+            result)
+
+          :history
+          (let [query  (update qry :opts merge {:meta meta})
+                result (async/<!! (fdb/history-query-async db query))
+                _      (when (instance? clojure.lang.ExceptionInfo result)
+                         (throw result))]
+            result)
+
+          ;; else
+          (throw (ex-info (str "Invalid action:" action " for a signed query")
+                          {:status 400
+                           :error  :db/invalid-action}))))
+      (throw-invalid-command (str "The ledger does not exist: " ledger)))))
+
+(defmethod process-parsed-command :new-ledger
+  [{:keys [group] :as conn} id auth-id timestamp signed-cmd {:keys [ledger snapshot auth
+                                                                    expire nonce owners]}]
+  (let [[network ledger-id] (session/resolve-ledger conn ledger)]
+    (when (and auth auth-id (not= auth auth-id))
+      (throw-invalid-command (str "New-ledger command was signed by auth: " auth-id
+                                  " but the command specifies auth: " auth
+                                  ". They must be the same if auth is provided.")))
+    (when ((set (txproto/all-ledger-list group)) [network ledger-id])
+      (throw-invalid-command (format "Cannot create a new ledger, it already exists or existed: %s" ledger)))
+    (when snapshot
+      (let [storage-exists? (:storage-exists conn)
+            exists?         (storage-exists? (str snapshot))]
+        (when-not exists?
+          (throw-invalid-command
+           (format "Cannot create a new ledger, snapshot file %s does not exist in storage %s"
+                   snapshot (case (:storage-type conn)
+                              :s3 (-> conn :meta :s3-storage)
+                              :file (-> conn :meta :file-storage-path)
+                              (:storage-type conn)))))))
+
+    ;; TODO - do more validation, reconcile with "unsigned-cmd" validation before this
+
+    (async/<!! (txproto/new-ledger-async group network ledger-id id signed-cmd owners))
+
+    id))
+
+(defmethod process-parsed-command :delete-ledger
+  [{:keys [group] :as conn} id auth-id timestamp signed-cmd {:keys [ledger]}]
+  (let [[network ledger-id] (session/resolve-ledger conn ledger)
+        old-session         (session/session conn ledger)
+        db                  (async/<!! (session/current-db old-session))]
+    (if (or (:open-api group)
+            (async/<!! (auth/root-role? db ["_auth/id" auth-id])))
+      (do (async/<!! (ledger-delete/process conn network ledger-id))
+          (session/close old-session))
+      (throw (ex-info (str "To delete a ledger, must be using an open API or an auth record with a root role.")
+                      {:status 401 :error :db/invalid-auth})))))
+
+(defmethod process-parsed-command :default-key
+  [{:keys [group] :as conn} id auth-id timestamp signed-cmd {:keys [expire nonce network
+                                                                    ledger-id private-key]}]
+  (let [default-auth-id (some-> (txproto/get-shared-private-key group)
+                                (crypto/account-id-from-private))
+        network-auth-id (some->> network
+                                 (txproto/get-shared-private-key group)
+                                 (crypto/account-id-from-private))]
+    ;; signed auth-id must be either the network or txgroup default key to succeed
+    (when-not (or (= auth-id default-auth-id)
+                  (= auth-id network-auth-id))
+      (throw-invalid-command (str "Command signed with unknown auth id: " auth-id)))
+    (cond
+      (and network ledger-id)
+      (txproto/set-shared-private-key group network ledger-id private-key)
+
+      network
+      (txproto/set-shared-private-key group network private-key)
+
+      :else
+      (txproto/set-shared-private-key group private-key))))
+
 (defn- process-command
   "Does sanity checks for a new command and if valid, propagates it.
   Returns command-id/txid upon successful persistence to network, else
@@ -31,118 +155,7 @@
   [{:keys [conn group] :as _system} timestamp signed-cmd]
   (log/debug "Processing signed command:" (pr-str signed-cmd))
   (let [{:keys [id auth-id cmd-data]} (command/parse signed-cmd)]
-    (case (:type cmd-data)
-      :tx (do (log/debug "tx command:" cmd-data)
-              (let [{:keys [ledger tx deps expire nonce]} cmd-data
-                    [network ledger-id] (session/resolve-ledger conn ledger)]
-                (when (and expire (< expire timestamp))
-                  (throw-invalid-command (format "Transaction 'expire', when provided, must be epoch millis and be later than now. expire: %s current time: %s" expire timestamp)))
-                (when-not (txproto/ledger-exists? group network ledger-id)
-                  (throw-invalid-command (str "Ledger does not exist: " ledger)))
-                (when-not (async/<!! (txproto/queue-command-async group network ledger-id id signed-cmd))
-                  (throw (ex-info "Command pool full" {:status 503, :error :db/pool-error})))
-                id))
-
-      :signed-qry
-      (let [{:keys [ledger action qry expire nonce meta]
-             :or   {meta false}}
-            cmd-data
-
-            [network ledger-id] (session/resolve-ledger conn ledger)]
-        (if (txproto/ledger-exists? group network ledger-id)
-          (let [db (if (= action :block)
-                     nil
-                     (fdb/db conn ledger {:auth (when auth-id ["_auth/id" auth-id])}))]
-
-                                        ; 1) execute the query or 2) queue the execution of the signed query?
-            (case action
-              :query
-              (let [_ (log/debug ":signed-qry w/ :query db:" db "\nquery:" qry "\nmeta:" meta)
-                    result (async/<!! (fdb/query-async db (assoc-in qry [:opts :meta] meta)))
-                    _      (when (instance? clojure.lang.ExceptionInfo result)
-                             (throw result))]
-                result)
-
-              :multi-query
-              (let [result (async/<!! (fdb/multi-query-async db (assoc-in qry [:opts :meta] meta)))
-                    _      (when (instance? clojure.lang.ExceptionInfo result)
-                             (throw result))]
-                result)
-
-              :block
-              (let [query  (update qry :opts merge {:meta meta, :auth auth-id})
-                    result (async/<!! (fdb/block-query-async conn ledger query))
-                    _      (when (instance? clojure.lang.ExceptionInfo result)
-                             (throw result))]
-                result)
-
-              :history
-              (let [query  (update qry :opts merge {:meta meta})
-                    result (async/<!! (fdb/history-query-async db query))
-                    _      (when (instance? clojure.lang.ExceptionInfo result)
-                             (throw result))]
-                result)
-
-              ;; else
-              (throw (ex-info (str "Invalid action:" action " for a signed query")
-                              {:status 400
-                               :error  :db/invalid-action}))))
-          (throw-invalid-command (str "The ledger does not exist: " ledger))))
-
-      :new-ledger (let [{:keys [ledger snapshot auth expire nonce owners]} cmd-data
-                        [network ledger-id] (session/resolve-ledger conn ledger)]
-                    (when (and auth auth-id (not= auth auth-id))
-                      (throw-invalid-command (str "New-ledger command was signed by auth: " auth-id
-                                                  " but the command specifies auth: " auth
-                                                  ". They must be the same if auth is provided.")))
-                    (when ((set (txproto/all-ledger-list group)) [network ledger-id])
-                      (throw-invalid-command (format "Cannot create a new ledger, it already exists or existed: %s" ledger)))
-                    (when snapshot
-                      (let [storage-exists? (:storage-exists conn)
-                            exists?         (storage-exists? (str snapshot))]
-                        (when-not exists?
-                          (throw-invalid-command
-                           (format "Cannot create a new ledger, snapshot file %s does not exist in storage %s"
-                                   snapshot (case (:storage-type conn)
-                                              :s3 (-> conn :meta :s3-storage)
-                                              :file (-> conn :meta :file-storage-path)
-                                              (:storage-type conn)))))))
-
-                    ;; TODO - do more validation, reconcile with "unsigned-cmd" validation before this
-
-                    (async/<!! (txproto/new-ledger-async group network ledger-id id signed-cmd owners))
-
-                    id)
-      :delete-ledger (let [{:keys [ledger]}    cmd-data
-                           [network ledger-id] (session/resolve-ledger conn ledger)
-                           old-session         (session/session conn ledger)
-                           db                  (async/<!! (session/current-db old-session))]
-                       (if (or (:open-api group)
-                               (async/<!! (auth/root-role? db ["_auth/id" auth-id])))
-                         (do (async/<!! (ledger-delete/process conn network ledger-id))
-                             (session/close old-session))
-                         (throw (ex-info (str "To delete a ledger, must be using an open API or an auth record with a root role.")
-                                         {:status 401 :error :db/invalid-auth}))))
-      :default-key (let [{:keys [expire nonce network ledger-id private-key]} cmd-data
-                         default-auth-id (some-> (txproto/get-shared-private-key group)
-                                                 (crypto/account-id-from-private))
-                         network-auth-id (some->> network
-                                                  (txproto/get-shared-private-key group)
-                                                  (crypto/account-id-from-private))]
-                     ;; signed auth-id must be either the network or txgroup default key to succeed
-                     (when-not (or (= auth-id default-auth-id)
-                                   (= auth-id network-auth-id))
-                       (throw-invalid-command (str "Command signed with unknown auth id: " auth-id)))
-                     (cond
-                       (and network ledger-id)
-                       (txproto/set-shared-private-key group network ledger-id private-key)
-
-                       network
-                       (txproto/set-shared-private-key group network private-key)
-
-                       :else
-                       (txproto/set-shared-private-key group private-key))))))
-
+    (process-parsed-command conn id auth-id timestamp signed-cmd cmd-data)))
 
 (def subscription-auth (atom {}))
 
