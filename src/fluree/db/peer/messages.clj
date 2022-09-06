@@ -95,7 +95,7 @@
                            :error  :db/invalid-action}))))
 
       :new-ledger (let [{:keys [ledger snapshot auth expire nonce owners]} cmd-data
-                        [network ledger-id] (if (sequential? ledger) ledger (str/split ledger #"/"))]
+                        [network ledger-id] (session/resolve-ledger conn ledger)]
                     (when (and auth auth-id (not= auth auth-id))
                       (throw-invalid-command (str "New-ledger command was signed by auth: " auth-id
                                                   " but the command specifies auth: " auth
@@ -128,7 +128,7 @@
 
                     id)
       :delete-ledger (let [{:keys [ledger]} cmd-data
-                           [network ledger-id] (if (sequential? ledger) ledger (str/split ledger #"/"))
+                           [network ledger-id] (session/resolve-ledger conn ledger)
                            old-session (session/session conn ledger)
                            db          (async/<!! (session/current-db old-session))
                            _           (when-not (or (:open-api group)
