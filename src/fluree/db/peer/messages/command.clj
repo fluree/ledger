@@ -87,8 +87,9 @@
       (throw-invalid "Invalid command serialization, could not decode JSON."))))
 
 (defn parse-cmd-data
-  [parsed-cmd]
-  (let [cmd-data (s/conform ::cmd-data parsed-cmd)]
+  [cmd]
+  (let [parsed-cmd (parse-json cmd)
+        cmd-data   (s/conform ::cmd-data parsed-cmd)]
     (when (s/invalid? cmd-data)
       (throw-invalid (s/explain-str ::cmd-data parsed-cmd)))
     (s/unform ::cmd-data cmd-data)))
@@ -96,7 +97,9 @@
 (defn parse-auth-id
   [{:keys [cmd sig signed] :as _parsed-command}]
   (try
-    (crypto/account-id-from-message (or signed cmd) sig)
+    (-> signed
+        (or cmd)
+        (crypto/account-id-from-message sig))
     (catch Exception _
       (throw-invalid "Invalid signature on command."))))
 
@@ -109,10 +112,9 @@
   (let [{:keys [cmd sig signed] :as signed-cmd}
         (parse-signed-command msg)
 
-        parsed-cmd (parse-json cmd)
-        cmd-data   (parse-cmd-data parsed-cmd)
-        auth-id    (parse-auth-id signed-cmd)
-        id         (parse-id cmd)]
+        id       (parse-id cmd)
+        auth-id  (parse-auth-id signed-cmd)
+        cmd-data (parse-cmd-data cmd)]
     {:id         id
      :auth-id    auth-id
      :signed-cmd signed-cmd
