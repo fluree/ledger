@@ -8,6 +8,9 @@
 
 (def max-size 10000000)
 
+(def always?
+  (constantly true))
+
 (defn small?
   [cmd]
   (-> cmd
@@ -48,7 +51,9 @@
 (s/def ::network (s/and string? network?))
 (s/def ::ledger-id (s/and string? ledger-id?))
 (s/def ::ledger (s/or :pair   (s/tuple ::network ::ledger-id)
-                      :string ledger-string?))
+                      :string (s/and string? ledger-string?)))
+(s/def ::snapshot always?)
+(s/def ::owners (s/coll-of string?))
 
 (defmulti cmd-data-type :type)
 
@@ -56,6 +61,11 @@
   [_]
   (s/keys :req-un [::type ::tx ::ledger]
           :opt-un [::deps ::expire ::nonce]))
+
+(defmethod cmd-data-type :new-ledger
+  [_]
+  (s/keys :req-un [::type ::ledger]
+          :opt-un [::auth ::owners ::snapshot ::expire ::nonce]))
 
 (defmethod cmd-data-type :default
   [_]

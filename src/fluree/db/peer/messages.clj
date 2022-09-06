@@ -100,15 +100,6 @@
                       (throw-invalid-command (str "New-ledger command was signed by auth: " auth-id
                                                   " but the command specifies auth: " auth
                                                   ". They must be the same if auth is provided.")))
-                    (when-not (re-matches #"^[a-z0-9-]+$" network)
-                      (throw-invalid-command (str "Invalid network name: " network)))
-                    (when-not (re-matches #"^[a-z0-9-]+$" ledger-id)
-                      (throw-invalid-command (str "Invalid ledger name: " ledger-id)))
-                    (when (and expire (or (not (pos-int? expire)) (< expire timestamp)))
-                      (throw-invalid-command (format "Transaction 'expire', when provided, must be epoch millis and be later than now. expire: %s current time: %s"
-                                                     expire timestamp)))
-                    (when (and nonce (not (int? nonce)))
-                      (throw-invalid-command (format "Nonce, if provided, must be an integer. Provided: %s" nonce)))
                     (when ((set (txproto/all-ledger-list group)) [network ledger-id])
                       (throw-invalid-command (format "Cannot create a new ledger, it already exists or existed: %s" ledger)))
                     (when snapshot
