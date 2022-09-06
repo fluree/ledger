@@ -67,6 +67,10 @@
   (s/keys :req-un [::type ::ledger]
           :opt-un [::auth ::owners ::snapshot ::expire ::nonce]))
 
+(defmethod cmd-data-type :delete-ledger
+  [_]
+  (s/keys :req-un [::type ::ledger]))
+
 (defmethod cmd-data-type :default
   [_]
   (s/keys :req-un [::type]))

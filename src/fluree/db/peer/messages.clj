@@ -118,16 +118,16 @@
                     (async/<!! (txproto/new-ledger-async group network ledger-id id signed-cmd owners))
 
                     id)
-      :delete-ledger (let [{:keys [ledger]} cmd-data
+      :delete-ledger (let [{:keys [ledger]}    cmd-data
                            [network ledger-id] (session/resolve-ledger conn ledger)
-                           old-session (session/session conn ledger)
-                           db          (async/<!! (session/current-db old-session))
-                           _           (when-not (or (:open-api group)
-                                                     (async/<!! (auth/root-role? db ["_auth/id" auth-id])))
-                                         (throw (ex-info (str "To delete a ledger, must be using an open API or an auth record with a root role.")
-                                                         {:status 401 :error :db/invalid-auth})))]
-                       (async/<!! (ledger-delete/process conn network ledger-id))
-                       (session/close old-session))
+                           old-session         (session/session conn ledger)
+                           db                  (async/<!! (session/current-db old-session))]
+                       (if (or (:open-api group)
+                               (async/<!! (auth/root-role? db ["_auth/id" auth-id])))
+                         (do (async/<!! (ledger-delete/process conn network ledger-id))
+                             (session/close old-session))
+                         (throw (ex-info (str "To delete a ledger, must be using an open API or an auth record with a root role.")
+                                         {:status 401 :error :db/invalid-auth}))))
       :default-key (let [{:keys [expire nonce network ledger-id private-key]} cmd-data
                          default-auth-id (some-> (txproto/get-shared-private-key group)
                                                  (crypto/account-id-from-private))
