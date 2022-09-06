@@ -46,14 +46,15 @@
 (s/def ::tx (s/or :map  map?
                   :coll (s/coll-of map?)))
 (s/def ::deps (s/coll-of string?))
-(s/def ::expire pos-int?)
-(s/def ::nonce int?)
 (s/def ::network (s/and string? network?))
 (s/def ::ledger-id (s/and string? ledger-id?))
 (s/def ::ledger (s/or :pair   (s/tuple ::network ::ledger-id)
                       :string (s/and string? ledger-string?)))
 (s/def ::snapshot always?)
 (s/def ::owners (s/coll-of string?))
+(s/def ::private-key string?)
+(s/def ::expire pos-int?)
+(s/def ::nonce int?)
 
 (defmulti cmd-data-type :type)
 
@@ -70,6 +71,11 @@
 (defmethod cmd-data-type :delete-ledger
   [_]
   (s/keys :req-un [::type ::ledger]))
+
+(defmethod cmd-data-type :default-key
+  [_]
+  (s/keys :req-un [::type ::private-key]
+          :opt-un [::network ::ledger-id ::expire ::nonce]))
 
 (defmethod cmd-data-type :default
   [_]
