@@ -56,33 +56,33 @@
 (s/def ::expire pos-int?)
 (s/def ::nonce int?)
 
-(defmulti cmd-data-type :type)
+(defmulti cmd-data-spec :type)
 
-(defmethod cmd-data-type :tx
+(defmethod cmd-data-spec :tx
   [_]
   (s/keys :req-un [::type ::tx ::ledger]
           :opt-un [::deps ::expire ::nonce]))
 
-(defmethod cmd-data-type :new-ledger
+(defmethod cmd-data-spec :new-ledger
   [_]
   (s/keys :req-un [::type ::ledger]
           :opt-un [::auth ::owners ::snapshot ::expire ::nonce]))
 
-(defmethod cmd-data-type :delete-ledger
+(defmethod cmd-data-spec :delete-ledger
   [_]
   (s/keys :req-un [::type ::ledger]))
 
-(defmethod cmd-data-type :default-key
+(defmethod cmd-data-spec :default-key
   [_]
   (s/keys :req-un [::type ::private-key]
           :opt-un [::network ::ledger-id ::expire ::nonce]))
 
-(defmethod cmd-data-type :default
+(defmethod cmd-data-spec :default
   [_]
   (s/keys :req-un [::type]))
 
 (s/def ::cmd-data
-  (s/multi-spec cmd-data-type :type))
+  (s/multi-spec cmd-data-spec :type))
 
 (defn throw-invalid
   [message]
@@ -97,7 +97,7 @@
       (throw-invalid (s/explain-str ::signed-cmd msg)))
     signed-cmd))
 
-(defn parse-json
+(defn parse-json-cmd
   [cmd]
   (try
     (-> cmd
@@ -108,7 +108,7 @@
 
 (defn parse-cmd-data
   [cmd]
-  (let [parsed-cmd (parse-json cmd)
+  (let [parsed-cmd (parse-json-cmd cmd)
         cmd-data   (s/conform ::cmd-data parsed-cmd)]
     (when (s/invalid? cmd-data)
       (throw-invalid (s/explain-str ::cmd-data parsed-cmd)))
