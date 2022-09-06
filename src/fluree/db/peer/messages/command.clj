@@ -42,9 +42,11 @@
           :opt-un [::signed]))
 
 (s/def ::type keyword?)
+(s/def ::action keyword?)
 
 (s/def ::tx (s/or :map  map?
                   :coll (s/coll-of map?)))
+(s/def ::qry map?)
 (s/def ::deps (s/coll-of string?))
 (s/def ::network (s/and string? network?))
 (s/def ::ledger-id (s/and string? ledger-id?))
@@ -62,6 +64,11 @@
   [_]
   (s/keys :req-un [::type ::tx ::ledger]
           :opt-un [::deps ::expire ::nonce]))
+
+(defmethod cmd-data-spec :signed-qry
+  [_]
+  (s/keys :req-un [::type ::ledger ::action ::qry]
+          :opt-un [::expire ::nonce]))
 
 (defmethod cmd-data-spec :new-ledger
   [_]
@@ -102,7 +109,8 @@
   (try
     (-> cmd
         json/parse
-        (update :type keyword))
+        (update :type keyword)
+        (update :action keyword))
     (catch Exception _
       (throw-invalid "Invalid command serialization, could not decode JSON."))))
 
