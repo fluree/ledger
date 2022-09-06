@@ -33,9 +33,10 @@
                                                                     expire nonce]
                                                              :as cmd-data}]
   (log/debug "tx command:" cmd-data)
+  (when (and expire (< expire timestamp))
+    (throw-invalid-command (format "Transaction 'expire', when provided, must be epoch millis and be later than now. expire: %s current time: %s"
+                                   expire timestamp)))
   (let [[network ledger-id] (session/resolve-ledger conn ledger)]
-    (when (and expire (< expire timestamp))
-      (throw-invalid-command (format "Transaction 'expire', when provided, must be epoch millis and be later than now. expire: %s current time: %s" expire timestamp)))
     (when-not (txproto/ledger-exists? group network ledger-id)
       (throw-invalid-command (str "Ledger does not exist: " ledger)))
     (when-not (async/<!! (txproto/queue-command-async group network ledger-id id signed-cmd))
@@ -46,6 +47,9 @@
   [{:keys [group] :as conn} id auth-id timestamp signed-cmd {:keys [ledger action qry
                                                                     expire nonce meta]
                                                              :or   {meta false}}]
+  (when (and expire (< expire timestamp))
+    (throw-invalid-command (format "Signed query 'expire', when provided, must be epoch millis and be later than now. expire: %s current time: %s"
+                                   expire timestamp)))
   (let [[network ledger-id] (session/resolve-ledger conn ledger)]
     (if (txproto/ledger-exists? group network ledger-id)
       (let [db (if (= action :block)
@@ -90,17 +94,22 @@
 (defmethod process-parsed-command :new-ledger
   [{:keys [group] :as conn} id auth-id timestamp signed-cmd {:keys [ledger snapshot auth
                                                                     expire nonce owners]}]
+  (when (and expire (< expire timestamp))
+    (throw-invalid-command (format "Transaction 'expire', when provided, must be epoch millis and be later than now. expire: %s current time: %s"
+                                   expire timestamp)))
+  (when (and auth auth-id (not= auth auth-id))
+    (throw-invalid-command (str "New-ledger command was signed by auth: " auth-id
+                                " but the command specifies auth: " auth
+                                ". They must be the same if auth is provided.")))
   (let [[network ledger-id] (session/resolve-ledger conn ledger)]
-    (when (and auth auth-id (not= auth auth-id))
-      (throw-invalid-command (str "New-ledger command was signed by auth: " auth-id
-                                  " but the command specifies auth: " auth
-                                  ". They must be the same if auth is provided.")))
-    (when ((set (txproto/all-ledger-list group)) [network ledger-id])
+    (when (-> group
+              txproto/all-ledger-list
+              set
+              (contains? [network ledger-id]))
       (throw-invalid-command (format "Cannot create a new ledger, it already exists or existed: %s" ledger)))
     (when snapshot
-      (let [storage-exists? (:storage-exists conn)
-            exists?         (storage-exists? (str snapshot))]
-        (when-not exists?
+      (let [storage-exists? (:storage-exists conn)]
+        (when-not (async/<!! (-> snapshot str storage-exists?))
           (throw-invalid-command
            (format "Cannot create a new ledger, snapshot file %s does not exist in storage %s"
                    snapshot (case (:storage-type conn)
@@ -129,8 +138,12 @@
 (defmethod process-parsed-command :default-key
   [{:keys [group] :as conn} id auth-id timestamp signed-cmd {:keys [expire nonce network
                                                                     ledger-id private-key]}]
-  (let [default-auth-id (some-> (txproto/get-shared-private-key group)
-                                (crypto/account-id-from-private))
+  (when (and expire (< expire timestamp))
+    (throw-invalid-command (format "Transaction 'expire', when provided, must be epoch millis and be later than now. expire: %s current time: %s"
+                                   expire timestamp)))
+  (let [default-auth-id (some-> group
+                                txproto/get-shared-private-key
+                                crypto/account-id-from-private)
         network-auth-id (some->> network
                                  (txproto/get-shared-private-key group)
                                  (crypto/account-id-from-private))]
