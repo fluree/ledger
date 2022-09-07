@@ -300,49 +300,49 @@
          :nw-unsubscribe (raft/monitor-raft-stop (-> system :group))
 
          :unsigned-cmd (let [{:keys [type ledger jwt expire nonce]
-                              :or {nonce now, expire (+ 60000 now)}
-                              :as cmd-data}
+                              :or   {nonce now, expire (+ 60000 now)}
+                              :as   cmd-data}
                              arg
-                             cmd-data* (assoc cmd-data :expire expire :nonce nonce)
-                             cmd-type    (keyword type)
-                             [network ledger-id] (cond
-                                                   (= :new-ledger cmd-type)
-                                                   (cond
-                                                     (string? ledger) (str/split ledger #"/")
-                                                     (sequential? ledger) ledger
-                                                     :else (throw (ex-info (str "Invalid ledger provided for new-ledger: " (pr-str ledger))
-                                                                           {:status 400 :error :db/invalid-command})))
+                             cmd-type (keyword type)]
+                         (if (= :signed-qry cmd-type)
+                           (throw-invalid-command "Commands of type :signed-qry must be pre-signed")
+                           (let [cmd-data* (assoc cmd-data :expire expire :nonce nonce)
+                                 [network ledger-id] (cond
+                                                       (= :new-ledger cmd-type)
+                                                       (cond
+                                                         (string? ledger) (str/split ledger #"/")
+                                                         (sequential? ledger) ledger
+                                                         :else (throw (ex-info (str "Invalid ledger provided for new-ledger: " (pr-str ledger))
+                                                                               {:status 400 :error :db/invalid-command})))
 
-                                                   (= :delete-ledger cmd-type)
-                                                   (session/resolve-ledger (:conn system) ledger)
+                                                       (= :delete-ledger cmd-type)
+                                                       (session/resolve-ledger (:conn system) ledger)
 
-                                                   (= :tx cmd-type)
-                                                   (session/resolve-ledger (:conn system) ledger)
+                                                       (= :tx cmd-type)
+                                                       (session/resolve-ledger (:conn system) ledger)
 
-                                                   (= :default-key cmd-type)
-                                                   (let [{:keys [network ledger-id]} cmd-data*]
-                                                     [network ledger-id]))
-                             private-key (if jwt
-                                           (let [secret (get-in system [:conn :meta :password-auth :secret])
-                                                 jwt    (token-auth/verify-jwt secret jwt)]
-                                             (async/<!! (pw-auth/fluree-decode-jwt (:conn system) jwt)))
-                                           (if-let [pk (txproto/get-shared-private-key (:group system)
-                                                                                    network ledger-id)]
-                                             (do (log/debug "Signing unsigned cmd with default private key")
-                                                 pk)
-                                             (do (log/error "No private key found to sign unsigned cmd")
-                                                 nil)))]
-                         (when-not private-key
-                           (throw-invalid-command (str "The ledger group is not configured with a default private "
-                                                       "key for use with ledger: " ledger ". Unable to process an unsigned "
-                                                       "transaction.")))
-                         (let [cmd        (-> cmd-data*
-                                              util/without-nils
-                                              json/stringify)
-                               sig        (crypto/sign-message cmd private-key)
-                               signed-cmd {:cmd    cmd
-                                           :sig    sig}]
-                           (success! (process-command system now signed-cmd))))
+                                                       (= :default-key cmd-type)
+                                                       (let [{:keys [network ledger-id]} cmd-data*]
+                                                         [network ledger-id]))
+                                 private-key (if jwt
+                                               (let [secret   (get-in system [:conn :meta :password-auth :secret])
+                                                     jwt-data (token-auth/verify-jwt secret jwt)]
+                                                 (async/<!! (pw-auth/fluree-decode-jwt (:conn system) jwt-data)))
+                                               (if-let [pk (txproto/get-shared-private-key (:group system) network ledger-id)]
+                                                 (do (log/debug "Signing unsigned cmd with default private key")
+                                                     pk)
+                                                 (log/error "No private key found to sign unsigned cmd")))]
+                             (when-not private-key
+                               (throw-invalid-command (str "The ledger group is not configured with a default private "
+                                                           "key for use with ledger: " ledger ". Unable to process an unsigned "
+                                                           "transaction.")))
+                             (let [cmd        (-> cmd-data*
+                                                  util/without-nils
+                                                  json/stringify)
+                                   sig        (crypto/sign-message cmd private-key)
+                                   signed-cmd {:cmd    cmd
+                                               :sig    sig}]
+                               (success! (process-command system now signed-cmd))))))
 
          :ledger-info (let [[network ledger-id] (session/resolve-ledger (:conn system) arg)]
                         (success! (ledger-info system network ledger-id)))
