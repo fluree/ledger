@@ -124,8 +124,7 @@
                                  (txproto/get-shared-private-key group)
                                  (crypto/account-id-from-private))]
     ;; signed auth-id must be either the network or txgroup default key to succeed
-    (when-not (or (= auth-id default-auth-id)
-                  (= auth-id network-auth-id))
+    (when-not (#{default-auth-id network-auth-id} auth-id)
       (throw-invalid-command (str "Command signed with unknown auth id: " auth-id)))
     (cond
       (and network ledger-id)
