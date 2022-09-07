@@ -1,4 +1,4 @@
-FROM --platform=$BUILDPLATFORM clojure:temurin-11-tools-deps-1.11.1.1149-jammy AS builder
+FROM --platform=$BUILDPLATFORM clojure:temurin-11-tools-deps-1.11.1.1155-jammy AS builder
 
 RUN apt-get update && apt-get install --assume-yes --no-install-recommends curl
 
