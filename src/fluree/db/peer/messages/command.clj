@@ -11,6 +11,9 @@
 (def always?
   (constantly true))
 
+(def never?
+  (constantly false))
+
 (defn small?
   [cmd]
   (-> cmd
@@ -86,7 +89,7 @@
 
 (defmethod cmd-data-spec :default
   [_]
-  (s/keys :req-un [::type]))
+  never?)
 
 (s/def ::cmd-data
   (s/multi-spec cmd-data-spec :type))

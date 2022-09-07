@@ -305,10 +305,6 @@
                              arg
                              cmd-data* (assoc cmd-data :expire expire :nonce nonce)
                              cmd-type    (keyword type)
-                             _           (when-not (#{:tx :new-ledger :default-key :delete-ledger} cmd-type)
-                                           (throw-invalid-command
-                                             (str "Invalid command type (:type) provided in unsigned command: "
-                                                  type)))
                              [network ledger-id] (cond
                                                    (= :new-ledger cmd-type)
                                                    (cond
