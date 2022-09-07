@@ -307,23 +307,10 @@
                          (if (= :signed-qry cmd-type)
                            (throw-invalid-command "Commands of type :signed-qry must be pre-signed")
                            (let [cmd-data* (assoc cmd-data :expire expire :nonce nonce)
-                                 [network ledger-id] (cond
-                                                       (= :new-ledger cmd-type)
-                                                       (cond
-                                                         (string? ledger) (str/split ledger #"/")
-                                                         (sequential? ledger) ledger
-                                                         :else (throw (ex-info (str "Invalid ledger provided for new-ledger: " (pr-str ledger))
-                                                                               {:status 400 :error :db/invalid-command})))
-
-                                                       (= :delete-ledger cmd-type)
-                                                       (session/resolve-ledger (:conn system) ledger)
-
-                                                       (= :tx cmd-type)
-                                                       (session/resolve-ledger (:conn system) ledger)
-
-                                                       (= :default-key cmd-type)
+                                 [network ledger-id] (if (= :default-key cmd-type)
                                                        (let [{:keys [network ledger-id]} cmd-data*]
-                                                         [network ledger-id]))
+                                                         [network ledger-id])
+                                                       (session/resolve-ledger (:conn system) ledger))
                                  private-key (if jwt
                                                (let [secret   (get-in system [:conn :meta :password-auth :secret])
                                                      jwt-data (token-auth/verify-jwt secret jwt)]
