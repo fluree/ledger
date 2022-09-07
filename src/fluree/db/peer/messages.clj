@@ -299,9 +299,11 @@
 
          :nw-unsubscribe (raft/monitor-raft-stop (-> system :group))
 
-         :unsigned-cmd (let [{:keys [type ledger jwt] :as cmd-data}
+         :unsigned-cmd (let [{:keys [type ledger jwt expire nonce]
+                              :or {nonce now, expire (+ 60000 now)}
+                              :as cmd-data}
                              arg
-
+                             cmd-data* (assoc cmd-data :expire expire :nonce nonce)
                              cmd-type    (keyword type)
                              _           (when-not (#{:tx :new-ledger :default-key :delete-ledger} cmd-type)
                                            (throw-invalid-command
@@ -322,7 +324,7 @@
                                                    (session/resolve-ledger (:conn system) ledger)
 
                                                    (= :default-key cmd-type)
-                                                   (let [{:keys [network ledger-id]} cmd-data]
+                                                   (let [{:keys [network ledger-id]} cmd-data*]
                                                      [network ledger-id]))
                              private-key (if jwt
                                            (let [secret (get-in system [:conn :meta :password-auth :secret])
@@ -333,19 +335,7 @@
                                              (do (log/debug "Signing unsigned cmd with default private key")
                                                  pk)
                                              (do (log/error "No private key found to sign unsigned cmd")
-                                                 nil)))
-                             {:keys [expire nonce] :or {nonce now}} cmd-data
-                             expire      (or expire (+ 60000 nonce))
-                             cmd-data*   (assoc cmd-data :expire expire :nonce nonce)]
-                         (when (< expire now)
-                           (throw-invalid-command (format "Command expired. Expiration: %s. Current time: %s."
-                                                          expire now)))
-                         (when (and (= :new-ledger cmd-type)
-                                    (txproto/ledger-exists? (:group system) network ledger-id))
-                           (throw-invalid-command (str "The ledger already exists or existed: " ledger)))
-                         (when (and (= :tx cmd-type)
-                                    (not (txproto/ledger-exists? (:group system) network ledger-id)))
-                           (throw-invalid-command (str "Ledger does not exist: " ledger)))
+                                                 nil)))]
                          (when-not private-key
                            (throw-invalid-command (str "The ledger group is not configured with a default private "
                                                        "key for use with ledger: " ledger ". Unable to process an unsigned "
