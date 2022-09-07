@@ -25,18 +25,18 @@
   [message]
   (throw (ex-info message {:status 400 :error :db/invalid-command})))
 
+(defn expired?
+  [{:keys [expire]} timestamp]
+  (and expire (< expire timestamp)))
+
 (defmulti process-parsed-command
-  (fn [conn id auth-id timestamp signed-cmd cmd-data]
+  (fn [conn id auth-id signed-cmd cmd-data]
     (:type cmd-data)))
 
 (defmethod process-parsed-command :tx
-  [{:keys [group] :as conn} id auth-id timestamp signed-cmd {:keys [ledger tx deps
-                                                                    expire nonce]
-                                                             :as cmd-data}]
+  [{:keys [group] :as conn} id auth-id signed-cmd {:keys [ledger tx deps nonce]
+                                                   :as   cmd-data}]
   (log/debug "tx command:" cmd-data)
-  (when (and expire (< expire timestamp))
-    (throw-invalid-command (format "Transaction 'expire', when provided, must be epoch millis and be later than now. expire: %s current time: %s"
-                                   expire timestamp)))
   (let [[network ledger-id] (session/resolve-ledger conn ledger)]
     (when-not (txproto/ledger-exists? group network ledger-id)
       (throw-invalid-command (str "Ledger does not exist: " ledger)))
@@ -45,12 +45,8 @@
     id))
 
 (defmethod process-parsed-command :signed-qry
-  [{:keys [group] :as conn} id auth-id timestamp signed-cmd {:keys [ledger action qry
-                                                                    expire nonce meta]
-                                                             :or   {meta false}}]
-  (when (and expire (< expire timestamp))
-    (throw-invalid-command (format "Signed query 'expire', when provided, must be epoch millis and be later than now. expire: %s current time: %s"
-                                   expire timestamp)))
+  [{:keys [group] :as conn} id auth-id signed-cmd {:keys [ledger action qry nonce meta]
+                                                   :or   {meta false}}]
   (let [[network ledger-id] (session/resolve-ledger conn ledger)]
     (when-not (txproto/ledger-exists? group network ledger-id)
       (throw-invalid-command (str "The ledger does not exist: " ledger)))
@@ -78,11 +74,8 @@
                          :error  :db/invalid-action}))))))
 
 (defmethod process-parsed-command :new-ledger
-  [{:keys [group] :as conn} id auth-id timestamp signed-cmd {:keys [ledger snapshot auth
-                                                                    expire nonce owners]}]
-  (when (and expire (< expire timestamp))
-    (throw-invalid-command (format "Transaction 'expire', when provided, must be epoch millis and be later than now. expire: %s current time: %s"
-                                   expire timestamp)))
+  [{:keys [group] :as conn} id auth-id signed-cmd {:keys [ledger snapshot auth nonce
+                                                          owners]}]
   (when (and auth auth-id (not= auth auth-id))
     (throw-invalid-command (str "New-ledger command was signed by auth: " auth-id
                                 " but the command specifies auth: " auth
@@ -110,7 +103,7 @@
     id))
 
 (defmethod process-parsed-command :delete-ledger
-  [{:keys [group] :as conn} id auth-id timestamp signed-cmd {:keys [ledger]}]
+  [{:keys [group] :as conn} id auth-id signed-cmd {:keys [ledger]}]
   (let [[network ledger-id] (session/resolve-ledger conn ledger)
         old-session         (session/session conn ledger)
         db                  (async/<!! (session/current-db old-session))]
@@ -122,11 +115,8 @@
                       {:status 401 :error :db/invalid-auth})))))
 
 (defmethod process-parsed-command :default-key
-  [{:keys [group] :as conn} id auth-id timestamp signed-cmd {:keys [expire nonce network
-                                                                    ledger-id private-key]}]
-  (when (and expire (< expire timestamp))
-    (throw-invalid-command (format "Transaction 'expire', when provided, must be epoch millis and be later than now. expire: %s current time: %s"
-                                   expire timestamp)))
+  [{:keys [group] :as conn} id auth-id signed-cmd {:keys [network ledger-id
+                                                          private-key nonce]}]
   (let [default-auth-id (some-> group
                                 txproto/get-shared-private-key
                                 crypto/account-id-from-private)
@@ -154,7 +144,10 @@
   [{:keys [conn group] :as _system} timestamp signed-cmd]
   (log/debug "Processing signed command:" (pr-str signed-cmd))
   (let [{:keys [id auth-id cmd-data]} (command/parse signed-cmd)]
-    (process-parsed-command conn id auth-id timestamp signed-cmd cmd-data)))
+    (when (expired? cmd-data timestamp)
+      (throw-invalid-command (format "Command expired at %s, current time: %s"
+                                     (:expire cmd-data) timestamp)))
+    (process-parsed-command conn id auth-id signed-cmd cmd-data)))
 
 (def subscription-auth (atom {}))
 

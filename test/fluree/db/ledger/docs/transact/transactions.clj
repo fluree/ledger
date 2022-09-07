@@ -248,10 +248,7 @@
       (is (-> txn-resp
               ex-data
               :error
-              (= :db/invalid-command)))
-      (is (-> txn-resp
-              ex-message
-              (str/starts-with? "Transaction 'expire', when provided, must be epoch millis and be later than now."))))))
+              (= :db/invalid-command))))))
 
 
 (deftest transaction-basics
@@ -265,5 +262,3 @@
   (upserting-data)
   (deleting-data)
   (expired-transaction))
-
-
