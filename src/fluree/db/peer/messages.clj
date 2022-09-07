@@ -2,6 +2,7 @@
   (:require [alphabase.core :as ab-core]
             [fluree.db.util.log :as log]
             [clojure.core.async :as async]
+            [fluree.db.util.async :refer [<??]]
             [clojure.string :as str]
             [fluree.db.util.json :as json]
             [fluree.crypto :as crypto]
@@ -51,45 +52,30 @@
     (throw-invalid-command (format "Signed query 'expire', when provided, must be epoch millis and be later than now. expire: %s current time: %s"
                                    expire timestamp)))
   (let [[network ledger-id] (session/resolve-ledger conn ledger)]
-    (if (txproto/ledger-exists? group network ledger-id)
-      (let [db (if (= action :block)
-                 nil
-                 (fdb/db conn ledger {:auth (when auth-id ["_auth/id" auth-id])}))]
+    (when-not (txproto/ledger-exists? group network ledger-id)
+      (throw-invalid-command (str "The ledger does not exist: " ledger)))
+    (let [db (when (not= action :block)
+               (fdb/db conn ledger {:auth (when auth-id ["_auth/id" auth-id])}))]
+      (case action
+        :query
+        (do (log/debug ":signed-qry w/ :query db:" db "\nquery:" qry "\nmeta:" meta)
+            (<?? (fdb/query-async db (assoc-in qry [:opts :meta] meta))))
 
-                                        ; 1) execute the query or 2) queue the execution of the signed query?
-        (case action
-          :query
-          (let [_ (log/debug ":signed-qry w/ :query db:" db "\nquery:" qry "\nmeta:" meta)
-                result (async/<!! (fdb/query-async db (assoc-in qry [:opts :meta] meta)))
-                _      (when (instance? clojure.lang.ExceptionInfo result)
-                         (throw result))]
-            result)
+        :multi-query
+        (<?? (fdb/multi-query-async db (assoc-in qry [:opts :meta] meta)))
 
-          :multi-query
-          (let [result (async/<!! (fdb/multi-query-async db (assoc-in qry [:opts :meta] meta)))
-                _      (when (instance? clojure.lang.ExceptionInfo result)
-                         (throw result))]
-            result)
+        :block
+        (let [query  (update qry :opts merge {:meta meta, :auth auth-id})]
+          (<?? (fdb/block-query-async conn ledger query)))
 
-          :block
-          (let [query  (update qry :opts merge {:meta meta, :auth auth-id})
-                result (async/<!! (fdb/block-query-async conn ledger query))
-                _      (when (instance? clojure.lang.ExceptionInfo result)
-                         (throw result))]
-            result)
+        :history
+        (let [query  (update qry :opts merge {:meta meta})]
+          (<?? (fdb/history-query-async db query)))
 
-          :history
-          (let [query  (update qry :opts merge {:meta meta})
-                result (async/<!! (fdb/history-query-async db query))
-                _      (when (instance? clojure.lang.ExceptionInfo result)
-                         (throw result))]
-            result)
-
-          ;; else
-          (throw (ex-info (str "Invalid action:" action " for a signed query")
-                          {:status 400
-                           :error  :db/invalid-action}))))
-      (throw-invalid-command (str "The ledger does not exist: " ledger)))))
+        ;; else
+        (throw (ex-info (str "Invalid action:" action " for a signed query")
+                        {:status 400
+                         :error  :db/invalid-action}))))))
 
 (defmethod process-parsed-command :new-ledger
   [{:keys [group] :as conn} id auth-id timestamp signed-cmd {:keys [ledger snapshot auth
