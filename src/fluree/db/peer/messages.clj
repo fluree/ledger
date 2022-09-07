@@ -351,14 +351,11 @@
                                                        "key for use with ledger: " ledger ". Unable to process an unsigned "
                                                        "transaction.")))
                          (let [cmd        (-> cmd-data*
-                                              (util/without-nils)
-                                              (json/stringify))
+                                              util/without-nils
+                                              json/stringify)
                                sig        (crypto/sign-message cmd private-key)
-                               id         (crypto/sha3-256 cmd)
                                signed-cmd {:cmd    cmd
-                                           :sig    sig
-                                           :id     id
-                                           :ledger ledger}]
+                                           :sig    sig}]
                            (success! (process-command system now signed-cmd))))
 
          :ledger-info (let [[network ledger-id] (session/resolve-ledger (:conn system) arg)]
