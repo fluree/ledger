@@ -201,4 +201,48 @@
               {"handle" "jakethesnake", :_id 351843720888324, "age" 29}
               {"handle" "jdoe", :_id 351843720888320, "age" 25}]
              res)
-          (str "Unexpected query result: " (pr-str res))))))
+          (str "Unexpected query result: " (pr-str res)))))
+
+  (testing "orderBy variable in optional clause should work"
+    (let [query       {:where  [["?p" "rdf:type" "_predicate"]
+                                {:optional [["?p" "_predicate/doc" "?doc"]]}]
+                       :select ["?p" "?doc"]
+                       :opts   {:orderBy "?doc"}}
+          ledger      (test/rand-ledger "test/order-by-var-optional")
+          db          (fdb/db (:conn test/system) ledger)
+          res         (<?? (fdb/query-async db query))
+          docs        (map second res)
+          sorted-docs (sort docs)]
+      (is (= sorted-docs docs)
+          (str "Results were not ordered by ?doc: " (pr-str res)))))
+
+  (testing "orderBy variable in binding should work"
+    ;; This isn't a very meaningful test b/c ?maxFavNums is global and thus
+    ;; will be the same value for every tuple. Not a very good value to order
+    ;; by. Mostly we're just testing that this doesn't throw an exception.
+    (let [query           {:where  [["?p" "person/handle" "?handle"]
+                                    ["?p" "person/favNums" "?favNums"]
+                                    ["?maxFavNums" "#(max ?favNums)"]]
+                           :select ["?handle" "?maxFavNums"]
+                           :opts   {:orderBy "?maxFavNums"}}
+          ledger          (test/rand-ledger "test/order-by-var-binding"
+                                            {:http/schema ["chat.edn" "chat-preds.edn"]})
+          {:keys [block]} (test/transact-data ledger "chat.edn")
+          db              (fdb/db (:conn test/system) ledger {:syncTo block})
+          res             (<?? (fdb/query-async db query))
+          max-fav-nums    (map second res)
+          sorted-fav-nums (sort max-fav-nums)]
+      (is (= sorted-fav-nums max-fav-nums)
+          (str "Results were not ordered by ?maxFavNums: " (pr-str res)))))
+
+  (testing "orderBy variable in union should work"
+    (let [query           {:where  [{:union [[["?p" "_predicate/type" "string"]]
+                                             [["?p" "_predicate/type" "tag"]]]}]
+                           :select "?p"
+                           :opts   {:orderBy "?p"}}
+          ledger          (test/rand-ledger "test/order-by-union")
+          db              (fdb/db (:conn test/system) ledger)
+          res             (<?? (fdb/query-async db query))
+          sorted-res      (sort res)]
+      (is (= sorted-res res)
+          (str "Results were not ordered by ?p" (pr-str res))))))
