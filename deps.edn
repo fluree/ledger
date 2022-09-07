@@ -1,47 +1,48 @@
-{:deps     {org.clojure/clojure                         {:mvn/version "1.11.1"}
-            org.clojure/data.xml                        {:mvn/version "0.2.0-alpha6"}
-            com.fluree/alphabase                        {:mvn/version "3.3.0"}
-            com.fluree/db                               {:git/url "https://github.com/fluree/db.git"
-                                                         :git/sha "91a9f299b36ce9fa8efcacd2d58057e77daef4fc"}
-            com.fluree/raft                             {:mvn/version "1.0.0-beta1"}
-            com.fluree/crypto                           {:mvn/version "0.3.10"}
+{:deps      {org.clojure/clojure            {:mvn/version "1.11.1"}
+             org.clojure/data.xml           {:mvn/version "0.2.0-alpha6"}
+             com.fluree/alphabase           {:mvn/version "3.3.0"}
+             ;com.fluree/db                 {:mvn/version "2.0.0-alpha5"}
+             com.fluree/db                  {:git/url "https://github.com/fluree/db.git"
+                                             :git/sha "61622b0f818cbf186e22cf548ed2c912a5eb1a83"}
+             com.fluree/raft                {:mvn/version "1.0.0-beta1"}
+             com.fluree/crypto              {:mvn/version "0.3.10"}
 
-            ;; network comm
-            net.async/async                             {:mvn/version "0.1.1"}
+             ;; network comm
+             net.async/async                {:mvn/version "0.1.1"}
 
-            ;; Lucene
-            clucie/clucie                               {:mvn/version "0.4.2"}
+             ;; Lucene
+             clucie/clucie                  {:mvn/version "0.4.2"}
 
-            ;; AWS S3 API
-            com.cognitect.aws/api                       {:mvn/version "0.8.568"}
-            com.cognitect.aws/endpoints                 {:mvn/version "1.1.12.257"}
-            com.cognitect.aws/s3                        {:mvn/version "822.2.1145.0"}
+             ;; AWS S3 API
+             com.cognitect.aws/api          {:mvn/version "0.8.575"}
+             com.cognitect.aws/endpoints    {:mvn/version "1.1.12.280"}
+             com.cognitect.aws/s3           {:mvn/version "822.2.1145.0"}
 
-            ;; web server
-            http-kit/http-kit                           {:mvn/version "2.6.0"}
-            ring/ring-core                              {:mvn/version "1.9.5"}
-            ring-cors/ring-cors                         {:mvn/version "0.1.13"}
-            compojure/compojure                         {:mvn/version "1.7.0"}
+             ;; web server
+             http-kit/http-kit              {:mvn/version "2.6.0"}
+             ring/ring-core                 {:mvn/version "1.9.5"}
+             ring-cors/ring-cors            {:mvn/version "0.1.13"}
+             compojure/compojure            {:mvn/version "1.7.0"}
 
-            ;; logging
-            ch.qos.logback/logback-classic              {:mvn/version "1.2.11"}
-            cambium/cambium.core                        {:mvn/version "1.1.1"}
-            cambium/cambium.codec-cheshire              {:mvn/version "1.0.0"}
-            cambium/cambium.logback.json                {:mvn/version "0.4.5"}
-            cambium/cambium.codec-simple                {:mvn/version "1.0.0"}
-            cambium/cambium.logback.core                {:mvn/version "0.4.5"}
+             ;; logging
+             ch.qos.logback/logback-classic {:mvn/version "1.2.11"}
+             cambium/cambium.core           {:mvn/version "1.1.1"}
+             cambium/cambium.codec-cheshire {:mvn/version "1.0.0"}
+             cambium/cambium.logback.json   {:mvn/version "0.4.5"}
+             cambium/cambium.codec-simple   {:mvn/version "1.0.0"}
+             cambium/cambium.logback.core   {:mvn/version "0.4.5"}
 
-            ;; config
-            environ/environ                             {:git/url   "https://github.com/cap10morgan/environ.git"
-                                                         :sha       "32682e865e8248d9df09643d6321ca4259fdbc19"
-                                                         :deps/root "environ"}
+             ;; config
+             environ/environ                {:git/url   "https://github.com/cap10morgan/environ.git"
+                                             :sha       "32682e865e8248d9df09643d6321ca4259fdbc19"
+                                             :deps/root "environ"}
 
-            ;; retries
-            robert/bruce                                {:mvn/version "0.8.0"}}
+             ;; retries
+             robert/bruce                   {:mvn/version "0.8.0"}}
 
- :paths    ["src" "resources"]
+ :paths     ["src" "resources"]
 
- :jvm-opts ["-Dclojure.tools.logging.factory=clojure.tools.logging.impl/slf4j-factory"]
+ :jvm-opts  ["-Dclojure.tools.logging.factory=clojure.tools.logging.impl/slf4j-factory"]
 
  :aliases
  {:mvn/group-id    com.fluree
