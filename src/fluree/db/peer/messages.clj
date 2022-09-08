@@ -143,10 +143,10 @@
   [{:keys [conn group] :as _system} timestamp signed-cmd]
   (log/debug "Processing signed command:" (pr-str signed-cmd))
   (let [{:keys [id auth-id cmd-data]} (command/parse signed-cmd)]
-    (when (expired? cmd-data timestamp)
+    (if (expired? cmd-data timestamp)
       (throw-invalid-command (format "Command expired at %s, current time: %s"
-                                     (:expire cmd-data) timestamp)))
-    (process-parsed-command conn id auth-id signed-cmd cmd-data)))
+                                     (:expire cmd-data) timestamp))
+      (process-parsed-command conn id auth-id signed-cmd cmd-data))))
 
 (def subscription-auth (atom {}))
 
