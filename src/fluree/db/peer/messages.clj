@@ -341,19 +341,16 @@
                         (success! response))
 
          ;; TODO - unsigned-cmd should cover a 'tx', remove below
-         :tx (let [tx-map      arg
-                   _           (log/debug "tx-map:" tx-map)
-                   {:keys [ledger tx]} tx-map
-                   [network ledger-id] (session/resolve-ledger (:conn system) ledger)
-                   _           (when-not (txproto/ledger-exists? (:group system) network ledger-id)
-                                 (throw-invalid-command (str "Ledger does not exist: " ledger)))
-                   private-key (txproto/get-shared-private-key (:group system) network ledger-id)
-                   _           (when-not private-key
-                                 (throw-invalid-command (str "The ledger group is not configured with a default private "
-                                                             "key for use with ledger: " ledger ". Unable to process an unsigned "
-                                                             "transaction.")))
-                   cmd         (fdb/tx->command ledger tx private-key tx-map)]
-               (success! (process-command system now cmd)))
+         :tx (do
+               (log/debug "tx-map:" arg)
+               (let [{:keys [ledger tx] :as tx-map} arg
+                     [network ledger-id] (session/resolve-ledger (:conn system) ledger)]
+                 (if-let [private-key (txproto/get-shared-private-key (:group system) network ledger-id)]
+                   (let [cmd (fdb/tx->command ledger tx private-key tx-map)]
+                     (success! (process-command system now cmd)))
+                   (throw-invalid-command (str "The ledger group is not configured with a default private "
+                                               "key for use with ledger: " ledger ". Unable to process an unsigned "
+                                               "transaction.")))))
 
          :pw-login (let [{:keys [ledger password user auth]} arg]
                      (when-not (pw-auth/password-enabled? (:conn system))
