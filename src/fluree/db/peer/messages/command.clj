@@ -36,6 +36,10 @@
   [s]
   (some? (re-matches #"^[a-z0-9-]+/[a-z0-9-]+$" s)))
 
+(defn with-namespace?
+  [kw]
+  (-> kw namespace boolean))
+
 (s/def ::cmd (s/and string? small?))
 (s/def ::sig string?)
 (s/def ::signed (s/nilable string?))
@@ -53,8 +57,9 @@
 (s/def ::deps (s/coll-of string?))
 (s/def ::network (s/and string? network?))
 (s/def ::ledger-id (s/and string? ledger-id?))
-(s/def ::ledger (s/or :pair   (s/tuple ::network ::ledger-id)
-                      :string (s/and string? ledger-string?)))
+(s/def ::ledger (s/or :pair    (s/tuple ::network ::ledger-id)
+                      :string  (s/and string? ledger-string?)
+                      :keyword (s/and keyword? with-namespace?)))
 (s/def ::snapshot always?)
 (s/def ::owners (s/coll-of string?))
 (s/def ::private-key string?)
