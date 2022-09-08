@@ -117,13 +117,18 @@
     (catch Exception _
       (throw-invalid "Invalid command serialization, could not decode JSON."))))
 
+(defn validate-cmd-data
+  [cmd-data]
+  (let [checked-data (s/conform ::cmd-data cmd-data)]
+    (if (s/invalid? checked-data)
+      (throw-invalid (s/explain-str ::cmd-data cmd-data))
+      (s/unform ::cmd-data checked-data))))
+
 (defn parse-cmd-data
   [cmd]
-  (let [parsed-cmd (parse-json-cmd cmd)
-        cmd-data   (s/conform ::cmd-data parsed-cmd)]
-    (when (s/invalid? cmd-data)
-      (throw-invalid (s/explain-str ::cmd-data parsed-cmd)))
-    (s/unform ::cmd-data cmd-data)))
+  (-> cmd
+      parse-json-cmd
+      validate-cmd-data))
 
 (defn parse-auth-id
   [{:keys [cmd sig signed] :as _parsed-command}]
