@@ -17,7 +17,7 @@
             [fluree.db.token-auth :as token-auth]
             [fluree.db.ledger.consensus.raft :as raft]
             [fluree.db.dbproto :as dbproto]
-            [fluree.db.peer.messages.command :as command]))
+            [fluree.db.messages.command :as command]))
 
 (set! *warn-on-reflection* true)
 
