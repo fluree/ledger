@@ -9,6 +9,7 @@
             [fluree.db.auth :as auth]
             [fluree.db.session :as session]
             [fluree.db.api :as fdb]
+            [fluree.db.messages.command :as cmd]
             [fluree.db.util.core :as util]
             [fluree.db.event-bus :as event-bus]
             [fluree.db.ledger.delete :as ledger-delete]
@@ -301,14 +302,14 @@
 
          :unsigned-cmd (let [{:keys [type ledger jwt expire nonce]
                               :or   {nonce now, expire (+ 60000 now)}
-                              :as   cmd-data}
+                              :as   command}
                              arg
                              cmd-type (keyword type)]
                          (if (= :signed-qry cmd-type)
                            (throw-invalid-command "Commands of type :signed-qry must be pre-signed")
-                           (let [cmd-data* (assoc cmd-data :expire expire :nonce nonce)
+                           (let [command* (assoc command :expire expire :nonce nonce)
                                  [network ledger-id] (if (= :default-key cmd-type)
-                                                       (let [{:keys [network ledger-id]} cmd-data*]
+                                                       (let [{:keys [network ledger-id]} command*]
                                                          [network ledger-id])
                                                        (session/resolve-ledger (:conn system) ledger))
                                  private-key (if jwt
@@ -323,12 +324,7 @@
                                (throw-invalid-command (str "The ledger group is not configured with a default private "
                                                            "key for use with ledger: " ledger ". Unable to process an unsigned "
                                                            "transaction.")))
-                             (let [cmd        (-> cmd-data*
-                                                  util/without-nils
-                                                  json/stringify)
-                                   sig        (crypto/sign-message cmd private-key)
-                                   signed-cmd {:cmd    cmd
-                                               :sig    sig}]
+                             (let [signed-cmd (cmd/sign command private-key)]
                                (success! (process-command system now signed-cmd))))))
 
          :ledger-info (let [[network ledger-id] (session/resolve-ledger (:conn system) arg)]
