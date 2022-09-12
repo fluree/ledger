@@ -122,6 +122,7 @@ function find_properties_file() {
   for prefix in "${CONFIG_PREFIXES[@]}"; do
     props_path="${prefix}/${PROPERTIES_FILE}"
     if [ -f "$props_path" ]; then
+      SYSTEM_CONFIG_DIR=$"$prefix"
       echo "$props_path"
       return 0
     fi
