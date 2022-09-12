@@ -18,7 +18,7 @@
 (deftest clj-delete-ledger-test
   (let [ledger-name "deleteme/one"
         create-res  (<!! (fdb/new-ledger-async (:conn test/system) ledger-name))
-        ready? (fdb/wait-for-ledger-ready (:conn test/system) ledger-name)]
+        ready?      (fdb/wait-for-ledger-ready (:conn test/system) ledger-name)]
     (is (string? create-res))
     (is (= 64 (count create-res)))
     (is ready?)
@@ -36,7 +36,7 @@
 (defn- rand-str
   []
   (apply str
-         (take (+ 5 (rand-int 20))                          ;; at least 5 characters
+         (take (+ 5 (rand-int 20)) ;; at least 5 characters
                (repeatedly #(char (+ (rand 26) 65))))))
 
 (defn- get-unique-count
@@ -53,18 +53,18 @@
    (standard-request body {}))
   ([body opts]
    {:headers (cond-> {"content-type" "application/json"}
-               (:token opts) (assoc "Authorization" (str "Bearer " (:token opts))))
+                     (:token opts) (assoc "Authorization" (str "Bearer " (:token opts))))
     :body    (json/stringify body)}))
 
 ;; ENDPOINT TEST: /transact
 (deftest add-schema*
   (testing "Add schema"
-    (let [filename      "../test/fluree/db/ledger/Resources/ChatAltVersion/schema.edn"
-          tx            (edn/read-string (slurp (io/resource filename)))
-          schema-res    @(http/post (str endpoint-url "transact") (standard-request tx))
-          status        (:status schema-res)
-          body          (-> schema-res :body bs/to-string json/parse)
-          body-keys     (keys body)]
+    (let [filename   "../test/fluree/db/ledger/Resources/ChatAltVersion/schema.edn"
+          tx         (edn/read-string (slurp (io/resource filename)))
+          schema-res @(http/post (str endpoint-url "transact") (standard-request tx))
+          status     (:status schema-res)
+          body       (-> schema-res :body bs/to-string json/parse)
+          body-keys  (keys body)]
 
       (is (= 200 status)
           (str "Response: " (pr-str schema-res)))
@@ -178,13 +178,13 @@
 
 (deftest query-collections-predicates-multiquery
   (testing "Querying all collections and predicates in multi-query"
-    (let [query         {:coll {:select ["*"] :from "_collection"}
-                         :pred {:select ["*"] :from "_predicate"}}
-          multi-res     @(http/post (str endpoint-url "multi-query") (standard-request query))
-          status        (:status multi-res)
-          body          (-> multi-res :body bs/to-string json/parse)
-          collections   (into #{} (map #(:_collection/name %) (:coll body)))
-          predicates    (into #{} (map #(:_predicate/name %) (:pred body)))]
+    (let [query       {:coll {:select ["*"] :from "_collection"}
+                       :pred {:select ["*"] :from "_predicate"}}
+          multi-res   @(http/post (str endpoint-url "multi-query") (standard-request query))
+          status      (:status multi-res)
+          body        (-> multi-res :body bs/to-string json/parse)
+          collections (into #{} (map #(:_collection/name %) (:coll body)))
+          predicates  (into #{} (map #(:_predicate/name %) (:pred body)))]
 
       (is (= 200 status))
 
@@ -199,23 +199,23 @@
 
 (deftest sign-multi-query
   (testing "sign multi-query where collections are not named in alphanumeric order"
-    (let [private-key   (slurp "default-private-key.txt")
-          qry-str       (str "{\"collections\":{\"select\":[\"*\"],\"from\":\"_collection\"},\n "
-                             " \"predicates\":{\"select\":[\"*\"],\"from\":\"_predicate\"},\n  "
-                             " \"_setting\":{\"select\":[\"*\"],\"from\":\"_setting\"},\n "
-                             " \"_rule\":{\"select\":[\"*\"],\"from\":\"_rule\"},\n "
-                             " \"_role\":{\"select\":[\"*\"],\"from\":\"_role\"},\n "
-                             " \"_user\":{\"select\":[\"*\"],\"from\":\"_user\"}\n }")
-          request       {:headers {"content-type" "application/json"}
-                         :body    qry-str}
-          q-endpoint    (str endpoint-url "multi-query")
-          signed-req    (http-signatures/sign-request :post q-endpoint request private-key)
-          resp          @(http/post q-endpoint signed-req)
-          status        (:status resp)
-          body          (some-> resp :body bs/to-string json/parse)
-          collections   (into #{} (map #(:_collection/name %) (:collections body)))
-          predicates    (into #{} (map #(:_predicate/name %) (:predicates body)))
-          roles         (into #{} (map #(:_role/id %) (:_role body)))]
+    (let [private-key (slurp "default-private-key.txt")
+          qry-str     (str "{\"collections\":{\"select\":[\"*\"],\"from\":\"_collection\"},\n "
+                           " \"predicates\":{\"select\":[\"*\"],\"from\":\"_predicate\"},\n  "
+                           " \"_setting\":{\"select\":[\"*\"],\"from\":\"_setting\"},\n "
+                           " \"_rule\":{\"select\":[\"*\"],\"from\":\"_rule\"},\n "
+                           " \"_role\":{\"select\":[\"*\"],\"from\":\"_role\"},\n "
+                           " \"_user\":{\"select\":[\"*\"],\"from\":\"_user\"}\n }")
+          request     {:headers {"content-type" "application/json"}
+                       :body    qry-str}
+          q-endpoint  (str endpoint-url "multi-query")
+          signed-req  (http-signatures/sign-request :post q-endpoint request private-key)
+          resp        @(http/post q-endpoint signed-req)
+          status      (:status resp)
+          body        (some-> resp :body bs/to-string json/parse)
+          collections (into #{} (map #(:_collection/name %) (:collections body)))
+          predicates  (into #{} (map #(:_predicate/name %) (:predicates body)))
+          roles       (into #{} (map #(:_role/id %) (:_role body)))]
 
       (is (= 200 status))
 
@@ -317,23 +317,23 @@
 
 (deftest sign-all-collections-graphql
   (testing "sign a query for all collections through the graphql endpoint"
-    (let [private-key         (slurp "default-private-key.txt")
-          graphql-str         (str "{  graph {  _collection "
-                                   "(sort: {predicate: \"name\", order: ASC})"
-                                   "{ _id name spec version doc}}}")
-          qry-str             (json/stringify {:query graphql-str})
-          request             {:headers {"content-type" "application/json"}
-                               :body    qry-str}
-          q-endpoint          (str endpoint-url "graphql")
-          signed-req          (http-signatures/sign-request :post q-endpoint request private-key)
-          resp                @(http/post q-endpoint signed-req)
-          body                (-> resp :body bs/to-string json/parse)
-          collections         (-> body :data :_collection)
-          collection-keys     (reduce-kv
-                                (fn [result _ collection] (->> collection keys (into result)))
-                                #{}
-                                collections)
-          collection-names    (set (map :name collections))]
+    (let [private-key      (slurp "default-private-key.txt")
+          graphql-str      (str "{  graph {  _collection "
+                                "(sort: {predicate: \"name\", order: ASC})"
+                                "{ _id name spec version doc}}}")
+          qry-str          (json/stringify {:query graphql-str})
+          request          {:headers {"content-type" "application/json"}
+                            :body    qry-str}
+          q-endpoint       (str endpoint-url "graphql")
+          signed-req       (http-signatures/sign-request :post q-endpoint request private-key)
+          resp             @(http/post q-endpoint signed-req)
+          body             (-> resp :body bs/to-string json/parse)
+          collections      (-> body :data :_collection)
+          collection-keys  (reduce-kv
+                             (fn [result _ collection] (->> collection keys (into result)))
+                             #{}
+                             collections)
+          collection-names (set (map :name collections))]
 
       ; Are the keys in the collections what we expect?
       (is (test/contains-many? collection-keys :_id :name :version :doc))
@@ -442,16 +442,16 @@
 
 (deftest sign-sql-query
   (testing "sign a query for all collections through the sql endpoint"
-    (let [private-key   (slurp "default-private-key.txt")
-          qry-str       (json/stringify "SELECT * FROM _collection")
-          request       {:headers {"content-type" "application/json"}
-                         :body    qry-str}
-          q-endpoint    (str endpoint-url "sql")
-          signed-req    (http-signatures/sign-request :post q-endpoint request private-key)
-          resp          @(http/post q-endpoint signed-req)
-          status        (:status resp)
-          body          (some-> resp :body bs/to-string json/parse)
-          collections   (into #{} (map #(:_collection/name %) body))]
+    (let [private-key (slurp "default-private-key.txt")
+          qry-str     (json/stringify "SELECT * FROM _collection")
+          request     {:headers {"content-type" "application/json"}
+                       :body    qry-str}
+          q-endpoint  (str endpoint-url "sql")
+          signed-req  (http-signatures/sign-request :post q-endpoint request private-key)
+          resp        @(http/post q-endpoint signed-req)
+          status      (:status resp)
+          body        (some-> resp :body bs/to-string json/parse)
+          collections (into #{} (map #(:_collection/name %) body))]
       (is (= 200 status))
 
       ; The keys in the response are -> :opts :body :headers :status
@@ -541,7 +541,7 @@
                                :stringNotUnique (rand-str)}) persons)
           person-res  @(http/post (str endpoint-url "transact") (standard-request person-tx))
           person-body (-> person-res :body bs/to-string json/parse)
-          person-keys  (keys person-body)
+          person-keys (keys person-body)
           flakes      (:flakes person-body)
           tempids     (:tempids person-body)]
 
@@ -658,7 +658,7 @@
           res      @(http/post (str endpoint-url "command")
                                (standard-request cmd-map))
           body     (-> res :body bs/to-string json/parse)]
-      
+
       (is (= 200 (:status res)))
 
       (is (string? body))
@@ -707,12 +707,12 @@
 ;; ENDPOINT TEST: signed /delete-ledger request
 (deftest delete-ledger-tests
   (testing "delete ledger - open api"
-    (let [network      "deleteme"
-          db-id        "one"
-          ledger-id (str network "/" db-id)
-          new-db-res   @(http/post (str endpoint-url-short "new-ledger")
-                                   (standard-request {:db/id ledger-id}))
-          new-db-body  (-> new-db-res :body bs/to-string json/parse)]
+    (let [network     "deleteme"
+          db-id       "one"
+          ledger-id   (str network "/" db-id)
+          new-db-res  @(http/post (str endpoint-url-short "new-ledger")
+                                  (standard-request {:db/id ledger-id}))
+          new-db-body (-> new-db-res :body bs/to-string json/parse)]
       (is (= 200 (:status new-db-res)))
       (is (string? new-db-body))
       (is (= 64 (count new-db-body)))
@@ -723,18 +723,18 @@
           (is (= 200 (:status res)))
           (is (= ledger-id (:deleted body)))))))
   (testing "deprecated delete-db cmd still works"
-    (let [network "deleteme"
-          db-id   "two"
-          ledger-id (str network "/" db-id)
-          new-db-res @(http/post (str endpoint-url-short "new-ledger")
-                                 (standard-request {:db/id ledger-id}))
+    (let [network     "deleteme"
+          db-id       "two"
+          ledger-id   (str network "/" db-id)
+          new-db-res  @(http/post (str endpoint-url-short "new-ledger")
+                                  (standard-request {:db/id ledger-id}))
           new-db-body (-> new-db-res :body bs/to-string json/parse)]
       (is (= 200 (:status new-db-res)))
       (is (string? new-db-body))
       (is (= 64 (count new-db-body)))
       (when (wait-for-db network db-id 100)
-        (let [res @(http/post (str endpoint-url-short "delete-db")
-                              (standard-request {:db/id ledger-id}))
+        (let [res  @(http/post (str endpoint-url-short "delete-db")
+                               (standard-request {:db/id ledger-id}))
               body (some-> res :body bs/to-string json/parse)]
           (is (= 200 (:status res)))
           (is (= ledger-id (:deleted body))))))))
