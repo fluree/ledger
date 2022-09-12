@@ -122,7 +122,6 @@ function find_properties_file() {
   for prefix in "${CONFIG_PREFIXES[@]}"; do
     props_path="${prefix}/${PROPERTIES_FILE}"
     if [ -f "$props_path" ]; then
-      SYSTEM_CONFIG_DIR=$"$prefix"
       echo "$props_path"
       return 0
     fi
@@ -134,6 +133,7 @@ if [ -f "${THIS_DIR}/${PROPERTIES_FILE}" ]; then
   FLUREE_PROPERTIES="${THIS_DIR}/${PROPERTIES_FILE}"
 else
   FLUREE_PROPERTIES=$(find_properties_file)
+  SYSTEM_CONFIG_DIR=$(dirname "${FLUREE_PROPERTIES}")
 fi
 
 ## decide if we're using local logback config file or system-wide
