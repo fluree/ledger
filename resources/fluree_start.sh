@@ -143,6 +143,8 @@ elif [ -f "${SYSTEM_CONFIG_DIR}/${SYSTEM_LOGBACK_CONFIG_FILE}" ]; then
   FLUREE_LOGBACK_CONFIGURATION_FILE="${SYSTEM_CONFIG_DIR}/${SYSTEM_LOGBACK_CONFIG_FILE}"
 fi
 
+echo "Using logback config file ${FLUREE_LOGBACK_CONFIGURATION_FILE}"
+
 ## first check if issuing a command (string that starts with ':' as the only arg)
 if [ "${1:0:1}" = : ]; then
   echo "Executing command: $1"
