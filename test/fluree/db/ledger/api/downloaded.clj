@@ -1,6 +1,6 @@
 (ns fluree.db.ledger.api.downloaded
   (:require [clojure.test :refer :all]
-            [clojure.core.async :as async]
+            [clojure.core.async :as async :refer [<!!]]
             [fluree.db.test-helpers :as test]
             [fluree.db.util.log :as log]
             [clojure.tools.reader.edn :as edn]
@@ -12,6 +12,21 @@
             [fluree.db.query.http-signatures :as http-signatures]))
 
 (use-fixtures :once test/test-system)
+
+;; ========================= CLJ API ==================================
+
+(deftest clj-delete-ledger-test
+  (let [ledger-name "deleteme/one"
+        create-res  (<!! (fdb/new-ledger-async (:conn test/system) ledger-name))
+        ready? (fdb/wait-for-ledger-ready (:conn test/system) ledger-name)]
+    (is (string? create-res))
+    (is (= 64 (count create-res)))
+    (is ready?)
+    (let [del-res (<!! (fdb/delete-ledger-async (:conn test/system) ledger-name))]
+      (is del-res))))
+
+
+;; ========================= HTTP API =================================
 
 ;; Utility vars and functions
 
@@ -706,6 +721,22 @@
                                (standard-request {:db/id ledger-id}))
               body (some-> res :body bs/to-string json/parse)]
           (is (= 200 (:status res)))
+          (is (= ledger-id (:deleted body)))))))
+  (testing "deprecated delete-db cmd still works"
+    (let [network "deleteme"
+          db-id   "two"
+          ledger-id (str network "/" db-id)
+          new-db-res @(http/post (str endpoint-url-short "new-ledger")
+                                 (standard-request {:db/id ledger-id}))
+          new-db-body (-> new-db-res :body bs/to-string json/parse)]
+      (is (= 200 (:status new-db-res)))
+      (is (string? new-db-body))
+      (is (= 64 (count new-db-body)))
+      (when (wait-for-db network db-id 100)
+        (let [res @(http/post (str endpoint-url-short "delete-db")
+                              (standard-request {:db/id ledger-id}))
+              body (some-> res :body bs/to-string json/parse)]
+          (is (= 200 (:status res)))
           (is (= ledger-id (:deleted body))))))))
 
 ;; TODO - can't test this with other tests - fails. Can't have any txns processed between gen-flakes and query-with. Not sure how to make sure of that. Running the independent version succeeds.
@@ -736,6 +767,7 @@
   (test-gen-flakes-query-transact-with))
 
 (deftest api-test
+  (clj-delete-ledger-test)
   (add-schema*)
   (new-people-comments-chats-auth)
   (query-all-collections)
