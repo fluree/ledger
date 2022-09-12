@@ -374,7 +374,7 @@
                                              (async/<!! (pw-auth/fluree-decode-jwt (:conn system) jwt))))
                              {:keys [expire nonce] :or {nonce (System/currentTimeMillis)}} cmd-data
                              expire      (or expire (+ 60000 nonce))
-                             cmd-data*   (assoc cmd-data :expire expire :nonce nonce)]
+                             cmd-data*   (assoc cmd-data :type cmd-type, :expire expire, :nonce nonce)]
                          (when (< expire (System/currentTimeMillis))
                            (throw-invalid-command (format "Command expired. Expiration: %s. Current time: %s."
                                                           expire (System/currentTimeMillis))))

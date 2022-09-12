@@ -3,8 +3,12 @@
 set -e
 
 THIS_DIR="$(dirname "$0")"
-SYSTEM_JAR_DIR=/usr/local/share/java
-SYSTEM_CONFIG_DIR=/usr/local/etc
+
+CONFIG_PREFIXES=("/etc" "/usr/local/etc" "/opt/homebrew/etc" "/opt/etc")
+JAR_PREFIXES=("/usr/share/java" "/usr/local/share/java" "/opt/homebrew/share/java" "/opt/share/java")
+
+SYSTEM_JAR_DIR=${SYSTEM_JAR_DIR:-/usr/local/share/java}
+SYSTEM_CONFIG_DIR=${SYSTEM_CONFIG_DIR:-/usr/local/etc}
 
 FLUREE_LEDGER_JAR=fluree-ledger.standalone.jar
 DEFAULT_PROPERTIES_FILE=fluree_sample.properties
@@ -85,18 +89,51 @@ JAVA_X=$(find_java)
 ## Check Java Version
 java_version "$JAVA_X"
 
+function find_jar() {
+  local jar_path="${SYSTEM_JAR_DIR}/${FLUREE_LEDGER_JAR}"
+  if [ -f "$jar_path" ]; then
+    echo "$jar_path"
+    return 0
+  fi
+  for prefix in "${JAR_PREFIXES[@]}"; do
+    jar_path="${prefix}/${FLUREE_LEDGER_JAR}"
+    if [ -f "$jar_path" ]; then
+      echo "$jar_path"
+      return 0
+    fi
+  done
+  echo "ERROR: Could not locate ${FLUREE_LEDGER_JAR} file. Exiting."
+  exit 1
+}
+
 ## decide if we're using local JAR or system-wide JAR
 if [ -f ${THIS_DIR}/${FLUREE_LEDGER_JAR} ]; then
   FLUREE_SERVER="${THIS_DIR}/${FLUREE_LEDGER_JAR}"
 else
-  FLUREE_SERVER="${SYSTEM_JAR_DIR}/${FLUREE_LEDGER_JAR}"
+  FLUREE_SERVER=$(find_jar)
 fi
+
+function find_properties_file() {
+  local props_path="${SYSTEM_CONFIG_DIR}/${PROPERTIES_FILE}"
+  if [ -f "$props_path" ]; then
+    echo "$props_path"
+    return 0
+  fi
+  for prefix in "${CONFIG_PREFIXES[@]}"; do
+    props_path="${prefix}/${PROPERTIES_FILE}"
+    if [ -f "$props_path" ]; then
+      echo "$props_path"
+      return 0
+    fi
+  done
+}
 
 ## decide if we're using local properties file or system-wide
 if [ -f "${THIS_DIR}/${PROPERTIES_FILE}" ]; then
   FLUREE_PROPERTIES="${THIS_DIR}/${PROPERTIES_FILE}"
-elif [ -f "${SYSTEM_CONFIG_DIR}/${PROPERTIES_FILE}" ]; then
-  FLUREE_PROPERTIES="${SYSTEM_CONFIG_DIR}/${PROPERTIES_FILE}"
+else
+  FLUREE_PROPERTIES=$(find_properties_file)
+  SYSTEM_CONFIG_DIR=$(dirname "${FLUREE_PROPERTIES}")
 fi
 
 ## decide if we're using local logback config file or system-wide
@@ -106,15 +143,7 @@ elif [ -f "${SYSTEM_CONFIG_DIR}/${SYSTEM_LOGBACK_CONFIG_FILE}" ]; then
   FLUREE_LOGBACK_CONFIGURATION_FILE="${SYSTEM_CONFIG_DIR}/${SYSTEM_LOGBACK_CONFIG_FILE}"
 fi
 
-if [ "$FLUREE_PROPERTIES" == "" ]; then
-  echo "No properties file specified. Using default properties file $DEFAULT_PROPERTIES_FILE."
-  FLUREE_PROPERTIES="${THIS_DIR}/${DEFAULT_PROPERTIES_FILE}"
-fi
-
-if ! [ -f ${FLUREE_PROPERTIES} ]; then
-  echo "Properties file ${FLUREE_PROPERTIES} does not exist. Exiting."
-  exit 1
-fi
+echo "Using logback config file ${FLUREE_LOGBACK_CONFIGURATION_FILE}"
 
 ## first check if issuing a command (string that starts with ':' as the only arg)
 if [ "${1:0:1}" = : ]; then
@@ -129,6 +158,16 @@ else
     shift
     ;;
   esac
+fi
+
+if [ "$FLUREE_PROPERTIES" == "" ]; then
+  echo "No properties file specified. Using default properties file $DEFAULT_PROPERTIES_FILE."
+  FLUREE_PROPERTIES="${THIS_DIR}/${DEFAULT_PROPERTIES_FILE}"
+fi
+
+if ! [ -f ${FLUREE_PROPERTIES} ]; then
+  echo "Properties file ${FLUREE_PROPERTIES} does not exist. Exiting."
+  exit 1
 fi
 
 JAVA_OPTS='-XX:+UseG1GC -XX:MaxGCPauseMillis=50'
