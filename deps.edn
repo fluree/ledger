@@ -1,10 +1,10 @@
-{:deps  {org.clojure/clojure            {:mvn/version "1.10.3"}
-         org.clojure/data.xml           {:mvn/version "0.2.0-alpha6"}
-         com.fluree/alphabase           {:mvn/version "3.2.2"}
+{:deps  {org.clojure/clojure            {:mvn/version "1.11.1"}
+         org.clojure/data.xml           {:mvn/version "0.2.0-alpha7"}
+         com.fluree/alphabase           {:mvn/version "3.3.0"}
          com.fluree/db                  {:git/url "https://github.com/fluree/db.git"
-                                         :sha     "6b05ab1cd5ebb7d123bcaf8e903303998bf34474"}
+                                         :sha     "1e2babd68f38a482221cbd5198f9e7e1dc4978d2"}
          com.fluree/raft                {:mvn/version "1.0.0-beta1"}
-         com.fluree/crypto              {:mvn/version "0.3.9"}
+         com.fluree/crypto              {:mvn/version "0.4.0"}
 
          ;; network comm
          net.async/async                {:mvn/version "0.1.1"}
@@ -13,18 +13,18 @@
          clucie/clucie                  {:mvn/version "0.4.2"}
 
          ;; AWS S3 API
-         com.cognitect.aws/api          {:mvn/version "0.8.561"}
-         com.cognitect.aws/endpoints    {:mvn/version "1.1.12.230"}
+         com.cognitect.aws/api          {:mvn/version "0.8.589"}
+         com.cognitect.aws/endpoints    {:mvn/version "1.1.12.280"}
          com.cognitect.aws/s3           {:mvn/version "822.2.1145.0"}
 
          ;; web server
          http-kit/http-kit              {:mvn/version "2.6.0"}
-         ring/ring-core                 {:mvn/version "1.9.5"}
+         ring/ring-core                 {:mvn/version "1.9.6"}
          ring-cors/ring-cors            {:mvn/version "0.1.13"}
          compojure/compojure            {:mvn/version "1.7.0"}
 
          ;; logging
-         ch.qos.logback/logback-classic {:mvn/version "1.2.11"}
+         ch.qos.logback/logback-classic {:mvn/version "1.4.0"}
 
          ;; config
          environ/environ                {:git/url   "https://github.com/cap10morgan/environ.git"
@@ -109,7 +109,7 @@
    :main-opts   ["-m" "cloverage.coverage" "-p" "src" "-s" "test" "--test-ns-regex" "^fluree\\.db\\.ledger\\.ledger-test*$" "--output" "scanning_results/coverage"]}
 
   :eastwood
-  {:extra-deps {jonase/eastwood {:mvn/version "1.2.4"}}
+  {:extra-deps {jonase/eastwood {:mvn/version "1.2.5"}}
    :main-opts  ["-m" "eastwood.lint" {:source-paths ["src"] :test-paths ["test"]}]}
 
   :ancient
@@ -117,5 +117,5 @@
    :main-opts  ["-m" "antq.core" "--skip=github-action"]}
 
   :clj-kondo
-  {:extra-deps {clj-kondo/clj-kondo {:mvn/version "2022.06.22"}}
+  {:extra-deps {clj-kondo/clj-kondo {:mvn/version "2022.09.08"}}
    :main-opts  ["-m" "clj-kondo.main" "--lint" "src" "--config" ".clj-kondo/config.edn"]}}}
