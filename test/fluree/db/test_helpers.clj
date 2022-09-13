@@ -213,6 +213,10 @@
   transact-data
   (partial transact-resource :data))
 
+(defn load-keys
+  [name]
+  (some-> name (str ".edn") (->> (str "keys/")) (->> io/resource) slurp
+          edn/read-string))
 
 (defn rand-ledger
   "Generate a random, new, empty ledger with base-name prefix. Waits for it to
