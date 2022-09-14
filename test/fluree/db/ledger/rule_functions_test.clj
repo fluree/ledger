@@ -26,17 +26,10 @@
           _                  (assert-success (test/transact-schema ledger "chat-preds.edn" :clj))
           _                  (assert-success (test/transact-data ledger "chat.edn" :clj))
           {:keys [block]} (assert-success (test/transact-data ledger "chat-rules.edn" :clj))
-          rule-query         {:select ["*"], :from "_rule"}
-          fn-query           {:select ["*"], :from "_fn"}
-          role-query         {:select ["*"], :from "_role"}
-          user-query         {:select ["*"], :from "_user"}
-          auth-query         {:select ["*"], :from "_auth"}
+
           db                 (fdb/db (:conn test/system) ledger {:syncTo block})
-          rule-resp          (<!! (fdb/query-async db rule-query))
-          fn-resp            (<!! (fdb/query-async db fn-query))
-          role-resp          (<!! (fdb/query-async db role-query))
-          user-resp          (<!! (fdb/query-async db user-query))
-          auth-resp          (<!! (fdb/query-async db auth-query))
+
+          ;; Can edit own chat messages
           own-chats-query    {:select {"?c" ["*"]}
                               :where  [["?c" "chat/person" ["person/handle" "jdoe"]]]
                               :from   "chat"}
@@ -44,13 +37,14 @@
           own-chat-id        (-> own-chats first :_id)
           edit-own-chat-txn  [{:_id          own-chat-id
                                :chat/message "Now it's this other thing"}]
-          {:keys [block]
-           :as   edit-resp} (assert-success
-                              (<!! (fdb/transact-async (:conn test/system)
-                                                       ledger edit-own-chat-txn
-                                                       {:private-key (:private jdoe-keys)})))
+          {:keys [block]} (assert-success
+                            (<!! (fdb/transact-async (:conn test/system)
+                                                     ledger edit-own-chat-txn
+                                                     {:private-key (:private jdoe-keys)})))
           db                 (fdb/db (:conn test/system) ledger {:syncTo block})
           own-chats-edited   (<!! (fdb/query-async db own-chats-query))
+
+          ;; Cannot edit other's chat messages
           others-chats-query {:select {"?c" ["*"]}
                               :where  [["?c" "chat/person" ["person/handle" "zsmith"]]]
                               :from   "chat"}
@@ -61,14 +55,17 @@
           edit-others-resp   (<!! (fdb/transact-async (:conn test/system)
                                                       ledger edit-others-chat-txn
                                                       {:private-key (:private jdoe-keys)}))
+
+          ;; doesn't work; needs its own test
+          ;; If we add to the editOwnChats rule to require your handle starts w/ 'z', only 'zsmith'
+          ;; can edit their chats
           ;chat-edit-rule-txn [{:_id ["_rule/id" "editOwnChats"]
           ;                     :fns [{:_id "_fn"
           ;                            :name "handle starts with z"
-          ;                            :code "(re-find \"^z\" (get (?s) \"person/handle\"))"}]}]
-          chat-edit-rule-txn  [{:_id ["_rule/id" "editOwnChats"]
-                                :fns [{:_id "_fn"
-                                       :name "always fail"
-                                       :code "false"}]}]
+          ;                            :code "(re-find \"^z\" (first (get-all (?s) [\"chat/person\" \"person/handle\"])))"}]}]
+          chat-edit-rule-txn [{:_id ["_rule/id" "editOwnChats"]
+                               :fns [{:_id "_fn"
+                                      :code "false"}]}]
           chat-edit-rule-resp (assert-success
                                 (<!! (fdb/transact-async (:conn test/system)
                                                          ledger chat-edit-rule-txn)))
@@ -77,23 +74,30 @@
           jdoe-edits-own-chat-resp (<!! (fdb/transact-async (:conn test/system)
                                                             ledger jdoe-edits-own-chat-txn
                                                             {:private-key (:private jdoe-keys)}))]
-      (printlnn "RULES:" (pr-str rule-resp))
-      (printlnn "FNS:" (pr-str fn-resp))
-      (printlnn "ROLES:" (pr-str role-resp))
-      (printlnn "USERS:" (pr-str user-resp))
-      (printlnn "AUTHS:" (pr-str auth-resp))
-      (printlnn "OWN CHATS:" (pr-str own-chats))
-      (printlnn "EDIT RULE RESP:" (pr-str chat-edit-rule-resp))
+
+          ;; doesn't work; see above
+          ;zsmith-edits-chat-txn [{:_id others-chat-id
+          ;                        :chat/message "I edited my message!"}]
+          ;zsmith-edits-chat-resp (assert-success
+          ;                         (<!! (fdb/transact-async (:conn test/system)
+          ;                                                  ledger zsmith-edits-chat-txn
+          ;                                                  {:private-key (:private zsmith-keys)})))]
+
       (is (= "Now it's this other thing" (-> own-chats-edited first (get "chat/message"))))
+
       (is (instance? Throwable edit-others-resp))
       (is (= :db/write-permission (-> edit-others-resp ex-data :error)))
+
       (is (instance? Throwable jdoe-edits-own-chat-resp)
           (str "jdoe own chat edit was not an error: " (pr-str jdoe-edits-own-chat-resp)))
       (is (= :db/write-permission (-> jdoe-edits-own-chat-resp ex-data :error))
           (str "jdoe own chat edit was unexpected error type: "
                (pr-str jdoe-edits-own-chat-resp))))))
 
-;; This may or may not be worth testing
+      ;(is (= "I edited my message!" (-> zsmith-edits-chat-resp first (get "chat/message")))))))
+
+;; This may or may not be testing something interesting.
+;; Messing around with the root role is probably a bad idea / going to break things.
 #_(deftest ^:wes root-role-test
     (testing "adding a new truthy fn works"
       (let [ledger        (test/rand-ledger "test/root-role")
