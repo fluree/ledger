@@ -17,7 +17,7 @@
   [& s]
   (apply println (concat s ["\n"])))
 
-(deftest ^:wes update-role-fn-test
+(deftest update-role-fn-test
   (testing "Updating a role fn takes effect right away"
     (let [jdoe-keys          (test/load-keys "jdoe-auth")
           zsmith-keys        (test/load-keys "zsmith-auth")
