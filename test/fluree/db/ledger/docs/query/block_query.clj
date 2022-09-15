@@ -23,8 +23,7 @@
 
       ;; TODO: Account for filtered meta predicates which appear in block files
       ;;       but not indexes. see fluree.db.graphdb/exclude-predicates
-      ;; (is (= 82 (count (:flakes res))))
-      (is (= 81 (count (:flakes res)))))))
+      (is (= 84 (count (:flakes res)))))))
 
 (deftest query-single-block-with-ISO-string
   (testing "Select single block with ISO-8601 wall clock time"

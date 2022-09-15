@@ -75,8 +75,8 @@
       ;; block should be 3
       (is (= 3 (:block resp)))
 
-      ;; there should be 16 _predicate tempids
-      (is (= 17 (-> resp :tempids (test/get-tempid-count "_predicate")))))))
+      ;; there should be 18 _predicate tempids
+      (is (= 18 (-> resp :tempids (test/get-tempid-count "_predicate")))))))
 
 ;; Add sample data
 

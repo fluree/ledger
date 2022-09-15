@@ -21,6 +21,7 @@
   :restrictCollection "movie",
   :multi              true}
  {:_id "_predicate", :name "person/user", :type "ref", :restrictCollection "_user"}
+ {:_id "_predicate", :name "person/auth", :type "ref", :restrictCollection "_auth"}
  {:_id "_predicate", :name "chat/message", :doc "A chat message", :type "string"}
  {:_id                "_predicate",
   :name               "chat/person",
