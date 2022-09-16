@@ -338,18 +338,6 @@
          :ledger-list (let [response (txproto/ledger-list (:group system))]
                         (success! response))
 
-         ;; TODO - unsigned-cmd should cover a 'tx', remove below
-         :tx (do
-               (log/debug "tx-map:" arg)
-               (let [{:keys [ledger tx] :as tx-map} arg
-                     [network ledger-id] (session/resolve-ledger (:conn system) ledger)]
-                 (if-let [private-key (txproto/get-shared-private-key (:group system) network ledger-id)]
-                   (let [cmd (fdb/tx->command ledger tx private-key tx-map)]
-                     (success! (process-command system now cmd)))
-                   (throw-invalid-command (str "The ledger group is not configured with a default private "
-                                               "key for use with ledger: " ledger ". Unable to process an unsigned "
-                                               "transaction.")))))
-
          :pw-login (let [{:keys [ledger password user auth]} arg]
                      (when-not (pw-auth/password-enabled? (:conn system))
                        (throw (ex-info "Password authentication is not enabled."
