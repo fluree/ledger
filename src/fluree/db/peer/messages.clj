@@ -300,10 +300,12 @@
 
          :nw-unsubscribe (raft/monitor-raft-stop (-> system :group))
 
-         :unsigned-cmd (let [{:keys [type ledger jwt expire nonce]
-                              :or   {nonce now, expire (+ 60000 now)}
-                              :as   command}
-                             arg
+         :unsigned-cmd (let [{:keys [auth command verified-auth]} arg
+
+                             {:keys [type ledger jwt expire nonce]
+                              :or   {nonce now, expire (+ 60000 now)}}
+                             command
+
                              cmd-type (keyword type)]
                          (if (= :signed-qry cmd-type)
                            (throw-invalid-command "Commands of type :signed-qry must be pre-signed")
@@ -324,7 +326,7 @@
                                (throw-invalid-command (str "The ledger group is not configured with a default private "
                                                            "key for use with ledger: " ledger ". Unable to process an unsigned "
                                                            "transaction.")))
-                             (let [signed-cmd (cmd/sign command private-key)]
+                             (let [signed-cmd (cmd/sign command private-key {:auth auth :verified-auth verified-auth})]
                                (success! (process-command system now signed-cmd))))))
 
          :ledger-info (let [[network ledger-id] (session/resolve-ledger (:conn system) arg)]
