@@ -236,13 +236,34 @@
           (str "Results were not ordered by ?maxFavNums: " (pr-str res)))))
 
   (testing "orderBy variable in union should work"
-    (let [query           {:where  [{:union [[["?p" "_predicate/type" "string"]]
-                                             [["?p" "_predicate/type" "tag"]]]}]
-                           :select "?p"
-                           :opts   {:orderBy "?p"}}
-          ledger          (test/rand-ledger "test/order-by-union")
-          db              (fdb/db (:conn test/system) ledger)
-          res             (<?? (fdb/query-async db query))
-          sorted-res      (sort res)]
+    (let [query      {:where  [{:union [[["?p" "_predicate/type" "string"]]
+                                        [["?p" "_predicate/type" "tag"]]]}]
+                      :select "?p"
+                      :opts   {:orderBy "?p"}}
+          ledger     (test/rand-ledger "test/order-by-union")
+          db         (fdb/db (:conn test/system) ledger)
+          res        (<?? (fdb/query-async db query))
+          sorted-res (sort res)]
       (is (= sorted-res res)
           (str "Results were not ordered by ?p" (pr-str res))))))
+
+(deftest with-filter-variable
+  (testing "filter with variable in where clause works"
+    (let [query  {:select ["?name" "?isIndexed"]
+                  :where  [["?predicate" "_predicate/name" "?name"]
+                           ["?predicate" "_predicate/index" "?isIndexed"]
+                           {:filter ["(nil? ?isIndexed)"]}]}
+          ledger (test/rand-ledger "test/filter-optional-var")
+          db     (fdb/db (:conn test/system) ledger)
+          res    (<?? (fdb/query-async db query))]
+      (is (= [] res))))
+  (testing "filter with variable in optional clause works"
+    (let [query  {:select ["?name" "?isIndexed"]
+                  :where  [["?predicate" "_predicate/name" "?name"]
+                           {:optional [["?predicate" "_predicate/index" "?isIndexed"]]}
+                           {:filter ["(nil? ?isIndexed)"]}]}
+          ledger (test/rand-ledger "test/filter-optional-var")
+          db     (fdb/db (:conn test/system) ledger)
+          res    (<?? (fdb/query-async db query))]
+      (is (vector? res))
+      (is (every? #(-> % second nil?) res)))))
