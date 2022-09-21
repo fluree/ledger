@@ -3,7 +3,6 @@
             [fluree.db.test-helpers :as test]
             [org.httpkit.client :as http]
             [fluree.db.util.json :as json]
-            [byte-streams :as bs]
             [fluree.db.api :as fdb]
             [fluree.db.query.http-signatures :as http-signatures])
   (:import (java.util UUID)))
