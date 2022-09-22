@@ -9,9 +9,9 @@
 (use-fixtures :once test/test-system)
 
 (deftest transact-json-test
-  (let [ledger (test/rand-ledger "pred/json")
-        _ (test/assert-success
-            (test/transact-schema ledger "json-preds"))
+  (let [ledger  (test/rand-ledger "pred/json")
+        _       (test/assert-success
+                  (test/transact-schema ledger "json-preds"))
         api-url (str "http://localhost:" @test/port "/fdb/" ledger "/")]
     (testing "valid JSON succeeds"
       (let [txn "[{\"_id\": \"_user\", \"_user/username\": \"tester\", \"_user/json\": {\"foo\": \"bar\"}}]"
@@ -81,9 +81,9 @@
 
     (testing "basic query from subject _id returns parsed JSON when requested"
       (let [query {:select ["*" {:friend ["*"]}]
-                   :from 87960930223081
-                   :opts {:parseJSON true}}
-            res (<!! (fdb/query-async db query))]
+                   :from   87960930223081
+                   :opts   {:parseJSON true}}
+            res   (<!! (fdb/query-async db query))]
         (is (= {:foo "bar"} (-> res first (get "_user/json")))
             (str "Unexpected query result:" (pr-str res)))
         (is (= {:bizz "buzz"} (-> res first (get-in ["friend" "_user/json"])))
@@ -91,9 +91,9 @@
 
     (testing "analytical query from triples returns parsed JSON when requested"
       (let [query {:select {"?s" ["*"]}
-                   :where [["?s" "_user/username" "?o"]]
-                   :opts {:parseJSON true}}
-            res (<!! (fdb/query-async db query))]
+                   :where  [["?s" "_user/username" "?o"]]
+                   :opts   {:parseJSON true}}
+            res   (<!! (fdb/query-async db query))]
         (is (= {:foo "bar"} (-> res first (get "_user/json")))
             (str "Unexpected query result: " (pr-str res)))
         (is (= {:bizz "buzz"} (-> res second (get "_user/json")))
@@ -102,8 +102,29 @@
     (testing "basic query with graph crawl returns parsed JSON when requested"
       (let [query {:select ["*" {:friend ["*"]}]
                    :from   "_user"
-                   :opts {:parseJSON true}}
-            res (<!! (fdb/query-async db query))]
+                   :opts   {:parseJSON true}}
+            res   (<!! (fdb/query-async db query))]
         (is (= {:bizz "buzz"} (-> res first (get "_user/json"))))
         (is (= {:foo "bar"} (-> res second (get "_user/json"))))
-        (is (= {:bizz "buzz"} (-> res second (get-in ["friend" "_user/json"]))))))))
+        (is (= {:bizz "buzz"} (-> res second (get-in ["friend" "_user/json"]))))))
+
+    (testing "reverse graph crawl query returns parsed JSON when requested"
+      (let [query {:from   ["_user/username" "ajFriend"]
+                   :select ["*" {:_user/_friend ["*"]}]
+                   :opts   {:parseJSON true}}
+            res   (<!! (fdb/query-async db query))]
+        (is (= {:bizz "buzz"} (-> res first (get "_user/json")))
+            (str "Unexpected query result:" (pr-str res)))
+        (is (= {:foo "bar"} (-> res first (get "_user/_friend") first (get "_user/json")))
+            (str "Unexpected query result:" (pr-str res)))))
+
+    (testing "query with object binding in the where clause returns parsed JSON when requested"
+      (let [query {:select "?json"
+                   :where  [["?s", "_user/json", "?json"]]
+                   :opts   {:parseJSON true}}
+            res   (<!! (fdb/query-async db query))]
+        (is (every? #{{:bizz "buzz"} {:foo "bar"}} res))))))
+
+
+
+
