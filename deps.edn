@@ -4,7 +4,7 @@
             ;com.fluree/db                  {:mvn/version "2.0.0-alpha6"}
             ;com.fluree/db                  {:local/root "../db"}
             com.fluree/db                  {:git/url "https://github.com/fluree/db.git"
-                                            :sha "35f051ac2ea03752a1fafc68321300b680934234"}
+                                            :sha "df4982804a507aa0832ecddf95fe4ab0d5b511ea"}
             com.fluree/raft                {:mvn/version "1.0.0-beta1"}
             com.fluree/crypto              {:mvn/version "0.4.0"}
 
