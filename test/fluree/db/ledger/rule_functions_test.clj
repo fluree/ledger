@@ -7,25 +7,15 @@
 (use-fixtures :once (partial test/test-system
                              {:fdb-api-open false}))
 
-(defn assert-success
-  [result]
-  (if (instance? Throwable result)
-    (throw result)
-    result))
-
-(defn printlnn
-  [& s]
-  (apply println (concat s ["\n"])))
-
 (deftest update-role-fn-test
   (testing "Updating a role fn takes effect right away"
     (let [jdoe-keys          (test/load-keys "jdoe-auth")
           zsmith-keys        (test/load-keys "zsmith-auth")
           ledger             (test/rand-ledger "test/role-fn-update")
-          _                  (assert-success (test/transact-schema ledger "chat.edn" :clj))
-          _                  (assert-success (test/transact-schema ledger "chat-preds.edn" :clj))
-          _                  (assert-success (test/transact-data ledger "chat.edn" :clj))
-          {:keys [block]} (assert-success (test/transact-data ledger "chat-rules.edn" :clj))
+          _                  (test/assert-success (test/transact-schema ledger "chat.edn" :clj))
+          _                  (test/assert-success (test/transact-schema ledger "chat-preds.edn" :clj))
+          _                  (test/assert-success (test/transact-data ledger "chat.edn" :clj))
+          {:keys [block]} (test/assert-success (test/transact-data ledger "chat-rules.edn" :clj))
 
           db                 (fdb/db (:conn test/system) ledger {:syncTo block})
 
@@ -37,7 +27,7 @@
           own-chat-id        (-> own-chats first :_id)
           edit-own-chat-txn  [{:_id          own-chat-id
                                :chat/message "Now it's this other thing"}]
-          {:keys [block]} (assert-success
+          {:keys [block]} (test/assert-success
                             (<!! (fdb/transact-async (:conn test/system)
                                                      ledger edit-own-chat-txn
                                                      {:private-key (:private jdoe-keys)})))
@@ -66,7 +56,7 @@
           chat-edit-rule-txn [{:_id ["_rule/id" "editOwnChats"]
                                :fns [{:_id "_fn"
                                       :code "false"}]}]
-          chat-edit-rule-resp (assert-success
+          chat-edit-rule-resp (test/assert-success
                                 (<!! (fdb/transact-async (:conn test/system)
                                                          ledger chat-edit-rule-txn)))
           jdoe-edits-own-chat-txn [{:_id own-chat-id
@@ -78,7 +68,7 @@
           ;; doesn't work; see above
           ;zsmith-edits-chat-txn [{:_id others-chat-id
           ;                        :chat/message "I edited my message!"}]
-          ;zsmith-edits-chat-resp (assert-success
+          ;zsmith-edits-chat-resp (test/assert-success
           ;                         (<!! (fdb/transact-async (:conn test/system)
           ;                                                  ledger zsmith-edits-chat-txn
           ;                                                  {:private-key (:private zsmith-keys)})))]

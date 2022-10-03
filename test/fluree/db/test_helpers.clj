@@ -190,7 +190,8 @@
   closed-api mode since this doesn't sign the HTTP requests."
   ([type ledger file] (transact-resource type ledger file :http))
   ([type ledger file api]
-   (let [tx (->> file (str (name type) "/") io/resource slurp edn/read-string)]
+   (let [filename (if (str/ends-with? file ".edn") file (str file ".edn"))
+         tx (->> filename (str (name type) "/") io/resource slurp edn/read-string)]
      (case api
        :clj
        @(fdb/transact (:conn system) ledger tx)
@@ -341,6 +342,19 @@
       dir-path
       (throw (ex-info "Failed to create temp directory"
                       {:dir-path dir-path})))))
+
+
+(defn assert-success
+  [result]
+  (if (instance? Throwable result)
+    (throw result)
+    result))
+
+
+(defn printlnn
+  [& s]
+  (apply println (concat s ["\n"])))
+
 
 ;; ======================== DEPRECATED ===============================
 

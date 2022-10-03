@@ -385,9 +385,9 @@
                                                     acc []]
                                       (let [val' (first vals')
                                             res  (<? (flakes->res db-after
-                                                                      (volatile! {})
-                                                                      (volatile! fuel-tot)
-                                                                      1000000 {:wildcard? true, :select {}} val'))
+                                                                  (volatile! {})
+                                                                  (volatile! fuel-tot)
+                                                                  1000000 {:wildcard? true, :select {}} {} val'))
                                             acc' (conj acc res)]
                                         (if (not-empty (rest vals'))
                                           (recur (rest vals') acc')

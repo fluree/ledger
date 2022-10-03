@@ -1,0 +1,6 @@
+[{:_id      "_user"
+  :username "aj"
+  :json     {"foo" "bar"}
+  :friend   {:_id      "_user"
+             :username "ajFriend"
+             :json     {"bizz" "buzz"}}}]

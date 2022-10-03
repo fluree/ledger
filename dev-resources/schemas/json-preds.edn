@@ -1,0 +1,7 @@
+[{:_id  "_predicate"
+  :name "_user/json"
+  :type "json"}
+ {:_id                "_predicate"
+  :name               "_user/friend"
+  :type               "ref"
+  :restrictCollection "_user"}]
