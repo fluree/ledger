@@ -266,7 +266,7 @@
               query-limit (assoc query-all :limit limit)
               subject     (async/<!! (fdb/query-async db query-limit))]
 
-          (is (= subject (into [] (take limit) all-results))
+          (is (= (count subject) limit)
               "returns subjects only up to the limit")
 
           (testing "and with offset"
@@ -274,11 +274,11 @@
                   query-offset (assoc query-limit :offset offset)
                   subject      (async/<!! (fdb/query-async db query-offset))]
 
-              (is (= subject (into []
-                                   (comp (drop offset)
-                                         (take limit))
-                                   all-results))
-                  "returns subjects only up to the limit after the offset"))))))))
+              (is (= (count subject) limit)
+                  "returns subjects only up to the limit")
+
+              (is (= (first subject) (second all-results))
+                  "returns only subjects after the offset"))))))))
 
 (deftest with-filter-variable
   (testing "filter with variable in where clause works"
