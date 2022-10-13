@@ -99,6 +99,17 @@
         (is (= {:bizz "buzz"} (-> res second (get "_user/json")))
             (str "Unexpected query result: " (pr-str res)))))
 
+    (testing "analytical query from triples w/ orderBy returns parsed JSON when requested"
+      (let [query {:select {"?s" ["*"]}
+                   :where  [["?s" "_user/username" "?o"]]
+                   :opts   {:parseJSON true
+                            :orderBy   "?o"}}
+            res   (<!! (fdb/query-async db query))]
+        (is (= {:foo "bar"} (-> res first (get "_user/json")))
+            (str "Unexpected query result: " (pr-str res)))
+        (is (= {:bizz "buzz"} (-> res second (get "_user/json")))
+            (str "Unexpected query result: " (pr-str res)))))
+
     (testing "basic query with graph crawl returns parsed JSON when requested"
       (let [query {:select ["*" {:friend ["*"]}]
                    :from   "_user"
@@ -124,7 +135,3 @@
                    :opts   {:parseJSON true}}
             res   (<!! (fdb/query-async db query))]
         (is (every? #{{:bizz "buzz"} {:foo "bar"}} res))))))
-
-
-
-
