@@ -3,6 +3,7 @@
             [fluree.db.test-helpers :as test]
             [fluree.db.api :as fdb]
             [fluree.db.util.async :refer [<??]]
+            [clojure.core.async :as async]
             [clojure.set :as set]))
 
 (use-fixtures :once test/test-system)
@@ -246,6 +247,38 @@
           sorted-res (sort res)]
       (is (= sorted-res res)
           (str "Results were not ordered by ?p" (pr-str res))))))
+
+(deftest order-by-limit-offset
+  (testing "orderBy query"
+    (let [ledger          (test/rand-ledger test/ledger-chat
+                                            {:http/schema ["chat.edn" "chat-preds.edn"]})
+          {:keys [block]} (test/transact-data ledger "chat.edn")
+          db              (fdb/db (:conn test/system) ledger {:syncTo block})
+          query-all       {:select  {"?e" ["person/handle"
+                                           {"comment/_person" {"_as" "comments"}}]}
+                           :where   [["?e" "person/favNums" "?favNums"]]
+                           :orderBy "person/handle"}
+          all-results     (async/<!! (fdb/query-async db query-all))
+          total-count     (count all-results)]
+
+      (testing "with limit"
+        (let [limit       1
+              query-limit (assoc query-all :limit limit)
+              subject     (async/<!! (fdb/query-async db query-limit))]
+
+          (is (= (count subject) limit)
+              "returns subjects only up to the limit")
+
+          (testing "and with offset"
+            (let [offset       1
+                  query-offset (assoc query-limit :offset offset)
+                  subject      (async/<!! (fdb/query-async db query-offset))]
+
+              (is (= (count subject) limit)
+                  "returns subjects only up to the limit")
+
+              (is (= (first subject) (second all-results))
+                  "returns only subjects after the offset"))))))))
 
 (deftest with-filter-variable
   (testing "filter with variable in where clause works"
