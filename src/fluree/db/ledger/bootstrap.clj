@@ -10,7 +10,9 @@
             [fluree.db.ledger.txgroup.txgroup-proto :as txproto]
             [fluree.db.util.async :refer [go-try <?]]
             [fluree.db.util.core :as util]
-            [fluree.db.util.log :as log])
+            [fluree.db.util.log :as log]
+            [fluree.db.ledger.json-ld :as jld-ledger]
+            [fluree.db.ledger.proto :as ledger-proto])
   (:import (fluree.db.flake Flake)))
 
 (set! *warn-on-reflection* true)
@@ -90,7 +92,7 @@
                                                     (util/pred-ident? v) (get ident->id v)
                                                     (tag-pred? p-str) (get ident->id ["_tag/id" (str p-str ":" v)])
                                                     :else v)]
-                                        (if (vector? v) ;; multi-cardinality values
+                                        (if (vector? v)     ;; multi-cardinality values
                                           (reduce #(conj %1 [subject-id p %2]) acc2 v)
                                           (conj acc2 [subject-id p v]))))
                                     acc
@@ -234,21 +236,21 @@
                                                      (get pred->id "_tx/nonce")
                                                      timestamp t true)
                                     (flake/new-flake block-t
-                                                      (get pred->id
-                                                           "_block/number")
-                                                      1 block-t true)
+                                                     (get pred->id
+                                                          "_block/number")
+                                                     1 block-t true)
                                     (flake/new-flake block-t
-                                                      (get pred->id
-                                                           "_block/instant")
-                                                      timestamp block-t true)
+                                                     (get pred->id
+                                                          "_block/instant")
+                                                     timestamp block-t true)
                                     (flake/new-flake block-t
-                                                      (get pred->id
-                                                           "_block/transactions")
-                                                      -1 block-t true)
+                                                     (get pred->id
+                                                          "_block/transactions")
+                                                     -1 block-t true)
                                     (flake/new-flake block-t
-                                                      (get pred->id
-                                                           "_block/transactions")
-                                                      -2 block-t true))
+                                                     (get pred->id
+                                                          "_block/transactions")
+                                                     -2 block-t true))
          hash                 (get-block-hash flakes*)
          block-flakes         (concat
                                 [(flake/new-flake block-t
@@ -294,14 +296,10 @@
                      :cmd cmd
                      :sig sig}}})))
 
-
-(defn bootstrap-ledger
-  "Bootstraps a new ledger from a signed new-ledger message."
-  [{:keys [conn group]} {:keys [cmd sig] :as command}]
+(defn bootstrap-json-ledger
+  [{:keys [conn group]} txid cmd-data owners {:keys [cmd sig] :as _command}]
   (go-try
-    (log/debug "Bootstrapping new ledger:" command)
-    (let [txid          (crypto/sha3-256 cmd)
-          {new-ledger-name :ledger owners :owners} (json/parse cmd)
+    (let [{new-ledger-name :ledger} cmd-data
           [network ledger-id] (if (sequential? new-ledger-name)
                                 new-ledger-name
                                 (str/split new-ledger-name #"/"))
@@ -311,10 +309,9 @@
                           (throw (ex-info (str "Ledger " network "/$" ledger-id " already exists! Create unsuccessful.")
                                           {:status 500
                                            :error  :db/unexpected-error})))
-          owners'       (or owners #{(crypto/account-id-from-message cmd sig)})
-          _             (log/debug "New ledger owner(s):" owners')
+          _             (log/debug "New ledger owner(s):" owners)
           block         (bootstrap-memory-db conn [network ledger-id]
-                                             {:owners owners' :txid txid :cmd cmd
+                                             {:owners owners :txid txid :cmd cmd
                                               :sig    sig})
           new-db        (:db block)
           block-data    (dissoc block :db)
@@ -328,9 +325,51 @@
           ledger-group  (-> indexed-ledger :conn :group)
           indexed-block (get-in indexed-ledger [:stats :indexed])]
       ;; write out new index point
-      (<? (txproto/initialized-ledger-async ledger-group txid network ledger-id block
-                                            fork indexed-block))
+      (<? (txproto/initialized-ledger-async ledger-group {:txid      txid
+                                                          :network   network
+                                                          :db-type   :json
+                                                          :ledger-id ledger-id
+                                                          :block     block
+                                                          :fork      fork
+                                                          :index     indexed-block}))
       indexed-ledger)))
+
+(defn bootstrap-json-ld-db
+  [{:keys [conn group]} txid cmd-data owners {:keys [cmd sig] :as _command}]
+  (go-try
+    (let [{ledger-name :ledger method :method
+           context     :context did :did} cmd-data
+          opts   {:context context :did did}
+          ledger (<? (jld-ledger/create conn ledger-name opts))
+          db     (jld-ledger/db ledger nil)
+          db-new (<? (jld-ledger/commit! ledger db opts))
+          commit (-> db-new :commit :address)]
+      ;; write out new index point
+      (<? (txproto/initialized-ledger-async group {:txid      txid
+                                                   :network   method
+                                                   :db-type   :json-ld
+                                                   :ledger-id ledger-name
+                                                   :block     (:block db-new)
+                                                   :method    :raft
+                                                   :commit    commit
+                                                   :address   (ledger-proto/-address ledger)
+                                                   :index     nil}))
+
+      db)))
+
+
+(defn bootstrap-ledger
+  "Bootstraps a new db from a signed new-db message."
+  [system {:keys [cmd sig] :as command}]
+  (log/debug "Bootstrapping new ledger:" command)
+  (let [txid     (crypto/sha3-256 cmd)
+        cmd-data (json/parse cmd)
+        owners'  (or (:owners cmd-data)
+                     #{(crypto/account-id-from-message cmd sig)})]
+    (if (= :json-ld (keyword (:db-type cmd-data)))
+      (bootstrap-json-ld-db system txid cmd-data owners' command)
+      (bootstrap-json-ledger system txid cmd-data owners' command))))
+
 
 (def bootstrap-txn
   [{:_id     ["_collection" const/$_predicate]

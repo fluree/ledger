@@ -155,6 +155,9 @@
         (swap! state-atom (fn [s]
                             (-> s
                                 (dissoc-in [:new-ledger-queue network cmd-id]))))
+        (when-not (get-in @state-atom [:networks network :ledgers ledger-id])
+          (log/warn "Attempt to initialize ledger: " [network ledger-id]
+                    "failed as ledger does not exist at all."))
         false))))
 
 

@@ -27,7 +27,7 @@
   "Does sanity checks for a new command and if valid, propagates it.
   Returns command-id/txid upon successful persistence to network, else
   throws."
-  [{:keys [conn] :as system}  {:keys [cmd sig signed] :as signed-cmd}]
+  [{:keys [conn] :as system} {:keys [cmd sig signed] :as signed-cmd}]
   (when-not (and (string? cmd) (string? sig))
     (throw-invalid-command (str "Command map requires keys of 'cmd' and 'sig', with a json string command map and signature of the command map respectively. Provided: "
                                 (pr-str signed-cmd))))
@@ -113,8 +113,19 @@
                           {:status 400
                            :error  :db/invalid-action}))))
 
-      :new-ledger (let [{:keys [ledger snapshot auth expire nonce owners]} cmd-data
-                        [network ledger-id] (if (sequential? ledger) ledger (str/split ledger #"/"))]
+      :new-ledger (let [{:keys [ledger snapshot auth expire nonce owners db-type method]} cmd-data
+                        [network ledger-id] (cond
+                                              (= :json-ld (keyword db-type))
+                                              [(util/keyword->str method) ledger]
+
+                                              (sequential? ledger)
+                                              ledger
+
+                                              (string? ledger)
+                                              (str/split ledger #"/")
+
+                                              :else
+                                              (throw-invalid-command (str "Invalid ledger name: " ledger)))]
                     (when (and auth auth-id (not= auth auth-id))
                       (throw-invalid-command (str "New-ledger command was signed by auth: " auth-id
                                                   " but the command specifies auth: " auth
@@ -135,7 +146,7 @@
                             exists?         (storage-exists? (str snapshot))]
                         (when-not exists?
                           (throw-invalid-command
-                            (format "Cannot create a new ledger, snapshot file %s does not exist in storage %s"
+                            (format "Cannot create a new ledger, snapshot file, %s, does not exist in storage, %s"
                                     snapshot (case (-> system :conn :storage-type)
                                                :s3 (-> system :conn :meta :s3-storage)
                                                :file (-> system :conn :meta :file-storage-path)
@@ -149,9 +160,9 @@
       :delete-ledger (let [{:keys [ledger]} cmd-data
                            [network ledger-id] (if (sequential? ledger) ledger (str/split ledger #"/"))
                            old-session (session/session conn ledger)
-                           db          (async/<!! (session/current-db old-session))
+                           db*         (async/<!! (session/current-db old-session))
                            _           (when-not (or (-> system :group :open-api)
-                                                     (async/<!! (auth/root-role? db ["_auth/id" auth-id])))
+                                                     (async/<!! (auth/root-role? db* ["_auth/id" auth-id])))
                                          (throw (ex-info (str "To delete a ledger, must be using an open API or an auth record with a root role.")
                                                          {:status 401 :error :db/invalid-auth})))]
                        (async/<!! (ledger-delete/process conn network ledger-id))
@@ -211,7 +222,7 @@
                          {:status 400 :error :db/invalid-ledger}))
         (let [ledger-info (ledger-info system network ledger-id)
               _           (log/debug "Ledger info for" ledger "-" ledger-info)
-              db-stat     (when (and (seq ledger-info) ; skip stats if db is still initializing
+              db-stat     (when (and (seq ledger-info)      ; skip stats if db is still initializing
                                      (not= :initialize (:status ledger-info)))
                             (let [session-db (async/<! (session/db (:conn system) ledger {}))]
                               (if (util/exception? session-db)
@@ -242,7 +253,7 @@
      (log/debug "Incoming message:" msg)
      (try
        (case (keyword operation)
-         :close (do ;; close will trigger the on-closed callback and clean up all session info.
+         :close (do                                         ;; close will trigger the on-closed callback and clean up all session info.
                   ;; send a confirmation message first
                   (success! true)
                   ;(s/put! ws (json/write [(assoc header :status 200) true]))
@@ -271,7 +282,7 @@
                                                  (sequential? (first arg)) ;; [ [network, ledger-id], auth ]
                                                  arg
 
-                                                 :else ;; network/ledger-id or [network, ledger-id]
+                                                 :else      ;; network/ledger-id or [network, ledger-id]
                                                  [arg])
 
                           auth            (cond
@@ -341,16 +352,23 @@
                              {:keys [type ledger jwt]} cmd-data
                              cmd-type    (keyword type)
                              _           (when-not (#{:tx :new-ledger :default-key :delete-ledger} cmd-type)
-                                           (throw-invalid-command
-                                             (str "Invalid command type (:type) provided in unsigned command: "
-                                                  (:type cmd-data))))
+                                           (throw-invalid-command (str "Invalid command type (:type) provided in unsigned command: "
+                                                                       (:type cmd-data))))
                              [network ledger-id] (cond
                                                    (= :new-ledger cmd-type)
                                                    (cond
-                                                     (string? ledger) (str/split ledger #"/")
-                                                     (sequential? ledger) ledger
-                                                     :else (throw (ex-info (str "Invalid ledger provided for new-ledger: " (pr-str ledger))
-                                                                           {:status 400 :error :db/invalid-command})))
+                                                     (= :json-ld (:db-type cmd-data))
+                                                     [(util/keyword->str (:method cmd-data)) ledger]
+
+                                                     (string? ledger)
+                                                     (str/split ledger #"/")
+
+                                                     (sequential? ledger)
+                                                     ledger
+
+                                                     :else
+                                                     (throw (ex-info (str "Invalid ledger provided for new-ledger: " (pr-str ledger))
+                                                                     {:status 400 :error :db/invalid-command})))
 
                                                    (= :delete-ledger cmd-type)
                                                    (session/resolve-ledger (:conn system) ledger)
@@ -402,7 +420,7 @@
          :ledger-info (let [[network ledger-id] (session/resolve-ledger (:conn system) arg)]
                         (success! (ledger-info system network ledger-id)))
 
-         :ledger-stats (future ; as thread/future - otherwise if this needs to load new db will have new requests and will permanently block
+         :ledger-stats (future                              ; as thread/future - otherwise if this needs to load new db will have new requests and will permanently block
                          (ledger-stats system arg success! error!))
 
          :ledger-list (let [response (txproto/ledger-list (:group system))]
@@ -488,5 +506,5 @@
        (catch Exception e
          (log/error {:error   e
                      :message msg}
-                   "Error caught in incoming message handler:")
+                    "Error caught in incoming message handler:")
          (error! e))))))

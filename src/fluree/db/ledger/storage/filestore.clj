@@ -4,7 +4,8 @@
             [clojure.core.async :as async]
             [fluree.db.ledger.storage :refer [key->unix-path]]
             [fluree.db.ledger.storage.crypto :as crypto]
-            [robert.bruce :refer [try-try-again]])
+            [robert.bruce :refer [try-try-again]]
+            [clojure.string :as str])
   (:import (java.io ByteArrayOutputStream FileNotFoundException File)))
 
 (set! *warn-on-reflection* true)
@@ -121,19 +122,26 @@
 (defn storage-write-async
   [base-path key data]
   (async/thread
-    (storage-write base-path key data)))
+    (if (str/ends-with? key ".jsonld")
+      ;; for new json-ld, key is base-32 of hash... store in sub-directories of first 3 chars to avoid large directories
+      (storage-write base-path (str (subs key 0 3) "_" key) data)
+      (storage-write base-path key data))))
 
 
 (defn connection-storage-write
   "Default function for connection storage writing."
   ([base-path] (connection-storage-write base-path nil))
   ([base-path encryption-key]
-   (if encryption-key
-     (fn [key data]
-       (let [enc-data (crypto/encrypt-bytes data encryption-key)]
-         (storage-write-async base-path key enc-data)))
-     (fn [key data]
-       (storage-write-async base-path key data)))))
+   (let [str->bytes (fn [x] (if (string? x)
+                              (.getBytes ^String x)
+                              x))]
+     (if encryption-key
+       (fn [key data]
+         (->> (crypto/encrypt-bytes (str->bytes data) encryption-key)
+              (storage-write-async base-path key)))
+       (fn [key data]
+         (->> (str->bytes data)
+              (storage-write-async base-path key)))))))
 
 
 (defn storage-rename
