@@ -363,37 +363,39 @@
 (defn run-collection-spec
   "Runs a collection spec. Will only execute collection spec if there are still flakes for
   the subject that exist."
-  [collection sid c-spec-fn c-spec-doc {:keys [db-after instant validate-fn auth t fuel]}]
+  [collection sid c-spec-fn c-spec-doc {:keys [db-after db-before instant validate-fn auth t fuel]}]
   (async/go
     (try
       (let [subject-flakes (get-in @validate-fn [:c-spec sid])
-            has-adds?      (some (fn [^Flake flake] (when (true? (.-op flake)) true)) subject-flakes) ;; stop at first `true` .-op
-            deleted?       (or (false? has-adds?)  ; has-adds? is nil when not found
+            has-adds?      (some flake/op subject-flakes) ;; stop at first `true` .-op
+            has-retracts?  (some (complement flake/op) subject-flakes)
+            deleted?       (or (false? has-adds?) ; has-adds? is nil when not found
                                (empty? (<? (query-range/index-range @db-after :spot = [sid]))))]
-        (if deleted?
-          true
-          (let [fuel-atom (atom {:stack   []
-                                 :credits (:credits @fuel)
-                                 :spent   0})
-                f         @c-spec-fn
-                res       (f {:db      @db-after
-                              :instant instant
-                              :sid     sid
-                              :flakes  subject-flakes
-                              :auth_id auth
-                              :t       t
-                              :state   fuel-atom})
-                res*      (if (channel? res) (async/<! res) res)]
+        (let [fuel-atom (atom {:stack   []
+                               :credits (:credits @fuel)
+                               :spent   0})
+              f         @c-spec-fn
+              res       (f {:db        @db-after
+                            :db-before db-before
+                            :delete    has-retracts?
+                            :instant   instant
+                            :sid       sid
+                            :flakes    subject-flakes
+                            :auth_id   auth
+                            :t         t
+                            :state     fuel-atom})
+              res*      (if (channel? res) (async/<! res) res)]
 
-            ;; update main tx fuel count with the fuel spent to execute this tx function
-            (update-tx-spent-fuel fuel (:spent @fuel-atom))
-            (collection-spec-response subject-flakes collection c-spec-doc res*))))
+          ;; update main tx fuel count with the fuel spent to execute this tx function
+          (update-tx-spent-fuel fuel (:spent @fuel-atom))
+          (collection-spec-response subject-flakes collection c-spec-doc res*)))
       (catch Exception e (collection-spec-response (get-in @validate-fn [:c-spec sid]) collection c-spec-doc e)))))
 
 
 (defn queue-collection-spec
   [collection c-spec-fn-ids {:keys [validate-fn db-root] :as tx-state} subject-flakes]
-  (let [sid        (.-s ^Flake (first subject-flakes))
+
+  (let [sid        (flake/s (first subject-flakes))
         c-spec-fn  (resolve-function c-spec-fn-ids db-root validate-fn "collectionSpec")
         c-spec-doc (or (dbproto/-c-prop db-root :specDoc collection) collection) ;; use collection name as default specDoc
         execute-fn (-> run-collection-spec
@@ -406,7 +408,7 @@
 
 (defn queue-predicate-collection-spec
   [tx-state subject-flakes]
-  (let [sid        (.-s ^Flake (first subject-flakes))
+  (let [sid        (flake/s (first subject-flakes))
         execute-fn (-> tx-schema/validate-schema-predicate
                        (partial sid)
                        (with-meta {:type   :collection-spec
@@ -416,7 +418,7 @@
 
 (defn queue-tx-meta-collection-spec
   [tx-state subject-flakes]
-  (let [sid        (.-s ^Flake (first subject-flakes))
+  (let [sid        (flake/s (first subject-flakes))
         execute-fn (-> tx-meta/valid-tx-meta?
                        (partial sid)
                        (with-meta {:type   :collection-spec
