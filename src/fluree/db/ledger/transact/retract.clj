@@ -44,8 +44,7 @@
     (let [flakes     (<? (query-range/index-range db-root :spot = [subject-id]))
           refs       (<? (query-range/index-range db-root :opst = [subject-id]))
           components (<? (retract-components flakes tx-state))]
-      (->> flakes
-           (concat refs)
+      (->> (concat flakes refs)
            (map #(flake/flip-flake % t))
            (concat components)
            (into [])))))
