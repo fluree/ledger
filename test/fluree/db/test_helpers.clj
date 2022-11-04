@@ -3,12 +3,13 @@
             [clojure.core.async :as async :refer [<!!]]
             [fluree.db.server :as server]
             [fluree.db.api :as fdb]
-            [fluree.db.server-settings :as setting]
+            [fluree.db.server-settings :as settings]
             [fluree.db.util.log :as log]
             [clojure.java.io :as io]
             [clojure.edn :as edn]
             [fluree.db.util.json :as json]
             [org.httpkit.client :as http]
+            [environ.core :as environ]
             [fluree.db.api.auth :as fdb-auth]
             [fluree.db.ledger.txgroup.txgroup-proto :as txproto]
             [clojure.string :as str])
@@ -25,7 +26,7 @@
 
 (def port (delay (get-free-port)))
 (def alt-port (delay (get-free-port)))
-(def config (delay (setting/build-env
+(def config (delay (settings/build-env
                      {:fdb-mode              "dev"
                       :fdb-group-servers     "DEF@localhost:11001"
                       :fdb-group-this-server "DEF"
@@ -417,3 +418,18 @@
   but must have all of ks."
   [m & ks]
   (every? #(contains? m %) ks))
+
+
+(defn start-server
+  "Start a single server with the specified settings, returning the server."
+  [settings]
+  (let [server-settings (-> (settings/build-env environ/env)
+                            (merge settings))]
+    (server/startup server-settings)))
+
+
+(defn stop-server
+  "Stop the supplied server (from `fluree.db.test-helpers/start`)."
+  [s]
+  (when s (server/shutdown s))
+  :stopped)
