@@ -23,7 +23,7 @@ jobs:
       - name: Run integration tests
         run: script/run-in-docker.sh make ci
       - name: Notify Slack fail
-        if: github.ref == 'refs/heads/main' && failure()
+        if: startsWith(github.ref, 'refs/heads/maintenance/') && failure()
         env:
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
         uses: voxmedia/github-action-slack-notify-build@v1
