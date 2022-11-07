@@ -9,8 +9,15 @@ jobs:
     name: Run CI Tests & Linters
     runs-on: [ self-hosted, docker ]
     steps:
-      - uses: actions/checkout@v2
-      - uses: docker/setup-buildx-action@v1
+      - name: Checkout maintenance/v2 branch
+        if: github.event_name == 'schedule'
+        uses: actions/checkout@v3.1.0
+        with:
+          ref: maintenance/v2
+      - name: Checkout code
+        if: github.event_name != 'schedule'
+        uses: actions/checkout@v3.1.0
+      - uses: docker/setup-buildx-action@v2.2.1
         with:
           install: true
       - name: Run integration tests
