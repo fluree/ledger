@@ -13,9 +13,9 @@
             clucie/clucie                  {:mvn/version "0.4.2"}
 
             ;; AWS S3 API
-            com.cognitect.aws/api          {:mvn/version "0.8.603"}
-            com.cognitect.aws/endpoints    {:mvn/version "1.1.12.307"}
-            com.cognitect.aws/s3           {:mvn/version "822.2.1145.0"}
+            com.cognitect.aws/api          {:mvn/version "0.8.612"}
+            com.cognitect.aws/endpoints    {:mvn/version "1.1.12.338"}
+            com.cognitect.aws/s3           {:mvn/version "825.2.1250.0"}
 
             ;; web server
             http-kit/http-kit              {:mvn/version "2.6.0"}
@@ -24,7 +24,7 @@
             compojure/compojure            {:mvn/version "1.7.0"}
 
             ;; logging
-            ch.qos.logback/logback-classic {:mvn/version "1.4.4"}
+            ch.qos.logback/logback-classic {:mvn/version "1.4.5"}
             cambium/cambium.core           {:mvn/version "1.1.1"}
             cambium/cambium.codec-cheshire {:mvn/version "1.0.0"}
             cambium/cambium.logback.json   {:mvn/version "0.4.5"}
@@ -59,7 +59,7 @@
   {:extra-paths ["test" "test-resources" "dev-resources"]
    :extra-deps  {com.cognitect/test-runner
                  {:git/url "https://github.com/cognitect-labs/test-runner.git"
-                  :sha     "a522ab2851a2aa5bf9c22a942b45287a3a019310"}}
+                  :sha     "7284cda41fb9edc0f3bc6b6185cfb7138fc8a023"}}
    :exec-fn     cognitect.test-runner.api/test}
 
   :jar
@@ -128,5 +128,5 @@
    :main-opts  ["-m" "antq.core" "--skip=github-action"]}
 
   :clj-kondo
-  {:extra-deps {clj-kondo/clj-kondo {:mvn/version "2022.10.05"}}
+  {:extra-deps {clj-kondo/clj-kondo {:mvn/version "2022.11.02"}}
    :main-opts  ["-m" "clj-kondo.main" "--lint" "src" "--config" ".clj-kondo/config.edn"]}}}
