@@ -14,6 +14,7 @@
             [fluree.db.connection :as connection]
 
             [fluree.db.server-settings :as settings]
+            [fluree.db.meta :as meta]
 
             [fluree.db.peer.http-api :as http-api]
             [fluree.db.peer.messages :as messages]
@@ -28,7 +29,6 @@
             [fluree.db.ledger.consensus.tcp :as ftcp]
             [fluree.db.ledger.txgroup.txgroup-proto :as txproto]
             [fluree.db.constants :as const]
-            [clojure.pprint :as pprint]
             [fluree.db.conn-events :as conn-events]))
 
 (set! *warn-on-reflection* true)
@@ -261,6 +261,9 @@
 
 
 (defn -main []
+  (println "******************************************"
+           "\nFluree version" (meta/version)
+           "\n******************************************\n")
   (flat/set-decoder! codec/destringify-val)
   (if-let [command (:fdb-command environ/env)]
     (execute-command command)
