@@ -68,9 +68,9 @@ function java_version() {
   fi
 }
 
-subcommand=$1
+first_arg=$1
 
-case "${subcommand}" in
+case "${first_arg}" in
 find_java)
   shift
   find_java
@@ -145,32 +145,8 @@ fi
 
 echo "Using logback config file ${FLUREE_LOGBACK_CONFIGURATION_FILE}"
 
-## first check if issuing a command (string that starts with ':' as the only arg)
-if [ "${1:0:1}" = : ]; then
-  echo "Executing command: $1"
-  exec $JAVA_X -Dfdb.command=$1 ${FLUREE_ARGS} -Dfdb.properties.file=${FLUREE_PROPERTIES} \
-    -Dfdb.log.ansi -Dlogback.configurationFile=${FLUREE_LOGBACK_CONFIGURATION_FILE} -jar $FLUREE_SERVER
-  exit 0
-else
-  case "$1" in
-  *.properties)
-    FLUREE_PROPERTIES=$1
-    shift
-    ;;
-  esac
-fi
-
-if [ "$FLUREE_PROPERTIES" == "" ]; then
-  echo "No properties file specified. Using default properties file $DEFAULT_PROPERTIES_FILE."
-  FLUREE_PROPERTIES="${THIS_DIR}/${DEFAULT_PROPERTIES_FILE}"
-fi
-
-if ! [ -f ${FLUREE_PROPERTIES} ]; then
-  echo "Properties file ${FLUREE_PROPERTIES} does not exist. Exiting."
-  exit 1
-fi
-
 JAVA_OPTS='-XX:+UseG1GC -XX:MaxGCPauseMillis=50'
+JAVA_CMD_OPTS='-XX:+UseG1GC'
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -197,6 +173,33 @@ if [ "$XMS" == "" ]; then
   XMS=-Xms1g
 fi
 
+## first check if issuing a command (string that starts with ':' as the first arg)
+if [ "${first_arg:0:1}" = : ]; then
+  echo "Executing command: $first_arg"
+  exec $JAVA_X ${XMX} ${XMS} ${JAVA_CMD_OPTS} -Dfdb.command=$first_arg \
+     ${FLUREE_ARGS} -Dfdb.properties.file=${FLUREE_PROPERTIES} -Dfdb.log.ansi \
+    -Dlogback.configurationFile=${FLUREE_LOGBACK_CONFIGURATION_FILE} \
+    -jar $FLUREE_SERVER
+  exit 0
+else
+  case "$first_arg" in
+  *.properties)
+    FLUREE_PROPERTIES=$first_arg
+    shift
+    ;;
+  esac
+fi
+
+if [ "$FLUREE_PROPERTIES" == "" ]; then
+  echo "No properties file specified. Using default properties file $DEFAULT_PROPERTIES_FILE."
+  FLUREE_PROPERTIES="${THIS_DIR}/${DEFAULT_PROPERTIES_FILE}"
+fi
+
+if ! [ -f ${FLUREE_PROPERTIES} ]; then
+  echo "Properties file ${FLUREE_PROPERTIES} does not exist. Exiting."
+  exit 1
+fi
+
 if ! [ -f $FLUREE_SERVER ]; then
   echo "Fluree ledger JAR file not found. Looking for ${FLUREE_SERVER}. Exiting."
   exit 1
@@ -205,7 +208,7 @@ fi
 # This needs to stay down here so that all of the checks above run first.
 # Basically the purpose of this is get right up to the point of starting Fluree
 # and then exit successfully iff we got that far.
-if [ "$1" == "test" ]; then
+if [ "$first_arg" = "test" ]; then
   echo "Fluree successfully installed and ready to run"
   exit 0
 fi
