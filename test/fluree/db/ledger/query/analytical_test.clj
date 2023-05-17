@@ -280,6 +280,50 @@
               (is (= (first subject) (second all-results))
                   "returns only subjects after the offset"))))))))
 
+(deftest order-by-group-by
+  (testing "orderBy works with groupBy on a different value"
+    (let [ledger  (test/rand-ledger test/ledger-chat)
+          _       (<?? (fdb/transact-async (:conn test/system) ledger
+                                           [{:_id                "_predicate"
+                                             :name               "_user/type"
+                                             :type               "string"
+                                             :restrictCollection "_user"}]))
+          {:keys [block]} (<?? (fdb/transact-async (:conn test/system) ledger
+                                                   [{:_id            "_user$user2"
+                                                     :_user/username "delta"
+                                                     :_user/type     "dog"}
+                                                    {:_id            "_user$user1"
+                                                     :_user/username "zeta"
+                                                     :_user/type     "dog"}
+                                                    {:_id            "_user$user3"
+                                                     :_user/username "beta"
+                                                     :_user/type     "dog"}
+                                                    {:_id            "_user$user4"
+                                                     :_user/username "epsilon"
+                                                     :_user/type     "person"}
+                                                    {:_id            "_user$user5"
+                                                     :_user/username "gamma"
+                                                     :_user/type     "person"}
+                                                    {:_id            "_user$user6"
+                                                     :_user/username "alpha"
+                                                     :_user/type     "person"}]))
+          db      (fdb/db (:conn test/system) ledger {:syncTo block})
+          query   {:select  ["?user" "?username" "?type"]
+                   :where   [["?user" "_user/username" "?username"]
+                             ["?user" "_user/type" "?type"]]
+                   :orderBy "?username"
+                   :groupBy "?type"}
+          results (<?? (fdb/query-async db query))]
+      (is (= {"person"
+              [[87960930223086 "alpha" "person"]
+               [87960930223084 "epsilon" "person"]
+               [87960930223085 "gamma" "person"]]
+              "dog"
+              [[87960930223083 "beta" "dog"]
+               [87960930223081 "delta" "dog"]
+               [87960930223082 "zeta" "dog"]]}
+             results)))))
+
 (deftest with-filter-variable
   (testing "filter with variable in where clause works"
     (let [query  {:select ["?name" "?isIndexed"]
