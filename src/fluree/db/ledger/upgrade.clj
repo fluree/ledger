@@ -44,6 +44,7 @@
 (defn v1->v2
   "Modifies index segments where the 'rhs' does not match the next segment's first-flake"
   [conn]
+  (log/debug "Executing upgrade function v1->v2.")
   (go-try
     (let [ledgers    (txproto/ledger-list (:group conn)) ;; two-tuples of [network ledger-id]
           left-flake (flake/->Flake (Long/MAX_VALUE) 0 (Long/MAX_VALUE) 0 true nil)]
@@ -94,6 +95,7 @@
 (defn v2->v3
   "Add _shard collection, ensure db names conform to new standard"
   [conn]
+  (log/debug "Executing upgrade function v2->v3.")
   (go-try
     (let [ledger-list @(fdb/ledger-list conn)
           update-txn  [{:_id  "_predicate"
@@ -160,8 +162,9 @@
 (defn v3->v4
   "Connect just add _tx/hash, as it needs to be subject _id 99."
   [_conn]
+  (log/debug "Executing upgrade function v3->v4.")
   (go-try
-    (throw (ex-info "Cannot update ledger from version 3 to version 4. No forwards compatible."
+    (throw (ex-info "Cannot update ledger from version 3 to version 4. Not forwards compatible."
                     {:status 400
                      :error  :db/invalid-request}))))
 
@@ -178,4 +181,8 @@
       (log/info "Upgrading ledgers from data version" from-v
                 "to data version" to-v)
       (doseq [upgrade-fn fn-range]
-        (<?? (upgrade-fn conn))))))
+        (<?? (upgrade-fn conn)))
+      (log/info "Upgrading ledgers complete."))))
+
+
+

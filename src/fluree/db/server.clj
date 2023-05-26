@@ -109,7 +109,13 @@
             ;; Can't hold up RAFT as it is used when upgrading - launch asynchronously
             (> current-version data-version)
             (future
-              (upgrade/upgrade conn data-version current-version))))))
+              (try
+                (upgrade/upgrade conn data-version current-version)
+                (catch Exception e
+                  (log/error e (str "Error upgrading data from version: " data-version " to version: " current-version "."))
+                  (log/error "Exiting due to failed upgrade")
+                  (shutdown system)
+                  (System/exit 1))))))))
 
 
 (defn assoc-some
