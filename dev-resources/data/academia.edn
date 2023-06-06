@@ -1,0 +1,40 @@
+[{:_id "profile$Freddy"
+  :name "Freddy"
+  :student_id "fred25"}
+ {:_id "profile$Lenny"
+  :name "Lenny"
+  :student_id "leonard2"}
+ {:_id "achievement$MAT"
+  :name "Introduction to Algebra"
+  :human_code "MAT101"
+  :type "Course"}
+ {:_id "achievement$BIO"
+  :name "Introduction to Biology"
+  :human_code "SCI102"
+  :type "Course"}
+ {:_id "achievement$ENG"
+  :name "Introduction to American Literature"
+  :human_code "ENG103"
+  :type "Course"}
+ {:_id "achievement$BA"
+  :name "Bachelor's Degree in English"
+  :type "Degree"}
+ {:_id "achievement$BS"
+  :name "Bachelor of Science"
+  :type "Degree"}
+ {:_id "assertion"
+  :achievement "achievement$MAT"
+  :recipient "profile$Freddy"}
+ {:_id "assertion"
+  :achievement "achievement$BIO"
+  :recipient "profile$Freddy"}
+ {:_id "assertion"
+  :achievement "achievement$ENG"
+  :recipient "profile$Freddy"}
+ {:_id "assertion"
+  :achievement "achievement$BA"
+  :recipient "profile$Freddy"}
+ {:_id "assertion"
+  :achievement "achievement$BS"
+  :recipient "profile$Lenny"}]
+  
