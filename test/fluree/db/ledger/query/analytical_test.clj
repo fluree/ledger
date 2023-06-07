@@ -169,12 +169,12 @@
 ;; TODO: Write wikidata test w/ :online metadata
 
 (deftest with-supplied-vars
-  (testing "query with supplied vars should resolve correctly"
+  (testing "query with two-tuple subject identifier var binding should resolve correctly"
     (let [query  {:where  [["?p" "person/handle" "?handle"]
                            ["?p" "person/favNums" "?favNums"]
                            ["?p" "person/user" "?username"]]
                   :select {"?p" ["handle" "favNums" "user"]}
-                  :vars   {"?username" ["_user/username" "jake"]}}
+                  :vars   {"?username" [["_user/username" "jake"]]}}
           ledger (test/rand-ledger test/ledger-chat
                                    {:http/schema ["chat.edn" "chat-preds.edn"]})
           {:keys [block]} (test/transact-data ledger "chat.edn")
@@ -183,7 +183,144 @@
       (is (= [{"handle"  "jakethesnake", :_id 351843720888324
                "favNums" [7 42], "user" {:_id 87960930223081}}]
              res)
-          (str "Unexpected query result: " (pr-str res))))))
+          (str "Unexpected query result: " (pr-str res)))))
+  (testing "query with one var binding should resolve correctly"
+    (let [query  {:where  [["?p" "person/handle" "?handle"]
+                           ["?p" "person/favNums" "?favNums"]
+                           ["?p" "person/user" "?username"]]
+                  :select {"?p" ["handle" "favNums" "user"]}
+                  :vars   {"?handle" ["jakethesnake"]}}
+          ledger (test/rand-ledger test/ledger-chat
+                                   {:http/schema ["chat.edn" "chat-preds.edn"]})
+          {:keys [block]} (test/transact-data ledger "chat.edn")
+          db     (fdb/db (:conn test/system) ledger {:syncTo block})
+          res    (<?? (fdb/query-async db query))]
+      (is (= [{"handle"  "jakethesnake", :_id 351843720888324
+               "favNums" [7 42], "user" {:_id 87960930223081}}]
+             res)
+          (str "Unexpected query result: " (pr-str res)))))
+  (comment
+   ;; For some reason these multiple binding vars aren't working the way I'd
+   ;; expect w/ these data and/or queries. They only return one result where I'd
+   ;; expect more than one to match. Might be a bug.
+   ;; - WSM 2023-06-06
+   (testing "query with two var bindings should resolve correctly"
+     (let [query  {:where  [["?p" "person/handle" "?handle"]
+                            ["?p" "person/favNums" "?favNums"]
+                            ["?p" "person/user" "?username"]]
+                   :select {"?p" ["handle" "favNums" "user"]}
+                   :vars   {"?handle" ["jakethesnake" "jdoe"]}}
+           ledger (test/rand-ledger test/ledger-chat
+                                    {:http/schema ["chat.edn" "chat-preds.edn"]})
+           {:keys [block]} (test/transact-data ledger "chat.edn")
+           db     (fdb/db (:conn test/system) ledger {:syncTo block})
+           res    (<?? (fdb/query-async db query))]
+       (is (= [{"handle"  "jakethesnake", :_id 351843720888324
+                "favNums" [7 42], "user" {:_id 87960930223081}}
+               {"handle"  "jdoe", :_id 123456789
+                "favNums" [1223 12 98 0 -2], "user" {:_id 987654321}}]
+              res)
+           (str "Unexpected query result: " (pr-str res)))))
+
+   (testing "query with three var bindings should resolve correctly"
+     (let [query  {:where  [["?p" "person/handle" "?handle"]
+                            ["?p" "person/favNums" "?favNums"]
+                            ["?p" "person/user" "?username"]]
+                   :select {"?p" ["handle" "favNums" "user"]}
+                   :vars   {"?handle" ["jakethesnake" "jdoe" "zsmith"]}}
+           ledger (test/rand-ledger test/ledger-chat
+                                    {:http/schema ["chat.edn" "chat-preds.edn"]})
+           {:keys [block]} (test/transact-data ledger "chat.edn")
+           db     (fdb/db (:conn test/system) ledger {:syncTo block})
+           res    (<?? (fdb/query-async db query))]
+       (is (= [{"handle"  "zsmith", :_id 123456780
+                "favNums" [5 645 28 -1 1223], "user" {:_id 234567890}}
+               {"handle"  "jakethesnake", :_id 351843720888324
+                "favNums" [7 42], "user" {:_id 87960930223081}}
+               {"handle"  "jdoe", :_id 123456789
+                "favNums" [1223 12 98 0 -2], "user" {:_id 987654321}}]
+              res)
+           (str "Unexpected query result: " (pr-str res))))))
+
+  (testing "query with two var bindings should resolve correctly"
+    (let [query  {:selectDistinct {"?assertion" ["*" {"achievement" ["*"]}]}
+                  :where          [["?assertion" "assertion/achievement" "?achievement"]
+                                   ["?achievement" "achievement/type" "?achievementType"]]
+                  :vars           {"?achievementType" ["Degree" "Course"]}}
+          ledger (test/rand-ledger "fluree/academia"
+                                   {:http/schema ["academia.edn"]})
+          {:keys [block]} (test/transact-data ledger "academia.edn")
+          db     (fdb/db (:conn test/system) ledger {:syncTo block})
+          res    (<?? (fdb/query-async db query))]
+      (is (= [{:_id                  387028092977156
+               "achievement"         {:_id               369435906932740
+                                      "achievement/name" "Bachelor of Science"
+                                      "achievement/type" "Degree"}
+               "assertion/recipient" {:_id 351843720888321}}
+              {:_id                  387028092977155
+               "achievement"         {:_id               369435906932739
+                                      "achievement/name" "Bachelor's Degree in English"
+                                      "achievement/type" "Degree"}
+               "assertion/recipient" {:_id 351843720888320}}
+              {:_id                  387028092977154
+               "achievement"         {:_id                     369435906932738
+                                      "achievement/name"       "Introduction to American Literature"
+                                      "achievement/human_code" "ENG103"
+                                      "achievement/type"       "Course"}
+               "assertion/recipient" {:_id 351843720888320}}
+              {:_id                  387028092977153
+               "achievement"         {:_id                     369435906932737
+                                      "achievement/name"       "Introduction to Biology"
+                                      "achievement/human_code" "SCI102"
+                                      "achievement/type"       "Course"}
+               "assertion/recipient" {:_id 351843720888320}}
+              {:_id                  387028092977152
+               "achievement"         {:_id                     369435906932736
+                                      "achievement/name"       "Introduction to Algebra"
+                                      "achievement/human_code" "MAT101"
+                                      "achievement/type"       "Course"}
+               "assertion/recipient" {:_id 351843720888320}}]
+             res))))
+
+  (testing "query with three var bindings should resolve correctly"
+    (let [query  {:selectDistinct {"?assertion" ["*" {"achievement" ["*"]}]}
+                  :where          [["?assertion" "assertion/achievement" "?achievement"]
+                                   ["?achievement" "achievement/type" "?achievementType"]]
+                  :vars           {"?achievementType" ["Degree" "Course" "Credential"]}}
+          ledger (test/rand-ledger "fluree/academia"
+                                   {:http/schema ["academia.edn"]})
+          {:keys [block]} (test/transact-data ledger "academia.edn")
+          db     (fdb/db (:conn test/system) ledger {:syncTo block})
+          res    (<?? (fdb/query-async db query))]
+      (is (= [{:_id                  387028092977156
+               "achievement"         {:_id               369435906932740
+                                      "achievement/name" "Bachelor of Science"
+                                      "achievement/type" "Degree"}
+               "assertion/recipient" {:_id 351843720888321}}
+              {:_id                  387028092977155
+               "achievement"         {:_id               369435906932739
+                                      "achievement/name" "Bachelor's Degree in English"
+                                      "achievement/type" "Degree"}
+               "assertion/recipient" {:_id 351843720888320}}
+              {:_id                  387028092977154
+               "achievement"         {:_id                     369435906932738
+                                      "achievement/name"       "Introduction to American Literature"
+                                      "achievement/human_code" "ENG103"
+                                      "achievement/type"       "Course"}
+               "assertion/recipient" {:_id 351843720888320}}
+              {:_id                  387028092977153
+               "achievement"         {:_id                     369435906932737
+                                      "achievement/name"       "Introduction to Biology"
+                                      "achievement/human_code" "SCI102"
+                                      "achievement/type"       "Course"}
+               "assertion/recipient" {:_id 351843720888320}}
+              {:_id                  387028092977152
+               "achievement"         {:_id                     369435906932736
+                                      "achievement/name"       "Introduction to Algebra"
+                                      "achievement/human_code" "MAT101"
+                                      "achievement/type"       "Course"}
+               "assertion/recipient" {:_id 351843720888320}}]
+             res)))))
 
 (deftest with-order-by-variable
   (testing "ordering by a variable should work"
@@ -250,16 +387,16 @@
 
 (deftest order-by-limit-offset
   (testing "orderBy query"
-    (let [ledger          (test/rand-ledger test/ledger-chat
-                                            {:http/schema ["chat.edn" "chat-preds.edn"]})
+    (let [ledger      (test/rand-ledger test/ledger-chat
+                                        {:http/schema ["chat.edn" "chat-preds.edn"]})
           {:keys [block]} (test/transact-data ledger "chat.edn")
-          db              (fdb/db (:conn test/system) ledger {:syncTo block})
-          query-all       {:select  {"?e" ["person/handle"
-                                           {"comment/_person" {"_as" "comments"}}]}
-                           :where   [["?e" "person/favNums" "?favNums"]]
-                           :orderBy "person/handle"}
-          all-results     (async/<!! (fdb/query-async db query-all))
-          total-count     (count all-results)]
+          db          (fdb/db (:conn test/system) ledger {:syncTo block})
+          query-all   {:select  {"?e" ["person/handle"
+                                       {"comment/_person" {"_as" "comments"}}]}
+                       :where   [["?e" "person/favNums" "?favNums"]]
+                       :orderBy "person/handle"}
+          all-results (async/<!! (fdb/query-async db query-all))
+          total-count (count all-results)]
 
       (testing "with limit"
         (let [limit       1
