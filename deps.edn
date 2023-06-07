@@ -13,18 +13,18 @@
             clucie/clucie                  {:mvn/version "0.4.2"}
 
             ;; AWS S3 API
-            com.cognitect.aws/api          {:mvn/version "0.8.656"}
-            com.cognitect.aws/endpoints    {:mvn/version "1.1.12.437"}
-            com.cognitect.aws/s3           {:mvn/version "825.2.1250.0"}
+            com.cognitect.aws/api          {:mvn/version "0.8.673"}
+            com.cognitect.aws/endpoints    {:mvn/version "1.1.12.478"}
+            com.cognitect.aws/s3           {:mvn/version "847.2.1387.0"}
 
             ;; web server
             http-kit/http-kit              {:mvn/version "2.6.0"}
-            ring/ring-core                 {:mvn/version "1.9.6"}
+            ring/ring-core                 {:mvn/version "1.10.0"}
             ring-cors/ring-cors            {:mvn/version "0.1.13"}
             compojure/compojure            {:mvn/version "1.7.0"}
 
             ;; logging
-            ch.qos.logback/logback-classic {:mvn/version "1.4.6"}
+            ch.qos.logback/logback-classic {:mvn/version "1.4.7"}
             cambium/cambium.core           {:mvn/version "1.1.1"}
             cambium/cambium.codec-cheshire {:mvn/version "1.0.0"}
             cambium/cambium.logback.json   {:mvn/version "0.4.5"}
@@ -119,7 +119,7 @@
    :main-opts   ["-m" "cloverage.coverage" "-p" "src" "-s" "test" "--test-ns-regex" "^fluree\\.db\\.ledger\\.ledger-test*$" "--output" "scanning_results/coverage"]}
 
   :eastwood
-  {:extra-deps {jonase/eastwood {:mvn/version "1.3.0"}}
+  {:extra-deps {jonase/eastwood {:mvn/version "1.4.0"}}
    :main-opts  ["-m" "eastwood.lint" {:source-paths ["src"] :test-paths ["test"]
                                       :config-files ["test-resources/eastwood-config.clj"]}]}
 
@@ -128,5 +128,5 @@
    :main-opts  ["-m" "antq.core" "--skip=github-action"]}
 
   :clj-kondo
-  {:extra-deps {clj-kondo/clj-kondo {:mvn/version "2023.03.17"}}
+  {:extra-deps {clj-kondo/clj-kondo {:mvn/version "2023.05.26"}}
    :main-opts  ["-m" "clj-kondo.main" "--lint" "src" "--config" ".clj-kondo/config.edn"]}}}
