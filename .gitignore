@@ -22,3 +22,6 @@ default_private_key.txt
 /scanning_results
 /fluree-ledger
 /fluree-ledger.build_artifacts.txt
+/.clj-kondo/babashka/
+/.clj-kondo/metosin/
+/.lsp/
