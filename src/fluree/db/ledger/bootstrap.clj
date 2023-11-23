@@ -143,45 +143,45 @@
     ;                  {:status 500 :error :db/unexpected-error})))
     (let [base-flakes
           [;; add a true predicate function
-           (flake/new-flake true-fn-sid (get pred->id "_fn/name") "true" t true)
-           (flake/new-flake true-fn-sid (get pred->id "_fn/doc") "Allows access to any rule or spec this is attached to." t true)
-           (flake/new-flake true-fn-sid (get pred->id "_fn/code") "true" t true)
+           (flake/create true-fn-sid (get pred->id "_fn/name") "true" t true)
+           (flake/create true-fn-sid (get pred->id "_fn/doc") "Allows access to any rule or spec this is attached to." t true)
+           (flake/create true-fn-sid (get pred->id "_fn/code") "true" t true)
            ;; add a false predicate function (just for completeness)
-           (flake/new-flake false-fn-sid (get pred->id "_fn/name") "false" t true)
-           (flake/new-flake false-fn-sid (get pred->id "_fn/doc") "Denies access to any rule or spec this is attached to." t true)
-           (flake/new-flake false-fn-sid (get pred->id "_fn/code") "false" t true)
+           (flake/create false-fn-sid (get pred->id "_fn/name") "false" t true)
+           (flake/create false-fn-sid (get pred->id "_fn/doc") "Denies access to any rule or spec this is attached to." t true)
+           (flake/create false-fn-sid (get pred->id "_fn/code") "false" t true)
 
            ;; add a 'root' rule
-           (flake/new-flake rule-sid (get pred->id "_rule/id") "root" t true)
-           (flake/new-flake rule-sid (get pred->id "_rule/doc") "Root rule, gives full access" t true)
-           (flake/new-flake rule-sid (get pred->id "_rule/collection") "*" t true)
-           (flake/new-flake rule-sid (get pred->id "_rule/predicates") "*" t true)
-           (flake/new-flake rule-sid (get pred->id "_rule/fns") true-fn-sid t true)
-           (flake/new-flake rule-sid (get pred->id "_rule/ops") (get ident->id ["_tag/id" "_rule/ops:all"]) t true)
+           (flake/create rule-sid (get pred->id "_rule/id") "root" t true)
+           (flake/create rule-sid (get pred->id "_rule/doc") "Root rule, gives full access" t true)
+           (flake/create rule-sid (get pred->id "_rule/collection") "*" t true)
+           (flake/create rule-sid (get pred->id "_rule/predicates") "*" t true)
+           (flake/create rule-sid (get pred->id "_rule/fns") true-fn-sid t true)
+           (flake/create rule-sid (get pred->id "_rule/ops") (get ident->id ["_tag/id" "_rule/ops:all"]) t true)
 
            ;; add a 'root' role
-           (flake/new-flake role-sid (get pred->id "_role/id") "root" t true)
-           (flake/new-flake role-sid (get pred->id "_role/doc") "Root role." t true)
-           (flake/new-flake role-sid (get pred->id "_role/rules") rule-sid t true)]]
+           (flake/create role-sid (get pred->id "_role/id") "root" t true)
+           (flake/create role-sid (get pred->id "_role/doc") "Root role." t true)
+           (flake/create role-sid (get pred->id "_role/rules") rule-sid t true)]]
       (reduce-kv (fn [flakes auth-subid master-authority]
                    (conj flakes
                          ;; add auth record, and assign root role
-                         (flake/new-flake auth-subid (get pred->id "_auth/id")
+                         (flake/create auth-subid (get pred->id "_auth/id")
                                           master-authority t true)
-                         (flake/new-flake auth-subid
+                         (flake/create auth-subid
                                           (get pred->id "_auth/roles") role-sid
                                           t true)
 
                          ;; add ledger that uses master auth
-                         (flake/new-flake db-setting-id
+                         (flake/create db-setting-id
                                           (get pred->id "_setting/ledgers")
                                           auth-subid t true)
-                         (flake/new-flake
+                         (flake/create
                            db-setting-id
                            (get pred->id "_setting/language")
                            (get ident->id ["_tag/id" "_setting/language:en"])
                            t true)
-                         (flake/new-flake db-setting-id
+                         (flake/create db-setting-id
                                           (get pred->id "_setting/id") "root"
                                           t true)))
                  base-flakes auth-subids))))
@@ -221,7 +221,7 @@
 
          flakes               (reduce
                                 (fn [acc [s p o]]
-                                  (conj acc (flake/new-flake s p o t true)))
+                                  (conj acc (flake/create s p o t true)))
                                 (flake/sorted-set-by flake/cmp-flakes-spot)
                                 fparts)
          _                    (log/debug "bootstrap flakes:" flakes)
@@ -230,33 +230,33 @@
          _                    (log/debug "new ledger owner-flakes:" owner-flakes)
          flakes+owners        (into flakes owner-flakes)
          flakes*              (conj flakes+owners
-                                    (flake/new-flake t (get pred->id "_tx/id")
+                                    (flake/create t (get pred->id "_tx/id")
                                                      txid* t true)
-                                    (flake/new-flake t
+                                    (flake/create t
                                                      (get pred->id "_tx/nonce")
                                                      timestamp t true)
-                                    (flake/new-flake block-t
+                                    (flake/create block-t
                                                      (get pred->id
                                                           "_block/number")
                                                      1 block-t true)
-                                    (flake/new-flake block-t
+                                    (flake/create block-t
                                                      (get pred->id
                                                           "_block/instant")
                                                      timestamp block-t true)
-                                    (flake/new-flake block-t
+                                    (flake/create block-t
                                                      (get pred->id
                                                           "_block/transactions")
                                                      -1 block-t true)
-                                    (flake/new-flake block-t
+                                    (flake/create block-t
                                                      (get pred->id
                                                           "_block/transactions")
                                                      -2 block-t true))
          hash                 (get-block-hash flakes*)
          block-flakes         (concat
-                                [(flake/new-flake block-t
+                                [(flake/create block-t
                                                   (get pred->id "_block/hash")
                                                   hash block-t true)]
-                                (map #(flake/new-flake block-t
+                                (map #(flake/create block-t
                                                        (get pred->id "_block/ledgers")
                                                        % block-t true)
                                      (keys auth-subids)))
