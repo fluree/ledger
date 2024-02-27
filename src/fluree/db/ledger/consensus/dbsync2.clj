@@ -436,10 +436,11 @@
 
 (defn consistency-full-check
   [conn ledgers-info remote-sync-servers]
-  (let [sync-chan     (async/chan)                          ;; files to sync are placed on this channel
-        res-chan      (async/chan)                          ;; results file sync (error/success) are placed on this channel
-        parallelism   8]
-    (if (empty? ledgers-info)
+  (let [sync-chan   (async/chan) ;; files to sync are placed on this channel
+        res-chan    (async/chan) ;; results file sync (error/success) are placed on this channel
+        parallelism 8]
+    (if (or (empty? ledgers-info)
+            (empty? remote-sync-servers))
       (go ::done)
       (let [remote-copy-fn (remote-copy-fn* conn remote-sync-servers 3000)]
         (check-all-ledgers-consistency conn ledgers-info sync-chan)
