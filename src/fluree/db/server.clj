@@ -27,6 +27,8 @@
 
 (set! *warn-on-reflection* true)
 
+(def system nil)
+
 ;; instantiates server operations
 
 (defn local-message-process
@@ -205,6 +207,7 @@
   (if-let [command (:fdb-command environ/env)]
     (execute-command command)
     (let [system (startup)]
+      (alter-var-root #'system (constantly system))
       (.addShutdownHook
         (Runtime/getRuntime)
         (Thread. ^Runnable
