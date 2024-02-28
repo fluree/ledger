@@ -21,6 +21,8 @@ FLUREE_SERVER=""
 FLUREE_PROPERTIES=""
 FLUREE_LOGBACK_CONFIGURATION_FILE=""
 
+FLUREE_REMOTE_REPL_PORT=""
+
 MINIMUM_JAVA_VERSION=11
 
 function find_java() {
@@ -179,6 +181,11 @@ while [ $# -gt 0 ]; do
   -Xms*)
     XMS=$1
     ;;
+  -repl-port=*)
+    if [[ "$1" =~ ^-repl-port=([0-9]+) ]]; then
+      FLUREE_REMOTE_REPL_PORT=${BASH_REMATCH[1]}
+    fi
+    ;;
   test)
     break
     ;;
@@ -217,6 +224,15 @@ echo "Fluree ledger starting with java options: ${XMS} ${XMX} ${JAVA_OPTS}"
 echo "fluree.db log level is ${FLUREE_DB_LOG_LEVEL}"
 echo "fluree.raft log level is ${FLUREE_RAFT_LOG_LEVEL}"
 
-exec ${JAVA_X} -server ${XMX} ${XMS} ${JAVA_OPTS} ${FLUREE_ARGS} -Dfdb.properties.file=${FLUREE_PROPERTIES} \
-  -Dfdb.log.ansi -Dfluree.db.log.level=${FLUREE_DB_LOG_LEVEL} -Dfluree.raft.log.level=${FLUREE_RAFT_LOG_LEVEL} \
-  -Dlogback.configurationFile=${FLUREE_LOGBACK_CONFIGURATION_FILE} -jar ${FLUREE_SERVER}
+if [[ $FLUREE_REMOTE_REPL_PORT ]]
+then
+  echo "WARNING: Starting with remote REPL on port ${FLUREE_REMOTE_REPL_PORT}"
+  exec ${JAVA_X} -server ${XMX} ${XMS} ${JAVA_OPTS} ${FLUREE_ARGS} -Dfdb.properties.file=${FLUREE_PROPERTIES} \
+    -Dclojure.server.repl="{:port ${FLUREE_REMOTE_REPL_PORT} :accept clojure.core.server/repl}" \
+    -Dfdb.log.ansi -Dfluree.db.log.level=${FLUREE_DB_LOG_LEVEL} -Dfluree.raft.log.level=${FLUREE_RAFT_LOG_LEVEL} \
+    -Dlogback.configurationFile=${FLUREE_LOGBACK_CONFIGURATION_FILE} -jar ${FLUREE_SERVER}
+else
+  exec ${JAVA_X} -server ${XMX} ${XMS} ${JAVA_OPTS} ${FLUREE_ARGS} -Dfdb.properties.file=${FLUREE_PROPERTIES} \
+    -Dfdb.log.ansi -Dfluree.db.log.level=${FLUREE_DB_LOG_LEVEL} -Dfluree.raft.log.level=${FLUREE_RAFT_LOG_LEVEL} \
+    -Dlogback.configurationFile=${FLUREE_LOGBACK_CONFIGURATION_FILE} -jar ${FLUREE_SERVER}
+fi
