@@ -142,7 +142,8 @@
            node-bytes      (flake/size-bytes resolved-flakes)
            overflow?       (overflow? node-bytes)
            underflow?      (and (underflow? node-bytes) (not= 1 (count old-children)))
-           history         (<? history-ch)]
+           history         (or (<? history-ch) ;; with predicates with no-history turned on, this can be empty
+                               #{})]
        (cond
          overflow?
          (let [splits     (split-flakes resolved-flakes node-bytes)
