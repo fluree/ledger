@@ -68,14 +68,29 @@
                     (assoc acc k v))
                   acc)) {} input) walk/keywordize-keys))
 
+(defn compact-group-state
+  "Report out a smaller version of the raft group state to save logging"
+  [{:keys [networks] :as group-state}]
+  (let [networks* (reduce-kv
+                    (fn [acc network network-map]
+                      (let [dbs*         (reduce-kv (fn [acc dbid db-data]
+                                                      (assoc acc dbid (dissoc db-data :indexes)))
+                                                    {} (:dbs network-map))
+                            network-map* (assoc network-map :dbs dbs*)]
+                        (assoc acc network network-map*)))
+                    {}
+                    networks)]
+    (-> group-state
+        (select-keys [:version :leases :_work])
+        (assoc :networks networks*))))
+
+
 (defn report-stats
   [system]
   (log/info "Memory: " (-> (memory-stats) (json/encode)))
-  (let [group-state  (txproto/-local-state (:group system))
-        state-report (-> group-state
-                         (select-keys [:version :leases :_work :networks]))]
-    (log/info "Group state: " (json/encode state-report))
-    (log/debug "Full group state: " (json/encode group-state))))
+  (let [group-state  (txproto/-local-state (:group system))]
+    (log/info "Group state: " (json/encode (compact-group-state group-state)))
+    (log/trace "Full group state: " (json/encode group-state))))
 
 
 
