@@ -1,7 +1,8 @@
 {:deps  {org.clojure/clojure            {:mvn/version "1.11.1"}
          org.clojure/data.xml           {:mvn/version "0.2.0-alpha8"}
          com.fluree/alphabase           {:mvn/version "3.3.0"}
-         com.fluree/db                  {:mvn/version "1.0.5"}
+         com.fluree/db                  {:git/url "https://github.com/fluree/db.git"
+                                         :sha     "add56b63e276f55200f4e21d074531dbccc66765"}
          com.fluree/raft                {:mvn/version "1.0.0-beta1"}
          com.fluree/crypto              {:mvn/version "0.4.0"}
 
@@ -38,7 +39,7 @@
  :aliases
  {:mvn/group-id    com.fluree
   :mvn/artifact-id ledger
-  :mvn/version     "1.0.5"
+  :mvn/version     "1.0.5-SNAPSHOT"
 
   :dev
   {:extra-paths ["dev", "test"]

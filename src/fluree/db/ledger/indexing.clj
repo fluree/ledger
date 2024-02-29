@@ -105,6 +105,23 @@
                 :else
                 (recur (inc n) his*)))))))
 
+(defn throw-write-leaf-condition
+  "In the case there is a leaf write exception, dump out as much data as possible to help diagnose.
+
+  condition-str is overflow, underflow or standard"
+  [e condition-str network dbid block t idx-type base-id leaf-i flakes history
+   old-children new-children resolved overflow-data underflow-data]
+  (log/error e "Error creating leaf index segment from"
+             condition-str ".\n Data: "
+             (pr-str {:network        network :dbid dbid :block block :t t
+                      :idx-type       idx-type :base-id base-id :leaf-i leaf-i
+                      :flakes         flakes :history history
+                      :old-children   old-children :new-children new-children
+                      :resolved       resolved
+                      :overflow-data  overflow-data
+                      :underflow-data underflow-data}))
+  (throw e))
+
 
 (defn index-leaf
   "Given a node, idx-novelty, returns [ [nodes] skip n].
@@ -125,7 +142,8 @@
            node-bytes      (flake/size-bytes resolved-flakes)
            overflow?       (overflow? node-bytes)
            underflow?      (and (underflow? node-bytes) (not= 1 (count old-children)))
-           history         (<? history-ch)]
+           history         (or (<? history-ch) ;; with predicates with no-history turned on, this can be empty
+                               #{})]
        (cond
          overflow?
          (let [splits     (split-flakes resolved-flakes node-bytes)
@@ -139,8 +157,16 @@
                                      (first flakes))
                    base-id         (str (util/random-uuid))
                    his-split       (get-history-in-range history first-flake rhs' comparator)
-                   id              (<? (storage/write-leaf conn network dbid idx-type base-id
-                                                           flakes his-split))
+                   id              (async/<! (storage/write-leaf conn network dbid idx-type base-id
+                                                                 flakes his-split))
+                   _               (when (util/exception? id)
+                                     (throw-write-leaf-condition
+                                       id "OVERFLOW"
+                                       network dbid block t idx-type base-id leaf-i
+                                       flakes history
+                                       old-children new-children resolved
+                                       {:his-split his-split :first-flake first-flake :rhs' rhs' :splits splits}
+                                       nil))
                    child-leftmost? (and leftmost? (zero? split-i))
                    child-node      (storage/map->UnresolvedNode
                                      {:conn      conn :config config
@@ -182,8 +208,18 @@
                current-node-his (get-history-in-range history fflake rhs comparator)
                his-in-range     (into current-node-his combine-his)
                flakes           (into (:flakes resolved) (:flakes combine-leaf))
-               id               (<? (storage/write-leaf conn network dbid idx-type base-id
-                                                        flakes his-in-range))
+               id               (async/<! (storage/write-leaf conn network dbid idx-type base-id
+                                                              flakes his-in-range))
+               _                (when (util/exception? id)
+                                  (throw-write-leaf-condition
+                                    id "UNDERFLOW"
+                                    network dbid block t idx-type base-id leaf-i
+                                    flakes history
+                                    old-children new-children resolved
+                                    nil
+                                    {:skip          skip :n n :combine-leaf combine-leaf
+                                     :combine-bytes combine-bytes
+                                     :combine-his   combine-his}))
                size             (+ node-bytes combine-bytes)
                ;; current node might be empty, so we need to get first and rhs from node, NOT resolved
                [first-flake rhs] (if (= skip :previous)
@@ -204,8 +240,15 @@
          :else
          (let [base-id    (str (util/random-uuid))
                flakes     (:flakes resolved)
-               id         (<? (storage/write-leaf conn network dbid idx-type base-id
-                                                  flakes history))
+               id         (async/<! (storage/write-leaf conn network dbid idx-type base-id
+                                                        flakes history))
+               _          (when (util/exception? id)
+                            (throw-write-leaf-condition
+                              id "STANDARD"
+                              network dbid block t idx-type base-id leaf-i
+                              flakes history
+                              old-children new-children resolved
+                              nil nil))
                child-node (storage/map->UnresolvedNode
                             {:conn      conn :config config
                              :dbid      dbid :id id :leaf true
@@ -266,14 +309,14 @@
            child-n    (count children)
            at-leaf?   (:leaf (val (first children)))
            children*  (loop [child-i   (dec child-n)
-                             rhs       rhs
+                             rhs*       rhs
                              children* (empty children)]
                         (if (< child-i 0) ;; at end of result set
                           children*
                           (let [child         (val (nth children child-i))
                                 child-rhs     (:rhs child)
-                                _             (when-not (or (= (dec child-i) child-n) (= child-rhs rhs))
-                                                (throw (ex-info (str "Something went wrong. Child-rhs does not equal rhs: " {:child-rhs child-rhs :rhs rhs})
+                                _             (when-not (or (= (dec child-i) child-n) (= child-rhs rhs*))
+                                                (throw (ex-info (str "Something went wrong. Child-rhs does not equal rhs: " {:child-rhs child-rhs :rhs rhs*})
                                                                 {:status 500
                                                                  :error  :db/unexpected-error})))
                                 child-first   (:first child)
@@ -289,7 +332,21 @@
                                 dirty?        (or (seq novelty) (seq remove-preds?))
                                 [new-nodes skip n] (if dirty?
                                                      (if at-leaf?
-                                                       (<? (index-leaf conn network dbid child block t idx-novelty child-rhs children children* child-i remove-preds?))
+                                                       (let [res (async/<! (index-leaf conn network dbid child block t idx-novelty child-rhs children children* child-i remove-preds?))]
+                                                         (if (util/exception? res)
+                                                           (do
+                                                             (log/error "Error indexing leaf from index-branch. Branch Data:\n"
+                                                                        (pr-str {:base-id base-id :idx-type idx-type :child-n child-n :rhs rhs
+                                                                                  :resolved resolved})
+                                                                        "\nChild Data:\n:"
+                                                                        (pr-str {:child-i child-i :rhs* rhs*
+                                                                                 :child-first child-first :child-rhs child-rhs
+                                                                                 :leftmost? (:leftmost? child)
+                                                                                 :novelty novelty})
+                                                                        "\nIDX Novelty:\n:"
+                                                                        (pr-str idx-novelty))
+                                                             (throw res))
+                                                           res))
                                                        [(<? (index-branch conn network dbid child idx-novelty block t child-rhs progress remove-preds?)) nil nil])
                                                      [[child] nil nil])
                                 new-rhs       (:first (first new-nodes))
